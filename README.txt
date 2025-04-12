@@ -7,3 +7,4 @@ Main.java裏頭主要從main開始看
 - sendfile就是當按下sendfile按鈕時，會送出檔案
 - UDPserver 就是不斷的listen新的user的hello message
 - 其他的小function自己看
+4-12 現在有一堆bug

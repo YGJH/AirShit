@@ -42,7 +42,7 @@ public class SendFileGUI extends JFrame { // 定義 SendFileGUI 類，繼承自 
                     return; // 結束方法，返回不再執行後續程式碼
                 }
                 
-                boolean success = FileShare.sendFileToUser(selectedUser, file); // 呼叫 FileShare 傳送檔案給指定用戶
+                boolean success = Main.sendFileToUser(selectedUser, file); // 呼叫 Main 傳送檔案給指定用戶
                 if (success) { // 如果檔案傳送成功
                     JOptionPane.showMessageDialog(SendFileGUI.this, "File sent successfully to " + selectedUser,
                             "Success", JOptionPane.INFORMATION_MESSAGE); // 顯示成功對話框
@@ -68,7 +68,7 @@ public class SendFileGUI extends JFrame { // 定義 SendFileGUI 類，繼承自 
     
     private void refreshUserList() { // 定義刷新用戶列表方法
         listModel.clear(); // 清空現有的列表數據
-        Hashtable<String, Client> clients = FileShare.getClientPorts(); // 從 FileShare 取得所有用戶及其連線資訊
+        Hashtable<String, Client> clients = Main.getClientPorts(); // 從 Main 取得所有用戶及其連線資訊
         if(clients != null) { // 如果用戶列表不為空
             for(String username : clients.keySet()){ // 迭代用戶列表中的每個用戶名稱
                 listModel.addElement(username); // 將用戶名稱加入列表模型
