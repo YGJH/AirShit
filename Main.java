@@ -10,7 +10,7 @@ public class Main { // 定義 Main 類別
     private static int UDP_PORT; // 定義 UDP 端口變數
     static { // 靜態初始化區塊，用以設定端口號
         TCP_PORT = getFreeTCPPort(); // 取得可用的 TCP 端口
-        UDP_PORT = getFreeUDPPort(); // 取得可用的 UDP 端口
+        UDP_PORT = UDP_PORT_Manager.getFreeUDPPort(); // 取得可用的 UDP 端口
     }
     private static String IPAddr; // 定義本機 IP 變數
     private static final String OS = System.getProperty("os.name"); // 取得作業系統名稱
@@ -82,7 +82,7 @@ public class Main { // 定義 Main 類別
             return; // 結束廣播
         }
         
-        for (int port = 3000; port < 65530; port++) { // 迭代指定範圍內的所有埠
+        for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
             if (port == UDP_PORT) continue; // 忽略已使用的 UDP 端口
             try { // 嘗試傳送廣播訊息
                 // System.err.println("Broadcasting to " + broadcast.getHostAddress() + ":" + port); // 輸出廣播訊息
@@ -155,14 +155,22 @@ public class Main { // 定義 Main 類別
                 System.out.println("接收到來自 " + socket.getInetAddress() + " 的連線請求"); // 輸出連線來源資訊
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream())); // 建立輸入串流讀取器
                 String header = reader.readLine(); // 讀取傳送的標頭資訊
+                System.out.println("接收到的標頭: " + header); // 輸出接收到的標頭資訊
                 if (header == null || !header.contains(":")) { // 驗證標頭資訊格式
                     System.out.println("Invalid header. Closing connection."); // 輸出錯誤訊息
                     socket.close(); // 關閉連線
                     continue; // 繼續等待下一個連線
                 }
-                String[] parts = header.split(":"); // 使用冒號分割標頭資訊
-                String fileName = parts[0]; // 取得檔案名稱
-                long fileSize = Long.parseLong(parts[1]); // 取得檔案大小
+                String[] parts = header.split(":"); // use pipe as delimiter
+                
+                if (parts.length != 2) {
+                    System.out.println("Invalid header. Closing connection.");
+                    socket.close();
+                    continue;
+                }
+                // System.out.println("Header parts: " + header.split("|")[0] ); // 輸出標頭分割後的資訊
+                String fileName = parts[0];
+                long fileSize = Long.parseLong(parts[1]);
                 int option = JOptionPane.showConfirmDialog(null,
                         "接受檔案傳輸?\n檔案名稱: " + fileName + "\n檔案大小: " + fileSize + " bytes",
                         "檔案傳輸",
@@ -193,19 +201,7 @@ public class Main { // 定義 Main 類別
                 }
                 fos.close(); // 關閉檔案輸出串流
                 socket.close(); // 關閉 TCP 連線
-                System.out.println("Compressed file received and saved to " + saveFile.getAbsolutePath()); // 輸出壓縮檔案儲存位置
-
-                // If the received file is a compressed file (ends with .gz), unzip it.
-                if (saveFile.getName().endsWith(".gz")) {
-                    String decompressedPath = saveFile.getAbsolutePath().substring(0, saveFile.getAbsolutePath().length() - 3);
-                    try {
-                        UnzipProgram.unzipFile(saveFile.getAbsolutePath(), decompressedPath);
-                        System.out.println("File unzipped successfully to " + decompressedPath);
-                    } catch (IOException ex) {
-                        System.err.println("Error unzipping file: " + ex.getMessage());
-                        ex.printStackTrace();
-                    }
-                }            
+                System.out.println("file received and saved to " + saveFile.getAbsolutePath()); // 輸出壓縮檔案儲存位置      
                 System.out.println("檔案接收完成"); // 輸出檔案接收完成訊息
             }
         } catch (Exception e) { // 捕捉所有例外
@@ -231,7 +227,7 @@ public class Main { // 定義 Main 類別
                     System.out.println("ip: " + client.getIPAddr() + " 端口號: " + client.getTCPPort() + " 使用者名稱: " + client.getUserName() + " 作業系統: " + client.getOS()); // 輸出客戶端資訊
                     System.out.println("客戶端名稱: " + client.getUserName()); // 輸出客戶端名稱
                     clientPorts.put(client.getUserName(), client); // 將新客戶端加入哈希表
-                    Thread.sleep(5000); // 暫停短暫時間
+                    Thread.sleep(10); // 暫停短暫時間
                     responseNewClient(client); // 回應新客戶端
                 }
             }
@@ -252,14 +248,12 @@ public class Main { // 定義 Main 類別
             }
             // Compress the file before sending
             File originalFile = file;
-            File compressedFile = File.createTempFile("compressed_", ".gz");
-            CompressFile.compressFileGZIP(originalFile.getAbsolutePath(), compressedFile.getAbsolutePath());            // Set header file name as original name with .gz extension
-            String headerFileName = originalFile.getName() + ".gz";
+            // File compressedFile = File.createTempFile("compressed_", ".gz");
             
             Socket socket = new Socket(client.getIPAddr(), client.getTCPPort()); // 建立與接收者之間的 TCP 連線
-            System.out.println("Starting to send file: " + headerFileName + " to " + client.getIPAddr() + ":" + client.getTCPPort()); // 輸出開始傳送檔案訊息
+            System.out.println("Starting to send file: " + originalFile.getName() + " to " + client.getIPAddr() + ":" + client.getTCPPort()); // 輸出開始傳送檔案訊息
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true); // 建立輸出串流以傳送檔案標頭
-            out.println(headerFileName + ":" + compressedFile.length()); // 傳送檔案名稱及壓縮後的大小資訊
+            out.println(originalFile.getName() + ":" + originalFile.length()); // 傳送檔案名稱與大小
             out.flush(); // 清空輸出串流
             
             short cnt = 0; // 初始化等待 ACK 的次數
@@ -273,7 +267,7 @@ public class Main { // 定義 Main 類別
                 return false; // 返回失敗
             }
             
-            FileInputStream fis = new FileInputStream(compressedFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
+            FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
             OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
             byte[] buffer = new byte[10005]; // 建立傳輸用緩衝區
             int bytesRead; // 定義讀取位元組數變數
@@ -285,8 +279,6 @@ public class Main { // 定義 Main 類別
             socket.close(); // 關閉 TCP 連線
             System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息
             
-            // Optionally, delete the temporary compressed file
-            compressedFile.delete();
             return true; // 返回成功
         } catch (Exception e) { // 捕捉例外
             e.printStackTrace(); // 列印例外資訊
@@ -300,22 +292,22 @@ public class Main { // 定義 Main 類別
             System.out.println("使用者名稱: " + key + ", 端口號: " + clientPorts.get(key).getTCPPort() + ", 作業系統: " + clientPorts.get(key).getOS()); // 輸出每個客戶端的詳細資訊
         }
     }
-    public static boolean recevieACK(Socket socket) { // 定義接收 ACK 訊息的方法
-        try { // 嘗試讀取 ACK
-            InputStream is = socket.getInputStream(); // 取得連線的輸入串流
-            byte[] buffer = new byte[10005]; // 建立緩衝區以存放讀取資料
-            int bytesRead = is.read(buffer); // 讀取資料並取得位元組數
-            String ack = new String(buffer, 0, bytesRead); // 將資料轉換為字串
-            if (ack.equals("ACK")) { // 如果讀取的字串為 ACK
-                return true; // 返回成功
-            } else { // 否則
-                return false; // 返回失敗
+    public static boolean recevieACK(Socket socket) {
+        try {
+            InputStream is = socket.getInputStream();
+            byte[] buffer = new byte[10005];
+            int bytesRead = is.read(buffer);
+            if (bytesRead == -1) {
+                // Stream closed or nothing read, handle accordingly
+                return false;
             }
-        } catch (IOException e) { // 捕捉 I/O 異常
-            e.printStackTrace(); // 列印例外資訊
-            return false; // 返回失敗
+            String ack = new String(buffer, 0, bytesRead);
+            return "ACK".equals(ack);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
         }
-    }
+    }    
     public static String getHelloMessage() { // 定義取得 Hello 訊息的方法
         return IPAddr + ":" + USER_NAME + ":" + TCP_PORT + ":" + UDP_PORT + ":" + OS; // 組合並返回 Hello 訊息字串
     }
