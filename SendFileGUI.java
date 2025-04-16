@@ -1,82 +1,192 @@
-package AirShit; // 定義包名
+package AirShit;
 
-import javax.swing.*; // 引入 Swing 圖形介面庫
-import java.awt.*; // 引入 AWT 佈局及其他相關類
-import java.awt.event.*; // 引入 AWT 事件處理類
-import java.io.File; // 引入檔案處理類
-import java.util.Hashtable; // 引入 Hashtable 集合類
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.File;
+import java.util.Hashtable;
 
-public class SendFileGUI extends JFrame { // 定義 SendFileGUI 類，繼承自 JFrame
-    private JButton sendFileButton; // 定義發送檔案按鈕變數
-    private JList<String> userList; // 定義顯示用戶列表的 JList 變數
-    private DefaultListModel<String> listModel; // 定義列表模型，儲存用戶資料
+public class SendFileGUI extends JFrame {
+    private JButton sendFileButton;
+    private JList<String> userList;
+    private DefaultListModel<String> listModel;
+    private JProgressBar progressBar;
     
-    public SendFileGUI() { // SendFileGUI 建構子
-        super("Send File GUI"); // 呼叫父類別構造器，設定視窗標題
-        setLayout(new BorderLayout()); // 設定視窗主佈局為 BorderLayout
+    // New controls for file selection.
+    private JTextField filePathField;
+    private JButton selectFileButton;
+    // Holds the selected file.
+    private File selectedFile;
 
-        listModel = new DefaultListModel<>(); // 建立新的列表模型
-        userList = new JList<>(listModel); // 建立 JList 並設置其模型
-        userList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // 設定只能單選
-        JScrollPane listScrollPane = new JScrollPane(userList); // 使用捲軸包裝 JList
+    public SendFileGUI() {
+        // Set Nimbus look and feel for a modern appearance.
+        try {
+            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
+                if ("Nimbus".equals(info.getName())) {
+                    UIManager.setLookAndFeel(info.getClassName());
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            // Fallback to default look and feel.
+        }
         
-        sendFileButton = new JButton("Send File"); // 建立發送檔案按鈕
+        setTitle("Advanced File Sender");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout(10, 10));
+        getContentPane().setBackground(new Color(240, 240, 240));
+        ((JComponent)getContentPane()).setBorder(new EmptyBorder(15, 15, 15, 15));
         
-        add(listScrollPane, BorderLayout.CENTER); // 將捲軸面板放置於版面中央
-        add(sendFileButton, BorderLayout.SOUTH); // 將按鈕放置於版面下方
+        // Create and style the user list panel with a titled border.
+        listModel = new DefaultListModel<>();
+        userList = new JList<>(listModel);
+        userList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        userList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JScrollPane listScrollPane = new JScrollPane(userList);
+        listScrollPane.setBorder(new TitledBorder("Available Clients"));
+        listScrollPane.setPreferredSize(new Dimension(300, 200));
         
-        sendFileButton.addActionListener(new ActionListener() { // 為發送按鈕添加事件監聽器
+        // File selection panel.
+        JPanel filePanel = new JPanel(new BorderLayout(5, 5));
+        filePanel.setOpaque(false);
+        filePanel.setBorder(new TitledBorder("Select File to Transfer"));
+        filePathField = new JTextField();
+        filePathField.setEditable(false);
+        filePathField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        selectFileButton = new JButton("Select File");
+        selectFileButton.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        selectFileButton.setBackground(new Color(40, 167, 69));
+        selectFileButton.setForeground(Color.WHITE);
+        selectFileButton.setFocusPainted(false);
+        selectFileButton.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        filePanel.add(filePathField, BorderLayout.CENTER);
+        filePanel.add(selectFileButton, BorderLayout.EAST);
+        
+        // Create and style send file button.
+        sendFileButton = new JButton("Send File");
+        sendFileButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        sendFileButton.setBackground(new Color(0, 123, 255));
+        sendFileButton.setForeground(Color.WHITE);
+        sendFileButton.setFocusPainted(false);
+        sendFileButton.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+        
+        // Setup a progress bar.
+        progressBar = new JProgressBar(0, 100);
+        progressBar.setStringPainted(true);
+        progressBar.setVisible(false);
+        
+        // Bottom panel for sendFileButton and progressBar.
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
+        bottomPanel.setOpaque(false);
+        bottomPanel.add(sendFileButton);
+        bottomPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        bottomPanel.add(progressBar);
+        bottomPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        
+        // Main panel setup: add list and file selection above bottomPanel.
+        JPanel mainPanel = new JPanel(new BorderLayout(10,10));
+        mainPanel.setOpaque(false);
+        mainPanel.add(listScrollPane, BorderLayout.CENTER);
+        mainPanel.add(filePanel, BorderLayout.NORTH);
+        
+        add(mainPanel, BorderLayout.CENTER);
+        add(bottomPanel, BorderLayout.SOUTH);
+        
+        // Select File button action.
+        selectFileButton.addActionListener(new ActionListener() {
             @Override
-            public void actionPerformed(ActionEvent e) { // 定義按鈕點擊時執行的方法
-                String selectedUser = userList.getSelectedValue(); // 取得被選中的用戶名稱
-                if (selectedUser == null) { // 如果沒有選擇用戶
+            public void actionPerformed(ActionEvent e) {
+                File file = FileChooserGUI.chooseFile();
+                if (file != null) {
+                    selectedFile = file;
+                    filePathField.setText(file.getAbsolutePath());
+                }
+            }
+        });
+        
+        // sendFileButton action: only start sending if a file is selected.
+        sendFileButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String user = userList.getSelectedValue();
+                if (user == null) {
                     JOptionPane.showMessageDialog(SendFileGUI.this, "Please select a receiver from the list!",
-                            "No Receiver Selected", JOptionPane.ERROR_MESSAGE); // 顯示錯誤對話框
-                    return; // 結束方法，返回不再執行後續程式碼
+                            "No Receiver Selected", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (selectedFile == null) {
+                    JOptionPane.showMessageDialog(SendFileGUI.this, "Please select a file to transfer first!",
+                            "No File Selected", JOptionPane.ERROR_MESSAGE);
+                    return;
                 }
                 
-                File file = FileChooserGUI.chooseFile(); // 呼叫檔案選擇器來選擇檔案
-                if (file == null) { // 如果未選取到檔案
-                    JOptionPane.showMessageDialog(SendFileGUI.this, "No file was chosen!", 
-                            "File Not Selected", JOptionPane.INFORMATION_MESSAGE); // 顯示資訊對話框
-                    return; // 結束方法，返回不再執行後續程式碼
-                }
+                // Immediately show the progress bar.
+                progressBar.setValue(0);
+                progressBar.setVisible(true);
                 
-                boolean success = Main.sendFileToUser(selectedUser, file); // 呼叫 Main 傳送檔案給指定用戶
-                if (success) { // 如果檔案傳送成功
-                    JOptionPane.showMessageDialog(SendFileGUI.this, "File sent successfully to " + selectedUser,
-                            "Success", JOptionPane.INFORMATION_MESSAGE); // 顯示成功對話框
-                } else { // 如果檔案傳送失敗
-                    JOptionPane.showMessageDialog(SendFileGUI.this, "File sending failed to " + selectedUser,
-                            "Failure", JOptionPane.ERROR_MESSAGE); // 顯示錯誤對話框
-                }
+                SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+                    @Override
+                    protected Boolean doInBackground() throws Exception {
+                        // Call sendFileToUser and update progress when ACK is received.
+                        return Main.sendFileToUser(user, selectedFile, progress -> setProgress(progress));
+                    }
+                    
+                    @Override
+                    protected void done() {
+                        progressBar.setVisible(false);
+                        try {
+                            boolean success = get();
+                            if (success) {
+                                JOptionPane.showMessageDialog(SendFileGUI.this,
+                                        "File sent successfully to " + user,
+                                        "Success", JOptionPane.INFORMATION_MESSAGE);
+                            } else {
+                                JOptionPane.showMessageDialog(SendFileGUI.this,
+                                        "File sending failed to " + user,
+                                        "Failure", JOptionPane.ERROR_MESSAGE);
+                            }
+                        } catch (Exception ex) {
+                            JOptionPane.showMessageDialog(SendFileGUI.this,
+                                    "Error: " + ex.getMessage(),
+                                    "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                };
+                worker.addPropertyChangeListener(evt -> {
+                    if ("progress".equals(evt.getPropertyName())) {
+                        progressBar.setValue((Integer) evt.getNewValue());
+                    }
+                });
+                worker.execute();
+            }
+        });        
+        // Timer to refresh the user list periodically.
+        Timer timer = new Timer(3000, new ActionListener() {
+            public void actionPerformed(ActionEvent e ) {
+                refreshUserList(Main.client);
             }
         });
+        timer.start();
         
-        Timer timer = new Timer(3000, new ActionListener() { // 建立定時器，每3000毫秒執行一次任務
-            public void actionPerformed(ActionEvent e) { // 定義定時器觸發時執行的方法
-                refreshUserList(); // 刷新用戶列表
-            }
-        });
-        timer.start(); // 啟動定時器
-        
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // 設定視窗關閉時結束程式
-        pack(); // 自動調整視窗至適合大小
-        setLocationRelativeTo(null); // 將視窗定位在螢幕中央
-        setVisible(true); // 將視窗設定為可見
+        pack();
+        setLocationRelativeTo(null);
+        setVisible(true);
     }
     
-    private void refreshUserList() { // 定義刷新用戶列表方法
-        listModel.clear(); // 清空現有的列表數據
-        Hashtable<String, Client> clients = Main.getClientPorts(); // 從 Main 取得所有用戶及其連線資訊
-        if(clients != null) { // 如果用戶列表不為空
-            for(String username : clients.keySet()){ // 迭代用戶列表中的每個用戶名稱
-                listModel.addElement(username); // 將用戶名稱加入列表模型
+    private void refreshUserList(Client client) {
+        listModel.clear();
+        Hashtable<String, Client> clients = client.clientList;
+        if (clients != null) {
+            for (String username : clients.keySet()) {
+                listModel.addElement(username);
             }
         }
     }
     
-    public static void main(String[] args) { // 主方法，程式進入點
-        SwingUtilities.invokeLater(() -> new SendFileGUI()); // 使用事件佇列創建並顯示 GUI
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(SendFileGUI::new);
     }
 }
