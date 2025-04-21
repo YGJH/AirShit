@@ -136,7 +136,7 @@ public class Main { // 定義 Main 類別
                 socket.send(packet);
                 socket.close();
                 
-                System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + port); // Print sent message
+                // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + port); // Print sent message
 
 
             }
