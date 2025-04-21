@@ -87,33 +87,112 @@ public class Main { // 定義 Main 類別
     }
 
 
-    private static InetAddress getBroadcastAddress() { // 定義取得廣播位址的方法
-        try { // 嘗試獲取網路介面資訊
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
-            while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
-                NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
-                if (!ni.isLoopback() && ni.isUp()) { // 判斷網路介面是否啟用且非迴圈
-                    for (InterfaceAddress ia : ni.getInterfaceAddresses()) { // 遍歷該介面的位址資訊
-                        InetAddress broadcast = ia.getBroadcast(); // 取得廣播位址
-                        if(broadcast != null && !broadcast.isAnyLocalAddress())
-                            return broadcast; // 返回該廣播位址
-                    }
-                }
-            }
-        } catch (SocketException e) { // 捕捉網路異常
+    // private static InetAddress getBroadcastAddress() { // 定義取得廣播位址的方法
+    //     try { // 嘗試獲取網路介面資訊
+    //         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
+    //         while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
+    //             NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
+    //             if (!ni.isLoopback() && ni.isUp()) { // 判斷網路介面是否啟用且非迴圈
+    //                 for (InterfaceAddress ia : ni.getInterfaceAddresses()) { // 遍歷該介面的位址資訊
+    //                     InetAddress broadcast = ia.getBroadcast(); // 取得廣播位址
+    //                     if(broadcast != null && !broadcast.isAnyLocalAddress())
+    //                         return broadcast; // 返回該廣播位址
+    //                 }
+    //             }
+    //         }
+    //     } catch (SocketException e) { // 捕捉網路異常
+    //         e.printStackTrace(); // 列印異常資訊
+    //     }
+    //     return null; // 未找到廣播位址則返回 null
+    // }
+    public static InetAddress getMulticastAddress() {
+        try{
+            return InetAddress.getByName("239.255.42.99"); // Choose any address in 239.x.x.x range
+
+        } catch (UnknownHostException e) {
             e.printStackTrace(); // 列印異常資訊
         }
-        return null; // 未找到廣播位址則返回 null
+        return null; // 返回 null
     }
-
+    public static void multicastHello() {
+        try {
+            // Get multicast address
+            InetAddress group = getMulticastAddress();
+            int port = UDP_PORT_Manager.UDP_PORT[0]; // Pick one port
+            
+            // Create socket
+            MulticastSocket socket = new MulticastSocket();
+            
+            // Prepare data
+            String helloMessage = client.getHelloMessage();
+            byte[] sendData = helloMessage.getBytes();
+            
+            // Send multicast packet
+            DatagramPacket packet = new DatagramPacket(
+                sendData, sendData.length, group, port);
+            socket.send(packet);
+            socket.close();
+            
+            System.out.println("Sent multicast hello to " + group.getHostAddress());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void startMulticastListener() {
+        new Thread(() -> {
+            try {
+                // Join multicast group
+                InetAddress group = getMulticastAddress();
+                MulticastSocket socket = new MulticastSocket(UDP_PORT_Manager.UDP_PORT[0]);
+                socket.joinGroup(group);
+                
+                byte[] buffer = new byte[1024];
+                System.out.println("Multicast listener started");
+                
+                while (true) {
+                    // Receive multicast packets
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                    socket.receive(packet);
+                    
+                    // Process packet (same as your existing UDPServer code)
+                    String message = new String(packet.getData(), 0, packet.getLength());
+                    if ("PING".equals(message)) {
+                        // 回應 PONG
+                        byte[] pongData = "PONG".getBytes();
+                        InetAddress senderAddress = packet.getAddress();
+                        int senderPort = packet.getPort();
+                        DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
+                        socket.send(pongPacket);
+                        // System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
+                        continue;
+                    }
+                    
+                    Client tempClient = Client.parseMessage(message); // 解析訊息 [IP + User + TCP + UDP + OS]
+    
+                    if (tempClient == null) { // 如果解析失敗
+                        // System.out.println("無效的訊息格式"); // 輸出錯誤訊息
+                        continue; // 繼續等待下一個訊息
+                    } 
+                    if((tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getUDPPort() == client.getUDPPort())
+                    || clientList.containsKey(tempClient.getUserName()) )   { // 如果是本機的訊息
+                        // System.out.println("本機不需要回應"); // 輸出不需要回應訊息
+                        continue; // 若為本機則跳過
+                    }
+                    clientList.put(tempClient.getUserName(), tempClient); // 將解析後的客戶端資訊加入哈希表
+                    // println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
+                    for(int i = 0; i < 3; i++) { // 嘗試回應三次
+                        responseNewClient(packet.getAddress(), packet.getPort());                }
+    
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
     public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
         String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
         byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
-        InetAddress broadcast = getBroadcastAddress(); // 取得廣播位址
-        if(broadcast == null) { // 如果沒有取得廣播位址
-            System.out.println("No broadcast address found, aborting broadcast."); // 輸出錯誤訊息
-            return; // 結束廣播
-        }
+        // InetAddress broadcast = multicastHello(); // 取得廣播位址
         
         for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
             if (port == client.getUDPPort()) continue; // 忽略已使用的 UDP 端口
@@ -161,8 +240,11 @@ public class Main { // 定義 Main 類別
     public static void main(String[] args) { // 主方法，程式入口點
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: " + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
+        startMulticastListener();  // Start listening first
+        multicastHello();          // Then announce yourself
+
         new Thread(() -> new Main().UDPServer()).start(); // 建立新執行緒並啟動 UDP 伺服器
-        broadCastHello(); // 廣播 Hello 訊息
+        // broadCastHello(); // 廣播 Hello 訊息
         new Thread(() -> new Main().receiveFile()).start(); // 建立新執行緒並啟動檔案接收服務
         SwingUtilities.invokeLater(() -> { // 於事件分派執行緒中啟動 GUI
             new SendFileGUI(); // 建立並顯示檔案傳送介面
@@ -259,32 +341,6 @@ public class Main { // 定義 Main 類別
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
                 serverSocket.receive(packet);
                 String message = new String(packet.getData(), 0, packet.getLength());
-                if ("PING".equals(message)) {
-                    // 回應 PONG
-                    byte[] pongData = "PONG".getBytes();
-                    InetAddress senderAddress = packet.getAddress();
-                    int senderPort = packet.getPort();
-                    DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
-                    serverSocket.send(pongPacket);
-                    // System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
-                    continue;
-                }
-                
-                Client tempClient = Client.parseMessage(message); // 解析訊息 [IP + User + TCP + UDP + OS]
-
-                if (tempClient == null) { // 如果解析失敗
-                    // System.out.println("無效的訊息格式"); // 輸出錯誤訊息
-                    continue; // 繼續等待下一個訊息
-                } 
-                if((tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getUDPPort() == client.getUDPPort())
-                || clientList.containsKey(tempClient.getUserName()) )   { // 如果是本機的訊息
-                    // System.out.println("本機不需要回應"); // 輸出不需要回應訊息
-                    continue; // 若為本機則跳過
-                }
-                clientList.put(tempClient.getUserName(), tempClient); // 將解析後的客戶端資訊加入哈希表
-                // println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
-                for(int i = 0; i < 3; i++) { // 嘗試回應三次
-                    responseNewClient(packet.getAddress(), packet.getPort());                }
             }
 
         } catch (Exception e) { // 捕捉例外
