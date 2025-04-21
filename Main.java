@@ -149,10 +149,9 @@ public class Main { // 定義 Main 類別
         new Thread(() -> {
             try {
                 // Join multicast group
-                InetAddress group = getMulticastAddress();
-                MulticastSocket socket = new MulticastSocket(UDP_PORT_Manager.UDP_PORT[0]);
-                InetSocketAddress groupAddress = new InetSocketAddress(group, UDP_PORT_Manager.UDP_PORT[0]);
-                socket.joinGroup(groupAddress, null);  // null means use default interface
+                MulticastSocket socket = new MulticastSocket(client.getUDPPort()); // Use the same port as the sender
+                InetSocketAddress groupAddr = new InetSocketAddress(getMulticastAddress(), client.getUDPPort());
+                socket.joinGroup(groupAddr, NetworkInterface.getByInetAddress(InetAddress.getLocalHost()));
 
                 byte[] buffer = new byte[1024];
                 System.out.println("Multicast listener started");
