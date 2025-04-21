@@ -17,6 +17,7 @@ public class Main { // 定義 Main 類別
         return client; // 返回客戶端資訊
     }
 
+    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
     static {
         String userName ;
@@ -25,7 +26,7 @@ public class Main { // 定義 Main 類別
         } catch (UnknownHostException e) { // 異常處理：未知主機
             userName = System.getProperty("user"+UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
-        client = new Client(getNonLoopbcakIP(), userName , getFreeTCPPort(), UDP_PORT_Manager.getFreeUDPPort(), System.getProperty("os.name")); // 取得可用的 TCP 端口
+        client = new Client(getNonLoopbackIP(), userName , getFreeTCPPort(), DISCOVERY_PORT  , System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
     
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
@@ -39,40 +40,17 @@ public class Main { // 定義 Main 類別
     
     private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
 
-    // public static String getNonLoopbcakIP() { // 定義取得非迴圈 IP 的方法
-    //     try { // 嘗試獲取網路介面資訊
-    //         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
-    //         while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
-    //             NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
-    //             Enumeration<InetAddress> addresses = ni.getInetAddresses(); // 取得該介面的所有位址
-    //             while (addresses.hasMoreElements()) { // 遍歷所有位址
-    //                 InetAddress addr = addresses.nextElement(); // 取得一個位址
-    //                 String cleanIP = addr.getHostAddress(); // 返回該 IP 位址
-    //                 // int percentIndex = cleanIP.indexOf('%'); // 判斷是否有 scope id
-    //                 // if (percentIndex != -1) { // 如果有 scope id
-    //                     // cleanIP = cleanIP.substring(0, percentIndex); // 去除 scope id
-    //                 // }
-    //                 return cleanIP; // 返回該 IP 位址
-    //             }
-    //         }
-    //     } catch (SocketException e) { // 捕捉網路異常
-    //         e.printStackTrace(); // 列印異常資訊
-    //     }
-    //     return "127.0.0.1"; // 返回預設 IP 位址
-    // }
 
-    public static String getNonLoopbcakIP() {
+    public static String getNonLoopbackIP() {
         try {
-            Enumeration<NetworkInterface> ifaces = NetworkInterface.getNetworkInterfaces();
-            while (ifaces.hasMoreElements()) {
-                NetworkInterface iface = ifaces.nextElement();
-                // skip interfaces that are down, loopback, or virtual
+            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!iface.isUp() || iface.isLoopback() || iface.isVirtual()) continue;
+                String d = iface.getDisplayName().toLowerCase();
+                String n = iface.getName().toLowerCase();
+                if (d.contains("hyper") || n.startsWith("vethernet")) continue;
     
-                Enumeration<InetAddress> addrs = iface.getInetAddresses();
-                while (addrs.hasMoreElements()) {
-                    InetAddress addr = addrs.nextElement();
-                    // pick the first IPv4 address
+                for (InetAddress addr : Collections.list(iface.getInetAddresses())) {
+                    // Only return IPv4
                     if (addr instanceof Inet4Address) {
                         return addr.getHostAddress();
                     }
@@ -81,30 +59,9 @@ public class Main { // 定義 Main 類別
         } catch (SocketException e) {
             e.printStackTrace();
         }
-        println("無法獲取非迴圈 IP 位址，使用預設的");
-        // throw new SocketException("No suitable IPv4 address found");
+        // fallback to localhost IPv4
         return "127.0.0.1";
     }
-
-
-    // private static InetAddress getBroadcastAddress() { // 定義取得廣播位址的方法
-    //     try { // 嘗試獲取網路介面資訊
-    //         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
-    //         while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
-    //             NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
-    //             if (!ni.isLoopback() && ni.isUp()) { // 判斷網路介面是否啟用且非迴圈
-    //                 for (InterfaceAddress ia : ni.getInterfaceAddresses()) { // 遍歷該介面的位址資訊
-    //                     InetAddress broadcast = ia.getBroadcast(); // 取得廣播位址
-    //                     if(broadcast != null && !broadcast.isAnyLocalAddress())
-    //                         return broadcast; // 返回該廣播位址
-    //                 }
-    //             }
-    //         }
-    //     } catch (SocketException e) { // 捕捉網路異常
-    //         e.printStackTrace(); // 列印異常資訊
-    //     }
-    //     return null; // 未找到廣播位址則返回 null
-    // }
     public static InetAddress getMulticastAddress() {
         try{
             return InetAddress.getByName("239.255.42.99"); // Valid multicast address
@@ -113,108 +70,134 @@ public class Main { // 定義 Main 類別
         }
         return null;
     }
+    private static NetworkInterface findCorrectNetworkInterface() {
+        try {
+            InetAddress local = InetAddress.getByName(client.getIPAddr());
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                String d = ni.getDisplayName().toLowerCase(), 
+                       n = ni.getName().toLowerCase();
+                if (d.contains("hyper") || n.startsWith("vethernet")) continue;
     
+                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                    if (addr.equals(local)) return ni;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error finding interface: " + e.getMessage());
+        }
+        return null;
+    }
     public static void multicastHello() {
         try {
-            // Get multicast address
             InetAddress group = getMulticastAddress();
-            for(int port : UDP_PORT_Manager.UDP_PORT) { // Iterate through all ports
-                if (port == client.getUDPPort()) {
-                    continue; // Skip the port that is already in use
-                }
-                                // Create socket
-                MulticastSocket socket = new MulticastSocket();
-                socket.setTimeToLive(32); // Increase TTL to cross subnet boundaries
+            if (group == null) return;
 
-                // Prepare data
-                String helloMessage = client.getHelloMessage();
-                byte[] sendData = helloMessage.getBytes();
-                
-                // Send multicast packet
-                DatagramPacket packet = new DatagramPacket(
-                    sendData, sendData.length, group, port);
-                socket.send(packet);
-                socket.close();
-                
-                System.out.println("Sent multicast hello to " + group.getHostAddress());
+            MulticastSocket socket = new MulticastSocket();
+            socket.setTimeToLive(32); // Set TTL
 
+            String helloMessage = client.getHelloMessage();
+            byte[] sendData = helloMessage.getBytes();
 
-            }
-            
+            // *** CHANGE THIS: Send multicast packet to the DISCOVERY_PORT ***
+            DatagramPacket packet = new DatagramPacket(
+                sendData, sendData.length, group, DISCOVERY_PORT); // Use DISCOVERY_PORT
+            socket.send(packet);
+            socket.close();
+
+            // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
     public static void startMulticastListener() {
         new Thread(() -> {
+            MulticastSocket socket = null;
             try {
-                // Join multicast group
                 InetAddress group = getMulticastAddress();
-                MulticastSocket socket = new MulticastSocket(UDP_PORT_Manager.UDP_PORT[0]);
-                socket.joinGroup(group);
-                
+                if (group == null) return;
+
+                // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
+                socket = new MulticastSocket(DISCOVERY_PORT);
+                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT); // Use DISCOVERY_PORT
+
+                // --- Improved Interface Selection ---
+                NetworkInterface netIf = findCorrectNetworkInterface();
+                if (netIf == null) {
+                    System.err.println("Could not find suitable network interface for multicast. Trying default.");
+                    socket.joinGroup(groupAddr, null);
+                } else {
+                     System.out.println("Joining multicast group on interface: " + netIf.getDisplayName() + " [" + netIf.getName() + "]"); // Log name too
+                     socket.joinGroup(groupAddr, netIf);
+                }
+                // --- End Improved Interface Selection ---
+
+
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started");
-                
+                // *** CHANGE THIS: Update log message ***
+                System.out.println("Multicast listener started on port: " + DISCOVERY_PORT);
+
                 while (true) {
-                    // Receive multicast packets
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-                    
-                    // Process packet (same as your existing UDPServer code)
+
+                    // --- Process packet ---
                     String message = new String(packet.getData(), 0, packet.getLength());
+
+                    // Ignore self-sent messages (more robust check needed if multiple local IPs)
+                    InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
+                    if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
+                       continue;
+                    }
+
+
                     if ("PING".equals(message)) {
-                        // 回應 PONG
+                        // Respond PONG directly back to sender (unicast)
                         byte[] pongData = "PONG".getBytes();
                         InetAddress senderAddress = packet.getAddress();
-                        int senderPort = packet.getPort();
-                        DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
-                        socket.send(pongPacket);
-                        // System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
+                        int senderPort = packet.getPort(); // PING might come from an ephemeral port, respond there
+                        // Use a *different* socket for unicast replies if needed, or reuse carefully
+                        try (DatagramSocket replySocket = new DatagramSocket()) {
+                             DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
+                             replySocket.send(pongPacket);
+                        }
                         continue;
                     }
-                    
-                    Client tempClient = Client.parseMessage(message); // 解析訊息 [IP + User + TCP + UDP + OS]
-    
-                    if (tempClient == null) { // 如果解析失敗
-                        // System.out.println("無效的訊息格式"); // 輸出錯誤訊息
-                        continue; // 繼續等待下一個訊息
-                    } 
-                    if((tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getUDPPort() == client.getUDPPort())
-                    || clientList.containsKey(tempClient.getUserName()) )   { // 如果是本機的訊息
-                        // System.out.println("本機不需要回應"); // 輸出不需要回應訊息
-                        continue; // 若為本機則跳過
+
+                    Client tempClient = Client.parseMessage(message);
+                    if (tempClient == null) continue;
+
+                    // Check if client is self OR already known (use IP as key if possible)
+                    if (tempClient.getIPAddr().equals(client.getIPAddr()) || clientList.containsKey(tempClient.getUserName())) {
+                         continue;
                     }
-                    clientList.put(tempClient.getUserName(), tempClient); // 將解析後的客戶端資訊加入哈希表
-                    // println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
-                    for(int i = 0; i < 3; i++) { // 嘗試回應三次
-                        responseNewClient(packet.getAddress(), packet.getPort());                }
-    
+
+                    // Use IP address as the key for consistency
+                    clientList.put(tempClient.getUserName(), tempClient);
+                    System.out.println("Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
+
+                    // Respond directly to the sender (unicast)
+                    for(int i = 0; i < 3; i++) { // Send hello message 3 times
+                        responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came from
+                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    }
+
+                    // --- End Process packet ---
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                 if (socket != null && !socket.isClosed()) {
+                     // Consider leaving the group if needed: socket.leaveGroup(...)
+                     socket.close();
+                 }
             }
         }).start();
     }
-    // public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
-    //     String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
-    //     byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
-    //     // InetAddress broadcast = multicastHello(); // 取得廣播位址
-        
-    //     for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
-    //         if (port == client.getUDPPort()) continue; // 忽略已使用的 UDP 端口
-    //         try { // 嘗試傳送廣播訊息
-    //             // System.err.println("Broadcasting to " + broadcast.getHostAddress() + ":" + port); // 輸出廣播訊息
-    //             DatagramSocket socket = new DatagramSocket(); // 建立 DatagramSocket
-    //             socket.setBroadcast(true); // 設定為廣播模式
-    //             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, broadcast, port); // 建立 DatagramPacket 資料包
-    //             socket.send(sendPacket); // 傳送資料包
-    //             socket.close(); // 關閉 DatagramSocket
-    //         } catch (Exception e) { // 捕捉傳送過程中的例外
-    //             // 忽略例外處理
-    //         }
-    //     }
-    // }
+
+
     
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
         try {
@@ -250,8 +233,6 @@ public class Main { // 定義 Main 類別
         startMulticastListener();  // Start listening first
         multicastHello();          // Then announce yourself
 
-        // new Thread(() -> new Main().UDPServer()).start(); // 建立新執行緒並啟動 UDP 伺服器
-        // broadCastHello(); // 廣播 Hello 訊息
         new Thread(() -> new Main().receiveFile()).start(); // 建立新執行緒並啟動檔案接收服務
         SwingUtilities.invokeLater(() -> { // 於事件分派執行緒中啟動 GUI
             new SendFileGUI(); // 建立並顯示檔案傳送介面
@@ -339,32 +320,13 @@ public class Main { // 定義 Main 類別
             e.printStackTrace(); // 列印例外資訊
         }
     }    
-    public static void UDPServer() { // 定義 UDP 伺服器方法
-        try { // 嘗試啟動 UDP 服務
-            DatagramSocket serverSocket = new DatagramSocket(client.getUDPPort()); // 建立 DatagramSocket 監聽指定的 UDP 端口
-            byte[] buf = new byte[1024];
-            System.out.println("UDP 服務開始，監聽端口 " + client.getUDPPort()); // 輸出 UDP 服務啟動訊息
-            while (true) { // 無限迴圈等待接收 UDP 訊息
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                serverSocket.receive(packet);
-                String message = new String(packet.getData(), 0, packet.getLength());
-            }
 
-        } catch (Exception e) { // 捕捉例外
-            e.printStackTrace(); // 列印例外資訊
-        }
-
-    }
     
     public static boolean sendFileToUser(String selectedUserName , File file) { // 定義傳送檔案給指定使用者的方法
         System.out.println("Looking for client with IP: " + selectedUserName);
 
         Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
 
-        // if (targetClient == null) { // 如果未找到該用戶
-        //     System.out.println("Client not found: " + selectedUserName); // 輸出找不到用戶訊息
-        //     return false; // 返回失敗
-        // }
         try { // 嘗試開始檔案傳送程序
             if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
                 System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
@@ -439,7 +401,7 @@ public class Main { // 定義 Main 類別
                 DatagramSocket socket = new DatagramSocket();
                 byte[] pingData = "PING".getBytes();
                 String targetAddress = tempClient.getIPAddr();  
-                int targetPort = tempClient.getUDPPort(); // 取得客戶端 UDP 端口號
+                int targetPort = DISCOVERY_PORT; // 取得客戶端 UDP 端口號
                 DatagramPacket pingPacket = new DatagramPacket(pingData, pingData.length, InetAddress.getByName(targetAddress), targetPort);
                 println("ping " + targetAddress + ":" + targetPort); // 輸出 Ping 訊息
                 // 發送 Ping 封包
