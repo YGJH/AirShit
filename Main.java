@@ -138,62 +138,58 @@ public class Main { // 定義 Main 類別
         }
         return null; // Not found
     }
+    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
     public static void multicastHello() {
-            for(int port : UDP_PORT_Manager.UDP_PORT) { // Iterate through all UDP ports
-                if (port == client.getUDPPort()) continue; // Skip the client's own UDP port
-                try {
-                    InetAddress group = getMulticastAddress();
-                    if (group == null) return;
-        
-                    MulticastSocket socket = new MulticastSocket();
-                    socket.setTimeToLive(32); // Set TTL
-        
-                    String helloMessage = client.getHelloMessage();
-                    byte[] sendData = helloMessage.getBytes();
-        
-                    // *** CHANGE THIS: Send multicast packet to the DISCOVERY_PORT ***
-                    DatagramPacket packet = new DatagramPacket(
-                        sendData, sendData.length, group, port); // Use DISCOVERY_PORT
-                    socket.send(packet);
-                    socket.close();
-        
-                    // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
-        
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        
+        try {
+            InetAddress group = getMulticastAddress();
+            if (group == null) return;
 
+            MulticastSocket socket = new MulticastSocket();
+            socket.setTimeToLive(32); // Set TTL
+
+            String helloMessage = client.getHelloMessage();
+            byte[] sendData = helloMessage.getBytes();
+
+            // *** CHANGE THIS: Send multicast packet to the DISCOVERY_PORT ***
+            DatagramPacket packet = new DatagramPacket(
+                sendData, sendData.length, group, DISCOVERY_PORT); // Use DISCOVERY_PORT
+            socket.send(packet);
+            socket.close();
+
+            // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-
 
     public static void startMulticastListener() {
         new Thread(() -> {
-            MulticastSocket socket = null; // Declare outside try for finally block
+            MulticastSocket socket = null;
             try {
                 InetAddress group = getMulticastAddress();
                 if (group == null) return;
 
-                // Listen on the client.getUDPPort()
-                socket = new MulticastSocket(client.getUDPPort());
-                InetSocketAddress groupAddr = new InetSocketAddress(group, client.getUDPPort()); // Use client.getUDPPort()
+                // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
+                socket = new MulticastSocket(DISCOVERY_PORT);
+                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT); // Use DISCOVERY_PORT
 
                 // --- Improved Interface Selection ---
-                NetworkInterface netIf = findCorrectNetworkInterface(); // Implement this helper
+                NetworkInterface netIf = findCorrectNetworkInterface();
                 if (netIf == null) {
                     System.err.println("Could not find suitable network interface for multicast. Trying default.");
-                    socket.joinGroup(groupAddr, null); // Try default if specific one not found
+                    socket.joinGroup(groupAddr, null);
                 } else {
-                     System.out.println("Joining multicast group on interface: " + netIf.getDisplayName());
+                     System.out.println("Joining multicast group on interface: " + netIf.getDisplayName() + " [" + netIf.getName() + "]"); // Log name too
                      socket.joinGroup(groupAddr, netIf);
                 }
                 // --- End Improved Interface Selection ---
 
 
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started on port: " + client.getUDPPort()); // Use client.getUDPPort()
+                // *** CHANGE THIS: Update log message ***
+                System.out.println("Multicast listener started on port: " + DISCOVERY_PORT);
 
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -202,9 +198,9 @@ public class Main { // 定義 Main 類別
                     // --- Process packet ---
                     String message = new String(packet.getData(), 0, packet.getLength());
 
-                    // Ignore self-sent messages (check sender IP/Port against client's)
-                    if (packet.getAddress().equals(InetAddress.getByName(client.getIPAddr())) && packet.getPort() == client.getUDPPort()) {
-                       // Or more robustly check against all local IPs if needed
+                    // Ignore self-sent messages (more robust check needed if multiple local IPs)
+                    InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
+                    if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
                        continue;
                     }
 
