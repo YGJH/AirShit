@@ -113,89 +113,140 @@ public class Main { // 定義 Main 類別
         }
         return null;
     }
-    
+    private static NetworkInterface findCorrectNetworkInterface() {
+        try {
+            String localIP = client.getIPAddr(); // Assumes getIPAddr() returns the desired IP
+            if (localIP == null || localIP.equals("127.0.0.1")) return null;
+
+            InetAddress localInetAddress = InetAddress.getByName(localIP);
+
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+
+                Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr.equals(localInetAddress)) {
+                        return ni; // Found the interface matching our client's IP
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error finding network interface: " + e.getMessage());
+        }
+        return null; // Not found
+    }
+
     public static void multicastHello() {
         try {
-            // Get multicast address
             InetAddress group = getMulticastAddress();
-            for(int port : UDP_PORT_Manager.UDP_PORT) { // Iterate through all ports
-                if (port == client.getUDPPort()) {
-                    continue; // Skip the port that is already in use
-                }
-                                // Create socket
-                MulticastSocket socket = new MulticastSocket();
-                socket.setTimeToLive(32); // Increase TTL to cross subnet boundaries
+            if (group == null) return;
 
-                // Prepare data
-                String helloMessage = client.getHelloMessage();
-                byte[] sendData = helloMessage.getBytes();
-                
-                // Send multicast packet
-                DatagramPacket packet = new DatagramPacket(
-                    sendData, sendData.length, group, port);
-                socket.send(packet);
-                socket.close();
-                
-                // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + port); // Print sent message
+            // Create socket ONCE
+            MulticastSocket socket = new MulticastSocket();
+            socket.setTimeToLive(32); // Set TTL
 
+            // Prepare data ONCE
+            String helloMessage = client.getHelloMessage();
+            byte[] sendData = helloMessage.getBytes();
 
-            }
-            
+            // Send multicast packet to the client.getUDPPort()
+            DatagramPacket packet = new DatagramPacket(
+                sendData, sendData.length, group, client.getUDPPort()); // Use client.getUDPPort()
+            socket.send(packet);
+            socket.close();
+
+            // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + client.getUDPPort());
+
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+
     public static void startMulticastListener() {
         new Thread(() -> {
+            MulticastSocket socket = null; // Declare outside try for finally block
             try {
-                // Join multicast group
-                MulticastSocket socket = new MulticastSocket(client.getUDPPort()); // Use the same port as the sender
-                InetSocketAddress groupAddr = new InetSocketAddress(getMulticastAddress(), client.getUDPPort());
-                socket.joinGroup(groupAddr, NetworkInterface.getByInetAddress(InetAddress.getLocalHost()));
+                InetAddress group = getMulticastAddress();
+                if (group == null) return;
+
+                // Listen on the client.getUDPPort()
+                socket = new MulticastSocket(client.getUDPPort());
+                InetSocketAddress groupAddr = new InetSocketAddress(group, client.getUDPPort()); // Use client.getUDPPort()
+
+                // --- Improved Interface Selection ---
+                NetworkInterface netIf = findCorrectNetworkInterface(); // Implement this helper
+                if (netIf == null) {
+                    System.err.println("Could not find suitable network interface for multicast. Trying default.");
+                    socket.joinGroup(groupAddr, null); // Try default if specific one not found
+                } else {
+                     System.out.println("Joining multicast group on interface: " + netIf.getDisplayName());
+                     socket.joinGroup(groupAddr, netIf);
+                }
+                // --- End Improved Interface Selection ---
+
 
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started");
-                
+                System.out.println("Multicast listener started on port: " + client.getUDPPort()); // Use client.getUDPPort()
+
                 while (true) {
-                    // Receive multicast packets
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-                    
-                    // Process packet (same as your existing UDPServer code)
+
+                    // --- Process packet ---
                     String message = new String(packet.getData(), 0, packet.getLength());
+
+                    // Ignore self-sent messages (check sender IP/Port against client's)
+                    if (packet.getAddress().equals(InetAddress.getByName(client.getIPAddr())) && packet.getPort() == client.getUDPPort()) {
+                       // Or more robustly check against all local IPs if needed
+                       continue;
+                    }
+
+
                     if ("PING".equals(message)) {
-                        // 回應 PONG
+                        // Respond PONG directly back to sender (unicast)
                         byte[] pongData = "PONG".getBytes();
                         InetAddress senderAddress = packet.getAddress();
-                        int senderPort = packet.getPort();
-                        DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
-                        socket.send(pongPacket);
-                        // System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
+                        int senderPort = packet.getPort(); // PING might come from an ephemeral port, respond there
+                        // Use a *different* socket for unicast replies if needed, or reuse carefully
+                        try (DatagramSocket replySocket = new DatagramSocket()) {
+                             DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
+                             replySocket.send(pongPacket);
+                        }
                         continue;
                     }
-                    
-                    Client tempClient = Client.parseMessage(message); // 解析訊息 [IP + User + TCP + UDP + OS]
-    
-                    if (tempClient == null) { // 如果解析失敗
-                        // System.out.println("無效的訊息格式"); // 輸出錯誤訊息
-                        continue; // 繼續等待下一個訊息
-                    } 
-                    if((tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getUDPPort() == client.getUDPPort())
-                    || clientList.containsKey(tempClient.getUserName()) )   { // 如果是本機的訊息
-                        // System.out.println("本機不需要回應"); // 輸出不需要回應訊息
-                        continue; // 若為本機則跳過
+
+                    Client tempClient = Client.parseMessage(message);
+                    if (tempClient == null) continue;
+
+                    // Check if client is self OR already known (use IP as key if possible)
+                    if (tempClient.getIPAddr().equals(client.getIPAddr()) || clientList.containsKey(tempClient.getIPAddr())) {
+                         continue;
                     }
-                    clientList.put(tempClient.getUserName(), tempClient); // 將解析後的客戶端資訊加入哈希表
-                    // println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
-                    for(int i = 0; i < 3; i++) { // 嘗試回應三次
-                        responseNewClient(packet.getAddress(), packet.getPort());                }
-    
+
+                    // Use IP address as the key for consistency
+                    clientList.put(tempClient.getIPAddr(), tempClient);
+                    System.out.println("Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
+
+                    // Respond directly to the sender (unicast)
+                    responseNewClient(packet.getAddress(), packet.getPort()); // Respond to the port the hello came from
+
+                    // --- End Process packet ---
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                 if (socket != null && !socket.isClosed()) {
+                     // Consider leaving the group if needed: socket.leaveGroup(...)
+                     socket.close();
+                 }
             }
         }).start();
     }
+
     // public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
     //     String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
     //     byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
