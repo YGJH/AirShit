@@ -197,7 +197,10 @@ public class Main { // 定義 Main 類別
                     System.out.println("Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
                     // Respond directly to the sender (unicast)
-                    responseNewClient(packet.getAddress(), packet.getPort()); // Respond to the port the hello came from
+                    for(int i = 0; i < 3; i++) { // Send hello message 3 times
+                        responseNewClient(packet.getAddress(), packet.getPort()); // Respond to the port the hello came from
+                        try { Thread.sleep(50); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    }
 
                     // --- End Process packet ---
                 }
@@ -266,8 +269,6 @@ public class Main { // 定義 Main 類別
         startMulticastListener();  // Start listening first
         multicastHello();          // Then announce yourself
 
-        // new Thread(() -> new Main().UDPServer()).start(); // 建立新執行緒並啟動 UDP 伺服器
-        // broadCastHello(); // 廣播 Hello 訊息
         new Thread(() -> new Main().receiveFile()).start(); // 建立新執行緒並啟動檔案接收服務
         SwingUtilities.invokeLater(() -> { // 於事件分派執行緒中啟動 GUI
             new SendFileGUI(); // 建立並顯示檔案傳送介面
@@ -377,10 +378,10 @@ public class Main { // 定義 Main 類別
 
         Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
 
-        // if (targetClient == null) { // 如果未找到該用戶
-        //     System.out.println("Client not found: " + selectedUserName); // 輸出找不到用戶訊息
-        //     return false; // 返回失敗
-        // }
+        if (targetClient == null) { // 如果未找到該用戶
+            System.out.println("Client not found: " + selectedUserName); // 輸出找不到用戶訊息
+            return false; // 返回失敗
+        }
         try { // 嘗試開始檔案傳送程序
             if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
                 System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
