@@ -198,7 +198,7 @@ public class Main { // 定義 Main 類別
 
                     // Respond directly to the sender (unicast)
                     for(int i = 0; i < 3; i++) { // Send hello message 3 times
-                        responseNewClient(packet.getAddress(), packet.getPort()); // Respond to the port the hello came from
+                        responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came from
                         try { Thread.sleep(50); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     }
 
@@ -456,7 +456,7 @@ public class Main { // 定義 Main 類別
                 DatagramSocket socket = new DatagramSocket();
                 byte[] pingData = "PING".getBytes();
                 String targetAddress = tempClient.getIPAddr();  
-                int targetPort = tempClient.getUDPPort(); // 取得客戶端 UDP 端口號
+                int targetPort = DISCOVERY_PORT; // 取得客戶端 UDP 端口號
                 DatagramPacket pingPacket = new DatagramPacket(pingData, pingData.length, InetAddress.getByName(targetAddress), targetPort);
                 println("ping " + targetAddress + ":" + targetPort); // 輸出 Ping 訊息
                 // 發送 Ping 封包
