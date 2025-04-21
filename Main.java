@@ -136,7 +136,7 @@ public class Main { // 定義 Main 類別
                 socket.send(packet);
                 socket.close();
                 
-                System.out.println("Sent multicast hello to " + group.getHostAddress());
+                System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + port); // Print sent message
 
 
             }
@@ -151,8 +151,9 @@ public class Main { // 定義 Main 類別
                 // Join multicast group
                 InetAddress group = getMulticastAddress();
                 MulticastSocket socket = new MulticastSocket(UDP_PORT_Manager.UDP_PORT[0]);
-                socket.joinGroup(group);
-                
+                InetSocketAddress groupAddress = new InetSocketAddress(group, UDP_PORT_Manager.UDP_PORT[0]);
+                socket.joinGroup(groupAddress, null);  // null means use default interface
+
                 byte[] buffer = new byte[1024];
                 System.out.println("Multicast listener started");
                 
