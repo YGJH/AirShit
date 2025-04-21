@@ -2,24 +2,47 @@ package AirShit;
 //  HelloMessage = IPAddr + ":" + USER_NAME + ":" + TCP_PORT + ":" + OS ;
 
 class Client {
-    private static String IPAddr;
-    private static int TCP_PORT;
-    private static int UDP_PORT;
-    private static String USER_NAME;
-    private static String OS;
+    private String IPAddr;
+    private int TCP_PORT;
+    private int UDP_PORT;
+    private String USER_NAME;
+    private String OS;
     public Client(String IPAddr , String userName, int TCP_PORT , int UDP_PORT ,  String os) {
         this.IPAddr = IPAddr;
+        if(userName.contains("-")) {
+            userName.replaceAll("-", "_");
+        }
         this.USER_NAME = userName;
         this.TCP_PORT = TCP_PORT;
         this.UDP_PORT = UDP_PORT;
         this.OS = os;
     }
-    public Client() {
-        this.IPAddr = null;
-        this.USER_NAME = null;
-        this.TCP_PORT = 0;
-        this.UDP_PORT = 0;
-        this.OS = null;
+
+    public void setUDPPort(int UDP_PORT) {
+        this.UDP_PORT = UDP_PORT;
+    }
+    public void setTCPPort(int TCP_PORT) {
+        this.TCP_PORT = TCP_PORT;
+    }
+    public void setOS(String OS) {
+        this.OS = OS;
+    }
+    public void setIPAddr(String IPAddr) {
+        this.IPAddr = IPAddr;
+    }
+    public void setUserName(String userName) {
+        if(userName.contains("-")) {
+            userName.replaceAll("-", "_");
+        }
+        this.USER_NAME = userName;
+    }
+
+    public Client(Client client) {
+        this.IPAddr = client.getIPAddr();
+        this.USER_NAME = client.getUserName();
+        this.TCP_PORT = client.getTCPPort();
+        this.UDP_PORT = client.getUDPPort();
+        this.OS = client.getOS();
     }
     public String getUserName() {
         return USER_NAME;
@@ -33,25 +56,30 @@ class Client {
     public String getOS() {
         return OS;
     }
+    public String getIPAddr() {
+        return IPAddr;
+    }
 
-    // 解析訊息
-    public static boolean parseMessage(String message, Client client) {
-        String[] parts = message.split(":");
+        // 解析訊息
+    public static Client parseMessage(String message) {
+        String[] parts = message.split("-");
         // 檢查訊息格式是否正確
         // IPAddr + ":" + USER_NAME + ":" + TCP_PORT + ":" + UDP_PORT + ":" + OS; // 組合並返回 Hello 訊息字串
         if (parts.length == 5) {
-            client.IPAddr = parts[0];
-            client.USER_NAME = parts[1];
-            client.TCP_PORT = Integer.parseInt(parts[2]);
-            client.UDP_PORT = Integer.parseInt(parts[3]);
-            client.OS = parts[4];
-            return true;
+            // clean IP address
+            String IPAddr = parts[0]; // 取得 IP 位址
+            String userName = parts[1]; // 取得使用者名稱
+            int TCP_PORT = Integer.parseInt(parts[2]); // 取得 TCP 埠號
+            int UDP_PORT = Integer.parseInt(parts[3]); // 取得 UDP 埠號
+            String OS = parts[4]; // 取得作業系統名稱
+            return new Client(IPAddr, userName, TCP_PORT, UDP_PORT, OS); // 返回新的 Client 物件
         } else {
             System.out.println("無效的訊息格式");
-            return false;
+            return null;
         }
     }
-    public String getIPAddr() {
-        return IPAddr;
+    
+    public String getHelloMessage() { // 定義取得 Hello 訊息的方法
+        return IPAddr + "-" + USER_NAME + "-" + TCP_PORT + "-" + UDP_PORT + "-" + OS; // 組合並返回 Hello 訊息字串
     }
 }
