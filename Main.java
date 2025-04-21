@@ -62,24 +62,6 @@ public class Main { // 定義 Main 類別
         return "127.0.0.1";
     }
 
-    // private static InetAddress getBroadcastAddress() { // 定義取得廣播位址的方法
-    //     try { // 嘗試獲取網路介面資訊
-    //         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
-    //         while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
-    //             NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
-    //             if (!ni.isLoopback() && ni.isUp()) { // 判斷網路介面是否啟用且非迴圈
-    //                 for (InterfaceAddress ia : ni.getInterfaceAddresses()) { // 遍歷該介面的位址資訊
-    //                     InetAddress broadcast = ia.getBroadcast(); // 取得廣播位址
-    //                     if(broadcast != null && !broadcast.isAnyLocalAddress())
-    //                         return broadcast; // 返回該廣播位址
-    //                 }
-    //             }
-    //         }
-    //     } catch (SocketException e) { // 捕捉網路異常
-    //         e.printStackTrace(); // 列印異常資訊
-    //     }
-    //     return null; // 未找到廣播位址則返回 null
-    // }
     public static InetAddress getMulticastAddress() {
         try{
             return InetAddress.getByName("239.255.42.99"); // Valid multicast address
@@ -199,7 +181,7 @@ public class Main { // 定義 Main 類別
                     // Respond directly to the sender (unicast)
                     for(int i = 0; i < 3; i++) { // Send hello message 3 times
                         responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came from
-                        try { Thread.sleep(50); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     }
 
                     // --- End Process packet ---
@@ -215,25 +197,7 @@ public class Main { // 定義 Main 類別
         }).start();
     }
 
-    // public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
-    //     String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
-    //     byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
-    //     // InetAddress broadcast = multicastHello(); // 取得廣播位址
-        
-    //     for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
-    //         if (port == client.getUDPPort()) continue; // 忽略已使用的 UDP 端口
-    //         try { // 嘗試傳送廣播訊息
-    //             // System.err.println("Broadcasting to " + broadcast.getHostAddress() + ":" + port); // 輸出廣播訊息
-    //             DatagramSocket socket = new DatagramSocket(); // 建立 DatagramSocket
-    //             socket.setBroadcast(true); // 設定為廣播模式
-    //             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, broadcast, port); // 建立 DatagramPacket 資料包
-    //             socket.send(sendPacket); // 傳送資料包
-    //             socket.close(); // 關閉 DatagramSocket
-    //         } catch (Exception e) { // 捕捉傳送過程中的例外
-    //             // 忽略例外處理
-    //         }
-    //     }
-    // }
+
     
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
         try {
@@ -356,32 +320,13 @@ public class Main { // 定義 Main 類別
             e.printStackTrace(); // 列印例外資訊
         }
     }    
-    public static void UDPServer() { // 定義 UDP 伺服器方法
-        try { // 嘗試啟動 UDP 服務
-            DatagramSocket serverSocket = new DatagramSocket(client.getUDPPort()); // 建立 DatagramSocket 監聽指定的 UDP 端口
-            byte[] buf = new byte[1024];
-            System.out.println("UDP 服務開始，監聽端口 " + client.getUDPPort()); // 輸出 UDP 服務啟動訊息
-            while (true) { // 無限迴圈等待接收 UDP 訊息
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                serverSocket.receive(packet);
-                String message = new String(packet.getData(), 0, packet.getLength());
-            }
 
-        } catch (Exception e) { // 捕捉例外
-            e.printStackTrace(); // 列印例外資訊
-        }
-
-    }
     
     public static boolean sendFileToUser(String selectedUserName , File file) { // 定義傳送檔案給指定使用者的方法
         System.out.println("Looking for client with IP: " + selectedUserName);
 
         Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
 
-        if (targetClient == null) { // 如果未找到該用戶
-            System.out.println("Client not found: " + selectedUserName); // 輸出找不到用戶訊息
-            return false; // 返回失敗
-        }
         try { // 嘗試開始檔案傳送程序
             if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
                 System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
