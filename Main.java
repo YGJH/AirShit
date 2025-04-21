@@ -153,7 +153,12 @@ public class Main { // 定義 Main 類別
                     }
 
 
-                    if ("PING".equals(message)) {
+                    if (message.startsWith("PING:")) {
+                        String NameFromMessage = message.split(":")[1];
+                        if(!clientList.containsKey(NameFromMessage)) {
+                            // Already known client, ignore
+                            responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came from
+                        }
                         // Respond PONG directly back to sender (unicast)
                         byte[] pongData = "PONG".getBytes();
                         InetAddress senderAddress = packet.getAddress();
@@ -399,11 +404,11 @@ public class Main { // 定義 Main 類別
             try{
 
                 DatagramSocket socket = new DatagramSocket();
-                byte[] pingData = "PING".getBytes();
+                byte[] pingData = ("PING:"+client.getUserName()).getBytes();
                 String targetAddress = tempClient.getIPAddr();  
                 int targetPort = DISCOVERY_PORT; // 取得客戶端 UDP 端口號
                 DatagramPacket pingPacket = new DatagramPacket(pingData, pingData.length, InetAddress.getByName(targetAddress), targetPort);
-                println("ping " + targetAddress + ":" + targetPort); // 輸出 Ping 訊息
+                // println("ping " + targetAddress + ":" + targetPort); // 輸出 Ping 訊息
                 // 發送 Ping 封包
                 try {
                     socket.send(pingPacket);
