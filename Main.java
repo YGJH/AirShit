@@ -107,33 +107,40 @@ public class Main { // 定義 Main 類別
     // }
     public static InetAddress getMulticastAddress() {
         try{
-            return InetAddress.getByName("239.255.42.99"); // Choose any address in 239.x.x.x range
-
+            return InetAddress.getByName("239.255.42.99"); // Valid multicast address
         } catch (UnknownHostException e) {
-            e.printStackTrace(); // 列印異常資訊
+            e.printStackTrace();
         }
-        return null; // 返回 null
+        return null;
     }
+    
     public static void multicastHello() {
         try {
             // Get multicast address
             InetAddress group = getMulticastAddress();
-            int port = UDP_PORT_Manager.UDP_PORT[0]; // Pick one port
+            for(int port : UDP_PORT_Manager.UDP_PORT) { // Iterate through all ports
+                if (port == client.getUDPPort()) {
+                    continue; // Skip the port that is already in use
+                }
+                                // Create socket
+                MulticastSocket socket = new MulticastSocket();
+                socket.setTimeToLive(32); // Increase TTL to cross subnet boundaries
+
+                // Prepare data
+                String helloMessage = client.getHelloMessage();
+                byte[] sendData = helloMessage.getBytes();
+                
+                // Send multicast packet
+                DatagramPacket packet = new DatagramPacket(
+                    sendData, sendData.length, group, port);
+                socket.send(packet);
+                socket.close();
+                
+                System.out.println("Sent multicast hello to " + group.getHostAddress());
+
+
+            }
             
-            // Create socket
-            MulticastSocket socket = new MulticastSocket();
-            
-            // Prepare data
-            String helloMessage = client.getHelloMessage();
-            byte[] sendData = helloMessage.getBytes();
-            
-            // Send multicast packet
-            DatagramPacket packet = new DatagramPacket(
-                sendData, sendData.length, group, port);
-            socket.send(packet);
-            socket.close();
-            
-            System.out.println("Sent multicast hello to " + group.getHostAddress());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -189,25 +196,25 @@ public class Main { // 定義 Main 類別
             }
         }).start();
     }
-    public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
-        String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
-        byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
-        // InetAddress broadcast = multicastHello(); // 取得廣播位址
+    // public static void broadCastHello() { // 定義廣播 Hello 訊息的方法
+    //     String helloMessage = client.getHelloMessage(); // 取得 Hello 訊息字串
+    //     byte[] sendData = helloMessage.getBytes(); // 將訊息轉換成位元組陣列
+    //     // InetAddress broadcast = multicastHello(); // 取得廣播位址
         
-        for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
-            if (port == client.getUDPPort()) continue; // 忽略已使用的 UDP 端口
-            try { // 嘗試傳送廣播訊息
-                // System.err.println("Broadcasting to " + broadcast.getHostAddress() + ":" + port); // 輸出廣播訊息
-                DatagramSocket socket = new DatagramSocket(); // 建立 DatagramSocket
-                socket.setBroadcast(true); // 設定為廣播模式
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, broadcast, port); // 建立 DatagramPacket 資料包
-                socket.send(sendPacket); // 傳送資料包
-                socket.close(); // 關閉 DatagramSocket
-            } catch (Exception e) { // 捕捉傳送過程中的例外
-                // 忽略例外處理
-            }
-        }
-    }
+    //     for (int port : UDP_PORT_Manager.UDP_PORT) { // 迭代指定範圍內的所有埠
+    //         if (port == client.getUDPPort()) continue; // 忽略已使用的 UDP 端口
+    //         try { // 嘗試傳送廣播訊息
+    //             // System.err.println("Broadcasting to " + broadcast.getHostAddress() + ":" + port); // 輸出廣播訊息
+    //             DatagramSocket socket = new DatagramSocket(); // 建立 DatagramSocket
+    //             socket.setBroadcast(true); // 設定為廣播模式
+    //             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, broadcast, port); // 建立 DatagramPacket 資料包
+    //             socket.send(sendPacket); // 傳送資料包
+    //             socket.close(); // 關閉 DatagramSocket
+    //         } catch (Exception e) { // 捕捉傳送過程中的例外
+    //             // 忽略例外處理
+    //         }
+    //     }
+    // }
     
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
         try {
@@ -243,7 +250,7 @@ public class Main { // 定義 Main 類別
         startMulticastListener();  // Start listening first
         multicastHello();          // Then announce yourself
 
-        new Thread(() -> new Main().UDPServer()).start(); // 建立新執行緒並啟動 UDP 伺服器
+        // new Thread(() -> new Main().UDPServer()).start(); // 建立新執行緒並啟動 UDP 伺服器
         // broadCastHello(); // 廣播 Hello 訊息
         new Thread(() -> new Main().receiveFile()).start(); // 建立新執行緒並啟動檔案接收服務
         SwingUtilities.invokeLater(() -> { // 於事件分派執行緒中啟動 GUI
