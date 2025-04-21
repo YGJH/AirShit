@@ -10,8 +10,8 @@ import java.util.*;
 import javax.swing.Timer;
 
 public class SendFileGUI extends JFrame {
-    private JList<ClientListItem> clientList;
-    private DefaultListModel<ClientListItem> listModel;
+    private JList<Client> clientList;
+    private DefaultListModel<Client> listModel;
     private JLabel selectedFileLabel;
     private JProgressBar progressBar;
     private JTextArea logArea;
@@ -208,16 +208,13 @@ public class SendFileGUI extends JFrame {
     
     private void refreshClientList() {
         listModel.clear();
-        Hashtable<String, Client> clients = Main.getClientPorts();
         
-        for (Map.Entry<String, Client> entry : clients.entrySet()) {
-            Client client = entry.getValue();
-            println(client.getUserName() + ":" + client.getUDPPort());
-            listModel.addElement(new ClientListItem(client));
+        for (Client C : Main.getClientPorts().values()) {
+            println(C.getUserName() + ":" + C.getUDPPort());
+            listModel.addElement(C);
         }
         
         updateSendButtonState();
-        log("Client list refreshed. Found " + clients.size() + " clients.");
     }
     
     private void selectFile() {
@@ -237,7 +234,7 @@ public class SendFileGUI extends JFrame {
             return;
         }
         
-        Client selectedClient = clientList.getSelectedValue().client;
+        Client selectedClient = clientList.getSelectedValue();
         log("Sending file to " + selectedClient.getUserName() + "...");
         
         // Disable send button during transfer
@@ -249,16 +246,14 @@ public class SendFileGUI extends JFrame {
         new Thread(() -> {
             try {
                 // Simulate progress updates (in a real implementation, you'd get actual progress)
-                for (int i = 0; i <= 100; i += 10) {
-                    final int progress = i;
-                    SwingUtilities.invokeLater(() -> progressBar.setValue(progress));
-                    Thread.sleep(150);
-                }
+                // for (int i = 0; i <= 100; i += 10) {
+                //     final int progress = i;
+                //     SwingUtilities.invokeLater(() -> progressBar.setValue(progress));
+                //     Thread.sleep(150);
+                // }
                 
                 // Do the actual file send
-                boolean success = Main.sendFileToUser(selectedClient.getUserName(), selectedFile);
-                
-                // Update UI based on result
+                boolean success = Main.sendFileToUser(selectedClient.getUserName(), selectedFile);                // Update UI based on result
                 SwingUtilities.invokeLater(() -> {
                     if (success) {
                         log("File sent successfully to " + selectedClient.getUserName());
@@ -306,18 +301,18 @@ public class SendFileGUI extends JFrame {
     }
     
     // Helper class to represent client entries in the list
-    private static class ClientListItem {
-        Client client;
+    // private static class Client {
+    //     Client client;
         
-        public ClientListItem(Client client) {
-            this.client = client;
-        }
+    //     public Client(Client client) {
+    //         this.client = client;
+    //     }
         
-        @Override
-        public String toString() {
-            return client.getUserName();
-        }
-    }
+    //     @Override
+    //     public String toString() {
+    //         return client.getUserName();
+    //     }
+    // }
     
     // Custom renderer for client list items
     private class ClientCellRenderer extends DefaultListCellRenderer {
@@ -336,12 +331,12 @@ public class SendFileGUI extends JFrame {
                 panel.setForeground(list.getForeground());
             }
             
-            ClientListItem item = (ClientListItem)value;
+            Client item = (Client)value;
             
-            JLabel nameLabel = new JLabel(item.client.getUserName());
+            JLabel nameLabel = new JLabel(item.getUserName());
             nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
             
-            JLabel detailsLabel = new JLabel(item.client.getIPAddr() + " (" + item.client.getOS() + ")");
+            JLabel detailsLabel = new JLabel(item.getIPAddr() + " (" + item.getOS() + ")");
             detailsLabel.setFont(new Font("Segoe UI", Font.PLAIN, 10));
             
             JPanel textPanel = new JPanel(new GridLayout(2, 1));

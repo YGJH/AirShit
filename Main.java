@@ -266,23 +266,23 @@ public class Main { // 定義 Main 類別
                     int senderPort = packet.getPort();
                     DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
                     serverSocket.send(pongPacket);
-                    System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
+                    // System.out.println("Received PING from " + senderAddress + ":" + senderPort + ", sent PONG.");
                     continue;
                 }
                 
                 Client tempClient = Client.parseMessage(message); // 解析訊息 [IP + User + TCP + UDP + OS]
 
                 if (tempClient == null) { // 如果解析失敗
-                    System.out.println("無效的訊息格式"); // 輸出錯誤訊息
+                    // System.out.println("無效的訊息格式"); // 輸出錯誤訊息
                     continue; // 繼續等待下一個訊息
                 } 
                 if((tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getUDPPort() == client.getUDPPort())
-                || clientList.containsKey(tempClient.getIPAddr()) )   { // 如果是本機的訊息
-                    System.out.println("本機不需要回應"); // 輸出不需要回應訊息
+                || clientList.containsKey(tempClient.getUserName()) )   { // 如果是本機的訊息
+                    // System.out.println("本機不需要回應"); // 輸出不需要回應訊息
                     continue; // 若為本機則跳過
                 }
-                clientList.put(tempClient.getIPAddr(), tempClient); // 將解析後的客戶端資訊加入哈希表
-                println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
+                clientList.put(tempClient.getUserName(), tempClient); // 將解析後的客戶端資訊加入哈希表
+                // println("接收到來自 " + tempClient.getIPAddr() + ":" + tempClient.getUDPPort() + " 的訊息: " + message); // 輸出接收到的訊息
                 for(int i = 0; i < 3; i++) { // 嘗試回應三次
                     responseNewClient(packet.getAddress(), packet.getPort());                }
             }
@@ -292,17 +292,22 @@ public class Main { // 定義 Main 類別
         }
 
     }
-    public static boolean sendFileToUser(String selectedUserIPAddr, File file) { // 定義傳送檔案給指定使用者的方法
-        Client targetClient = clientList.get(selectedUserIPAddr); // 取得指定使用者的客戶端資訊
-        if (targetClient == null) { // 如果未找到該用戶
-            System.out.println("Client not found: " + selectedUserIPAddr); // 輸出找不到用戶訊息
-            return false; // 返回失敗
-        }
+    
+    public static boolean sendFileToUser(String selectedUserName , File file) { // 定義傳送檔案給指定使用者的方法
+        System.out.println("Looking for client with IP: " + selectedUserName);
+
+        Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
+
+        // if (targetClient == null) { // 如果未找到該用戶
+        //     System.out.println("Client not found: " + selectedUserName); // 輸出找不到用戶訊息
+        //     return false; // 返回失敗
+        // }
         try { // 嘗試開始檔案傳送程序
             if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
                 System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
                 return false; // 返回失敗
             }
+            println(selectedUserName);
             // Compress the file before sending
             File originalFile = file;
             // File compressedFile = File.createTempFile("compressed_", ".gz");
@@ -344,12 +349,6 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public void printHashTable(Hashtable<String, Client> clientPorts) { // 定義列印客戶端哈希表的方法
-        System.out.println("目前有 " + clientPorts.size() + " 個已連線的客戶端: "); // 輸出已連線的客戶端數量
-        for (String key : clientPorts.keySet()) { // 遍歷客戶端哈希表
-            System.out.println("使用者名稱: " + key + ", 端口號: " + clientPorts.get(key).getTCPPort() + ", 作業系統: " + clientPorts.get(key).getOS()); // 輸出每個客戶端的詳細資訊
-        }
-    }
     public static boolean recevieACK(Socket socket) {
         try {
             InputStream is = socket.getInputStream();
@@ -398,18 +397,18 @@ public class Main { // 定義 Main 類別
                     socket.receive(responsePacket);
                     String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
                     if ("PONG".equals(response)) {
-                        System.out.println("對方在線上！");
+                        // System.out.println("對方在線上！");
                     }
                 } catch (SocketTimeoutException e) {
                     // 超時，表示對方可能已離線
                     clientList.remove(key); // 移除已離線的客戶端
-                    System.out.println("未收到回覆，對方可能已離線");
+                    // System.out.println("未收到回覆，對方可能已離線");
                 }
                 socket.close();
             } catch (Exception e) {
                 e.printStackTrace(); // 列印例外資訊
                 clientList.remove(key); // 移除已離線的客戶端
-                System.out.println("對方可能已離線，移除客戶端: " + key); // 輸出移除客戶端訊息
+                // System.out.println("對方可能已離線，移除客戶端: " + key); // 輸出移除客戶端訊息
                 continue;
             }
         }

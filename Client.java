@@ -64,7 +64,7 @@ class Client {
     public static Client parseMessage(String message) {
         String[] parts = message.split("-");
         // 檢查訊息格式是否正確
-        // IPAddr + ":" + USER_NAME + ":" + TCP_PORT + ":" + UDP_PORT + ":" + OS; // 組合並返回 Hello 訊息字串
+        // 解析訊息 [IP + User + TCP + UDP + OS]
         if (parts.length == 5) {
             // clean IP address
             String IPAddr = parts[0]; // 取得 IP 位址
