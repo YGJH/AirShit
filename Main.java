@@ -47,10 +47,10 @@ public class Main { // 定義 Main 類別
                 if (!iface.isUp() || iface.isLoopback() || iface.isVirtual()) continue;
                 String d = iface.getDisplayName().toLowerCase();
                 String n = iface.getName().toLowerCase();
-                // skip Hyper-V / virtual adapters
                 if (d.contains("hyper") || n.startsWith("vethernet")) continue;
     
                 for (InetAddress addr : Collections.list(iface.getInetAddresses())) {
+                    // Only return IPv4
                     if (addr instanceof Inet4Address) {
                         return addr.getHostAddress();
                     }
@@ -59,9 +59,9 @@ public class Main { // 定義 Main 類別
         } catch (SocketException e) {
             e.printStackTrace();
         }
+        // fallback to localhost IPv4
         return "127.0.0.1";
     }
-
     public static InetAddress getMulticastAddress() {
         try{
             return InetAddress.getByName("239.255.42.99"); // Valid multicast address
@@ -170,12 +170,12 @@ public class Main { // 定義 Main 類別
                     if (tempClient == null) continue;
 
                     // Check if client is self OR already known (use IP as key if possible)
-                    if (tempClient.getIPAddr().equals(client.getIPAddr()) || clientList.containsKey(tempClient.getIPAddr())) {
+                    if (tempClient.getIPAddr().equals(client.getIPAddr()) || clientList.containsKey(tempClient.getUserName())) {
                          continue;
                     }
 
                     // Use IP address as the key for consistency
-                    clientList.put(tempClient.getIPAddr(), tempClient);
+                    clientList.put(tempClient.getUserName(), tempClient);
                     System.out.println("Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
                     // Respond directly to the sender (unicast)
