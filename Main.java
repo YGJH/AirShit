@@ -140,29 +140,32 @@ public class Main { // 定義 Main 類別
     }
 
     public static void multicastHello() {
-        try {
-            InetAddress group = getMulticastAddress();
-            if (group == null) return;
+            for(int port : UDP_PORT_Manager.UDP_PORT) { // Iterate through all UDP ports
+                if (port == client.getUDPPort()) continue; // Skip the client's own UDP port
+                try {
+                    InetAddress group = getMulticastAddress();
+                    if (group == null) return;
+        
+                    MulticastSocket socket = new MulticastSocket();
+                    socket.setTimeToLive(32); // Set TTL
+        
+                    String helloMessage = client.getHelloMessage();
+                    byte[] sendData = helloMessage.getBytes();
+        
+                    // *** CHANGE THIS: Send multicast packet to the DISCOVERY_PORT ***
+                    DatagramPacket packet = new DatagramPacket(
+                        sendData, sendData.length, group, port); // Use DISCOVERY_PORT
+                    socket.send(packet);
+                    socket.close();
+        
+                    // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+        
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        
 
-            // Create socket ONCE
-            MulticastSocket socket = new MulticastSocket();
-            socket.setTimeToLive(32); // Set TTL
-
-            // Prepare data ONCE
-            String helloMessage = client.getHelloMessage();
-            byte[] sendData = helloMessage.getBytes();
-
-            // Send multicast packet to the client.getUDPPort()
-            DatagramPacket packet = new DatagramPacket(
-                sendData, sendData.length, group, client.getUDPPort()); // Use client.getUDPPort()
-            socket.send(packet);
-            socket.close();
-
-            // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + client.getUDPPort());
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
 
