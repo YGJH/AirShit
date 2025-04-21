@@ -17,6 +17,7 @@ public class Main { // 定義 Main 類別
         return client; // 返回客戶端資訊
     }
 
+    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
     static {
         String userName ;
@@ -25,7 +26,7 @@ public class Main { // 定義 Main 類別
         } catch (UnknownHostException e) { // 異常處理：未知主機
             userName = System.getProperty("user"+UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
-        client = new Client(getNonLoopbcakIP(), userName , getFreeTCPPort(), UDP_PORT_Manager.getFreeUDPPort(), System.getProperty("os.name")); // 取得可用的 TCP 端口
+        client = new Client(getNonLoopbackIP(), userName , getFreeTCPPort(), DISCOVERY_PORT  , System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
     
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
@@ -39,40 +40,17 @@ public class Main { // 定義 Main 類別
     
     private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
 
-    // public static String getNonLoopbcakIP() { // 定義取得非迴圈 IP 的方法
-    //     try { // 嘗試獲取網路介面資訊
-    //         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces(); // 取得所有網路介面
-    //         while (interfaces.hasMoreElements()) { // 遍歷所有網路介面
-    //             NetworkInterface ni = interfaces.nextElement(); // 取得一個網路介面
-    //             Enumeration<InetAddress> addresses = ni.getInetAddresses(); // 取得該介面的所有位址
-    //             while (addresses.hasMoreElements()) { // 遍歷所有位址
-    //                 InetAddress addr = addresses.nextElement(); // 取得一個位址
-    //                 String cleanIP = addr.getHostAddress(); // 返回該 IP 位址
-    //                 // int percentIndex = cleanIP.indexOf('%'); // 判斷是否有 scope id
-    //                 // if (percentIndex != -1) { // 如果有 scope id
-    //                     // cleanIP = cleanIP.substring(0, percentIndex); // 去除 scope id
-    //                 // }
-    //                 return cleanIP; // 返回該 IP 位址
-    //             }
-    //         }
-    //     } catch (SocketException e) { // 捕捉網路異常
-    //         e.printStackTrace(); // 列印異常資訊
-    //     }
-    //     return "127.0.0.1"; // 返回預設 IP 位址
-    // }
 
-    public static String getNonLoopbcakIP() {
+    public static String getNonLoopbackIP() {
         try {
-            Enumeration<NetworkInterface> ifaces = NetworkInterface.getNetworkInterfaces();
-            while (ifaces.hasMoreElements()) {
-                NetworkInterface iface = ifaces.nextElement();
-                // skip interfaces that are down, loopback, or virtual
+            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!iface.isUp() || iface.isLoopback() || iface.isVirtual()) continue;
+                String d = iface.getDisplayName().toLowerCase();
+                String n = iface.getName().toLowerCase();
+                // skip Hyper-V / virtual adapters
+                if (d.contains("hyper") || n.startsWith("vethernet")) continue;
     
-                Enumeration<InetAddress> addrs = iface.getInetAddresses();
-                while (addrs.hasMoreElements()) {
-                    InetAddress addr = addrs.nextElement();
-                    // pick the first IPv4 address
+                for (InetAddress addr : Collections.list(iface.getInetAddresses())) {
                     if (addr instanceof Inet4Address) {
                         return addr.getHostAddress();
                     }
@@ -81,11 +59,8 @@ public class Main { // 定義 Main 類別
         } catch (SocketException e) {
             e.printStackTrace();
         }
-        println("無法獲取非迴圈 IP 位址，使用預設的");
-        // throw new SocketException("No suitable IPv4 address found");
         return "127.0.0.1";
     }
-
 
     // private static InetAddress getBroadcastAddress() { // 定義取得廣播位址的方法
     //     try { // 嘗試獲取網路介面資訊
@@ -115,31 +90,22 @@ public class Main { // 定義 Main 類別
     }
     private static NetworkInterface findCorrectNetworkInterface() {
         try {
-            String localIP = client.getIPAddr(); // Assumes getIPAddr() returns the desired IP
-            if (localIP == null || localIP.equals("127.0.0.1")) return null;
-
-            InetAddress localInetAddress = InetAddress.getByName(localIP);
-
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface ni = interfaces.nextElement();
+            InetAddress local = InetAddress.getByName(client.getIPAddr());
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
-
-                Enumeration<InetAddress> addresses = ni.getInetAddresses();
-                while (addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
-                    if (addr.equals(localInetAddress)) {
-                        return ni; // Found the interface matching our client's IP
-                    }
+                String d = ni.getDisplayName().toLowerCase(), 
+                       n = ni.getName().toLowerCase();
+                if (d.contains("hyper") || n.startsWith("vethernet")) continue;
+    
+                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                    if (addr.equals(local)) return ni;
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error finding network interface: " + e.getMessage());
+            System.err.println("Error finding interface: " + e.getMessage());
         }
-        return null; // Not found
+        return null;
     }
-    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
-
     public static void multicastHello() {
         try {
             InetAddress group = getMulticastAddress();
