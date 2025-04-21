@@ -145,7 +145,6 @@ public class Main { // 定義 Main 類別
 
                     // --- Process packet ---
                     String message = new String(packet.getData(), 0, packet.getLength());
-
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
@@ -155,12 +154,16 @@ public class Main { // 定義 Main 類別
 
                     if (message.startsWith("PING:")) {
                         String NameFromMessage = message.split(":")[1];
+                        byte[] pongData;
+                        
                         if(!clientList.containsKey(NameFromMessage)) {
                             // Already known client, ignore
-                            responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came from
+                            pongData = "PANG".getBytes(); 
+                        }
+                        else {
+                            pongData = "PONG".getBytes(); // Respond with PONG
                         }
                         // Respond PONG directly back to sender (unicast)
-                        byte[] pongData = "PONG".getBytes();
                         InetAddress senderAddress = packet.getAddress();
                         int senderPort = packet.getPort(); // PING might come from an ephemeral port, respond there
                         // Use a *different* socket for unicast replies if needed, or reuse carefully
@@ -428,6 +431,8 @@ public class Main { // 定義 Main 類別
                     String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
                     if ("PONG".equals(response)) {
                         // System.out.println("對方在線上！");
+                    } else if("PANG".equals(response)) {
+                        responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), DISCOVERY_PORT); // 回應新客戶端
                     }
                 } catch (SocketTimeoutException e) {
                     // 超時，表示對方可能已離線

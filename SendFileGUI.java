@@ -83,7 +83,7 @@ public class SendFileGUI extends JFrame {
         clientScroll.setBorder(BorderFactory.createLineBorder(new Color(189, 195, 199), 1));
         
         refreshButton = createStyledButton("Refresh", PRIMARY_COLOR);
-        refreshButton.addActionListener(e -> refreshClientList());
+        refreshButton.addActionListener(e -> ForcerefreshClientList());
         
         clientPanel.add(clientsLabel, BorderLayout.NORTH);
         clientPanel.add(clientScroll, BorderLayout.CENTER);
@@ -205,7 +205,10 @@ public class SendFileGUI extends JFrame {
         
         return button;
     }
-    
+    private void ForcerefreshClientList() {
+        Main.multicastHello();
+        refreshClientList();
+    }
     private void refreshClientList() {
         listModel.clear();
         
