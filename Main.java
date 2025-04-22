@@ -1,6 +1,7 @@
 package AirShit; // 定義套件 AirShit
 import java.io.*; // 引入輸入輸出相關類別
 import java.net.*; // 引入網路相關類別
+import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
@@ -15,7 +16,7 @@ public class Main { // 定義 Main 類別
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
     }
-
+    public static final int HEARTBEAT_PORT = 50001;  // pick any free port
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
     static {
@@ -145,29 +146,6 @@ public class Main { // 定義 Main 類別
                        continue;
                     }
 
-
-                    if (message.startsWith("PING:")) {
-                        String NameFromMessage = message.split(":")[1];
-                        byte[] pongData;
-                        
-                        if(!clientList.containsKey(NameFromMessage)) {
-                            // Already known client, ignore
-                            pongData = "PANG".getBytes(); 
-                        }
-                        else {
-                            pongData = "PONG".getBytes(); // Respond with PONG
-                        }
-                        // Respond PONG directly back to sender (unicast)
-                        InetAddress senderAddress = packet.getAddress();
-                        int senderPort = packet.getPort(); // PING might come from an ephemeral port, respond there
-                        // Use a *different* socket for unicast replies if needed, or reuse carefully
-                        try (DatagramSocket replySocket = new DatagramSocket()) {
-                             DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, senderAddress, senderPort);
-                             replySocket.send(pongPacket);
-                        }
-                        continue;
-                    }
-
                     Client tempClient = Client.parseMessage(message);
                     if (tempClient == null) continue;
 
@@ -235,7 +213,8 @@ public class Main { // 定義 Main 類別
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: " + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener();  // Start listening first
         multicastHello();          // Then announce yourself
-
+        
+        startHeartbeatResponder(); // 啟動心跳回應器
         SwingUtilities.invokeLater(() -> {
             new SendFileGUI();
             new Thread(() -> Main.receiveFile()).start();
@@ -258,6 +237,27 @@ public class Main { // 定義 Main 類別
         } catch (IOException e) { // 捕捉 I/O 異常
             throw new RuntimeException("No free TCP port available", e); // 拋出執行例外表示未找到可用端口
         }
+    }
+    public static void startHeartbeatResponder() {
+        new Thread(() -> {
+        try (DatagramSocket sock = new DatagramSocket(HEARTBEAT_PORT)) {
+            byte[] buf = new byte[64];
+            while (true) {
+            DatagramPacket recv = new DatagramPacket(buf, buf.length);
+            sock.receive(recv);
+            String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
+            if ("HEARTBEAT".equals(msg)) {
+                byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+                DatagramPacket reply = new DatagramPacket(
+                resp, resp.length,
+                recv.getAddress(), recv.getPort());
+                sock.send(reply);
+            }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        }, "heartbeat-responder").start();
     }
 
     public static void receiveFile() { // 定義接收檔案的方法
