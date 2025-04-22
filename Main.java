@@ -92,26 +92,32 @@ public class Main { // 定義 Main 類別
         try {
             InetAddress group = getMulticastAddress();
             if (group == null) return;
-
+    
+            byte[] sendData = client.getHelloMessage().getBytes();
             MulticastSocket socket = new MulticastSocket();
-            socket.setTimeToLive(32); // Set TTL
-
-            String helloMessage = client.getHelloMessage();
-            byte[] sendData = helloMessage.getBytes();
-
-            // *** CHANGE THIS: Send multicast packet to the DISCOVERY_PORT ***
-            DatagramPacket packet = new DatagramPacket(
-                sendData, sendData.length, group, DISCOVERY_PORT); // Use DISCOVERY_PORT
-            socket.send(packet);
+            socket.setTimeToLive(32);
+    
+            for (NetworkInterface nif : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!nif.isUp() || nif.isLoopback() || nif.isVirtual()) continue;
+                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT);
+                socket.joinGroup(groupAddr, nif);
+    
+                // Instead of the deprecated setInterface(addr):
+                // socket.setInterface(addr);
+                // use setNetworkInterface(nif):
+                socket.setNetworkInterface(nif);
+    
+                DatagramPacket packet = new DatagramPacket(
+                    sendData, sendData.length, group, DISCOVERY_PORT);
+                socket.send(packet);
+                socket.leaveGroup(groupAddr, nif);
+            }
+    
             socket.close();
-
-            // System.out.println("Sent multicast hello to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
-
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
-
     public static void startMulticastListener() {
         new Thread(() -> {
             MulticastSocket socket = null;
@@ -334,12 +340,14 @@ public class Main { // 定義 Main 類別
                     println("接收檔案完成"); // 輸出檔案接收完成訊息
                 } catch (IOException e) { // 捕捉 I/O 異常
                     saveFile.delete();
+                    saveFile.delete();
                     System.out.println("檔案接收失敗，已刪除檔案"); // 輸出檔案接收失敗訊息
                 }
                 
                 fos.close(); // 關閉檔案輸出串流
                 socket.close(); // 關閉 TCP 連線
                 SendFileGUI.start = false; // 更新 GUI 狀態
+                SendFileGUI.receiveFileProgress(0); // 重置接收檔案進度
             }
 
         } catch (Exception e) { // 捕捉所有例外
