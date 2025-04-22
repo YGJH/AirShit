@@ -4,14 +4,14 @@ import java.net.*; // 引入網路相關類別
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
-import java.util.random.*;
+import java.util.random;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
     static void println(String s) {
         System.out.println(s);
     }
-    private final static Client client; // 建立 Client 物件以儲存客戶端資訊
+    private static Client client; // 建立 Client 物件以儲存客戶端資訊
 
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
@@ -90,6 +90,7 @@ public class Main { // 定義 Main 類別
     }
     public static void multicastHello() {
         try {
+            client.setIPAddr(getNonLoopbackIP()); // Set the IP address
             InetAddress group = getMulticastAddress();
             if (group == null) return;
     
@@ -115,7 +116,7 @@ public class Main { // 定義 Main 類別
     
             socket.close();
         } catch (Exception e) {
-            e.printStackTrace();
+            // e.printStackTrace();
         }
     }
     public static void startMulticastListener() {
