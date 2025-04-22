@@ -234,16 +234,17 @@ public class Main { // 定義 Main 類別
             e.printStackTrace(); // 列印異常資訊
         }
     }
+
     public static void main(String[] args) { // 主方法，程式入口點
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: " + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener();  // Start listening first
         multicastHello();          // Then announce yourself
 
-        new Thread(() -> new Main().receiveFile()).start(); // 建立新執行緒並啟動檔案接收服務
-        SwingUtilities.invokeLater(() -> { // 於事件分派執行緒中啟動 GUI
-            new SendFileGUI(); // 建立並顯示檔案傳送介面
-        });
+        SwingUtilities.invokeLater(() -> {
+            new SendFileGUI();
+            new Thread(() -> Main.receiveFile()).start();
+        }); // 建立並顯示檔案傳送介面
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -309,27 +310,33 @@ public class Main { // 定義 Main 類別
                 }
                 File saveFile = fileChooser.getSelectedFile(); // 取得使用者選擇的儲存檔案
                 sendACK(socket); // 傳送 ACK 訊息以通知傳送者開始資料傳送
+                SendFileGUI.receiveFileProgress(0); // 更新接收檔案進度
                 FileOutputStream fos = new FileOutputStream(saveFile); // 建立檔案輸出串流以寫入接收資料
                 InputStream is = socket.getInputStream(); // 取得連線的輸入串流
-                byte[] buffer = new byte[10005]; // 建立資料緩衝區
+                byte[] buffer = new byte[100005]; // 建立資料緩衝區
                 int bytesRead; // 定義讀取位元組數變數
                 long totalRead = 0; // 初始化已讀取位元組總數
                 while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
                     fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
                     totalRead += bytesRead; // 更新已讀取位元組數
+                    sendACK(socket); // 傳送 ACK 訊息以確認接收
+                    int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
+                    SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
                 }
+                
                 fos.close(); // 關閉檔案輸出串流
                 socket.close(); // 關閉 TCP 連線
                 System.out.println("file received and saved to " + saveFile.getAbsolutePath()); // 輸出壓縮檔案儲存位置      
                 System.out.println("檔案接收完成"); // 輸出檔案接收完成訊息
+                SendFileGUI.start = false; // 更新 GUI 狀態
             }
+
         } catch (Exception e) { // 捕捉所有例外
             e.printStackTrace(); // 列印例外資訊
         }
     }    
 
     public static boolean sendFileToUser(String selectedUserName , File file , FileTransferCallback callback) { // 定義傳送檔案給指定使用者的方法
-        System.out.println("Looking for client with IP: " + selectedUserName);
 
         Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
 
@@ -348,7 +355,7 @@ public class Main { // 定義 Main 類別
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true); // 建立輸出串流以傳送檔案標頭
             out.println(originalFile.getName() + ":" + originalFile.length()); // 傳送檔案名稱與大小
             out.flush(); // 清空輸出串流
-            
+
             short cnt = 0; // 初始化等待 ACK 的次數
             while(recevieACK(socket) == false && cnt < 3) { // 嘗試等待 ACK 回覆，最多三次
                 println("Waiting for ACK..."); // 輸出等待 ACK 訊息
@@ -360,24 +367,22 @@ public class Main { // 定義 Main 類別
                 socket.close(); // 關閉連線
                 return false; // 返回失敗
             }
-            
             FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
             OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
             byte[] buffer = new byte[100005]; // 建立傳輸用緩衝區
             int bytesRead; // 定義讀取位元組數變數
-            int pct = 0;
-            int total = (int)originalFile.length(); // 取得檔案總大小
-            int sent = 0; // 初始化已傳送位元組數
-
+            long total = originalFile.length();
+            long sent = 0;
             while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
                 os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
                 os.flush(); // 清空輸出串流
-                sent += bytesRead; // 更新已傳送位元組數
-                pct = (int)(sent * 100 / total);
                 sendACK(socket); // 傳送 ACK 訊息以確認接收
-
-                if (callback != null) callback.onProgress(pct);
-
+                
+                sent += bytesRead;
+                int percent = (int) ((sent * 100) / total); // 計算傳送進度百分比
+                if (callback != null) { // 如果有回呼函式
+                    callback.onProgress(percent); // 呼叫回呼函式以更新進度
+                }
                 boolean ackReceived = false; // 初始化 ACK 接收狀態
                 while(recevieACK(socket) == false && cnt < 3 && ackReceived == false) { // 等待接收者的 ACK 回覆
                     println("Waiting for ACK..."); // 輸出等待 ACK 訊息
@@ -391,9 +396,11 @@ public class Main { // 定義 Main 類別
                     socket.close(); // 關閉連線
                     return false; // 返回失敗
                 }
+                cnt = 0; // 重置等待次數計數器
+
             }
             if (callback != null) callback.onComplete(true);
-            sendStatus.set(SEND_STATUS.SEND_OK); // 更新傳送狀態為正常結束
+
             fis.close(); // 關閉檔案輸入串流
             socket.close(); // 關閉 TCP 連線
             System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息

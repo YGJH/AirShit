@@ -21,6 +21,8 @@ public class SendFileGUI extends JFrame {
     private Timer refreshTimer;
     
     // Modern color scheme
+    private static JProgressBar receiveProgressBar;
+
     private final Color BACKGROUND_COLOR = new Color(240, 240, 240);
     private final Color PRIMARY_COLOR = new Color(41, 128, 185);
     private final Color ACCENT_COLOR = new Color(39, 174, 96);
@@ -46,7 +48,27 @@ public class SendFileGUI extends JFrame {
         // Setup auto-refresh timer (every 5 seconds)
         refreshTimer = new Timer(5000, e -> refreshClientList());
         refreshTimer.start();
-        
+        // new Thread(() -> Main.receiveFile(new FileTransferCallback() {
+        //     @Override
+        //     public void onProgress(int percent) {
+        //         SwingUtilities.invokeLater(() -> {
+        //             receiveProgressBar.setVisible(true);
+        //             receiveProgressBar.setValue(percent);
+        //         });
+        //     }
+        //     @Override
+        //     public void onComplete(boolean success) {
+        //         SwingUtilities.invokeLater(() -> {
+        //             if (success) {
+        //                 log("File received successfully.");
+        //             } else {
+        //                 log("File receive failed.");
+        //             }
+        //             receiveProgressBar.setVisible(false);
+        //         });
+        //     }
+        // })).start();
+    
         setVisible(true);
     }
     
@@ -131,7 +153,14 @@ public class SendFileGUI extends JFrame {
         
         sendPanel.add(sendButton, BorderLayout.NORTH);
         sendPanel.add(progressBar, BorderLayout.SOUTH);
-        
+
+        receiveProgressBar = new JProgressBar();
+        receiveProgressBar.setStringPainted(true);
+        receiveProgressBar.setVisible(false);
+        // add it somewhere in your layout, e.g. below progressBar:
+        sendPanel.add(new JLabel("Receive Progress:"), BorderLayout.CENTER);
+        sendPanel.add(receiveProgressBar, BorderLayout.SOUTH);
+    
         // Log area
         JPanel logPanel = new JPanel(new BorderLayout());
         logPanel.setBackground(BACKGROUND_COLOR);
@@ -231,6 +260,15 @@ public class SendFileGUI extends JFrame {
             log("File selected: " + selectedFile.getName());
         }
     }
+    public static boolean start;
+    
+    public static void receiveFileProgress(int percent) {
+        if (start) {
+            receiveProgressBar.setVisible(true);
+        } else {
+            receiveProgressBar.setValue(percent);
+        }
+    }
 
     private void sendFile() {
         if (clientList.getSelectedValue() == null || selectedFile == null) {
@@ -300,19 +338,6 @@ public class SendFileGUI extends JFrame {
         return String.format("%.2f %s", fileSize, units[unitIndex]);
     }
     
-    // Helper class to represent client entries in the list
-    // private static class Client {
-    //     Client client;
-        
-    //     public Client(Client client) {
-    //         this.client = client;
-    //     }
-        
-    //     @Override
-    //     public String toString() {
-    //         return client.getUserName();
-    //     }
-    // }
     
     // Custom renderer for client list items
     private class ClientCellRenderer extends DefaultListCellRenderer {
