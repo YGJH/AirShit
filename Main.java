@@ -246,7 +246,13 @@ public class Main { // 定義 Main 類別
             DatagramPacket recv = new DatagramPacket(buf, buf.length);
             sock.receive(recv);
             String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
-            if ("HEARTBEAT".equals(msg)) {
+            if ((msg).startsWith("HEARTBEAT-")) {
+                String[] parts = msg.split("-"); // use dash as delimiter
+                if(clientList.containsKey(sock.getInetAddress().getHostName()) == false) {
+                    Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]), DISCOVERY_PORT, parts[4]);
+                    clientList.put(tempClient.getUserName(), tempClient);
+                }
+
                 byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
                 DatagramPacket reply = new DatagramPacket(
                 resp, resp.length,
@@ -425,6 +431,7 @@ public class Main { // 定義 Main 類別
     }
 
     public static void checkAlive() {
+        byte[] ping = ("HEARTBEAT-"+client.getHelloMessage()).getBytes(StandardCharsets.UTF_8); // 取得 Hello 訊息
         ArrayList<String> dead = new ArrayList<>();
         for (Map.Entry<String, Client> e : clientList.entrySet()) {
             String name = e.getKey();
@@ -432,7 +439,6 @@ public class Main { // 定義 Main 類別
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
                 ds.setSoTimeout(2000);
-                byte[] ping = "HEARTBEAT".getBytes(StandardCharsets.UTF_8);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, HEARTBEAT_PORT));
                 byte[] buf = new byte[64];
