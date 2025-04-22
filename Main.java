@@ -4,7 +4,7 @@ import java.net.*; // 引入網路相關類別
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
-import java.util.random;
+import java.util.Random;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -98,21 +98,10 @@ public class Main { // 定義 Main 類別
             MulticastSocket socket = new MulticastSocket();
             socket.setTimeToLive(32);
     
-            for (NetworkInterface nif : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!nif.isUp() || nif.isLoopback() || nif.isVirtual()) continue;
-                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT);
-                socket.joinGroup(groupAddr, nif);
     
-                // Instead of the deprecated setInterface(addr):
-                // socket.setInterface(addr);
-                // use setNetworkInterface(nif):
-                socket.setNetworkInterface(nif);
-    
-                DatagramPacket packet = new DatagramPacket(
-                    sendData, sendData.length, group, DISCOVERY_PORT);
-                socket.send(packet);
-                socket.leaveGroup(groupAddr, nif);
-            }
+            DatagramPacket packet = new DatagramPacket(
+                sendData, sendData.length, group, DISCOVERY_PORT);
+            socket.send(packet);
     
             socket.close();
         } catch (Exception e) {
