@@ -247,12 +247,13 @@ public class SendFileGUI extends JFrame {
     
     public static void receiveFileProgress(int percent) {
         if (start) {
-            textOfReceive.setVisible(false);
+            textOfReceive.setVisible(true);
             receiveProgressBar.setVisible(true);
             receiveProgressBar.setValue(percent);
         } else {
             receiveProgressBar.setVisible(false);
             textOfReceive.setVisible(false);
+            receiveProgressBar.setValue(0);
         }
     }
 

@@ -380,7 +380,7 @@ public class Main { // 定義 Main 類別
             while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
                 os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
                 os.flush(); // 清空輸出串流
-                sendACK(socket); // 傳送 ACK 訊息以確認接收
+                // sendACK(socket); // 傳送 ACK 訊息以確認接收
                 
                 sent += bytesRead;
                 int percent = (int) ((sent * 100) / total); // 計算傳送進度百分比
