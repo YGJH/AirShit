@@ -429,21 +429,27 @@ public class Main { // 定義 Main 類別
         for (Map.Entry<String, Client> e : clientList.entrySet()) {
             String name = e.getKey();
             Client c = e.getValue();
-            try {
-                InetAddress ia = InetAddress.getByName(c.getIPAddr());
-                // try ICMP ping (or fallback) with 2 s timeout
-                if (!ia.isReachable(2000)) {
-                    dead.add(name);
-                }
-            } catch (IOException ex) {
+            boolean alive = false;
+            try (DatagramSocket ds = new DatagramSocket()) {
+                ds.setSoTimeout(2000);
+                byte[] ping = "HEARTBEAT".getBytes(StandardCharsets.UTF_8);
+                InetAddress addr = InetAddress.getByName(c.getIPAddr());
+                ds.send(new DatagramPacket(ping, ping.length, addr, HEARTBEAT_PORT));
+                byte[] buf = new byte[64];
+                DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                ds.receive(resp);
+                String reply = new String(resp.getData(), 0, resp.getLength(), StandardCharsets.UTF_8);
+                if ("ALIVE".equals(reply)) alive = true;
+            } catch (IOException ignore) {
+                // timeout or error => not alive
+            }
+            if (!alive) {
                 dead.add(name);
             }
         }
-        // remove unreachable clients
         for (String name : dead) {
             clientList.remove(name);
             println("Removed dead client: " + name);
         }
     }
-
 }
