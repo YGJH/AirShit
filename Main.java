@@ -266,7 +266,11 @@ public class Main { // 定義 Main 類別
     }
 
     public static void receiveFile() { // 定義接收檔案的方法
+        SendFileGUI.start = false;
+        SendFileGUI.receiveFileProgress(0);
+
         try { // 嘗試建立 TCP 伺服器以接收連線
+            
             ServerSocket serverSocket = new ServerSocket(client.getTCPPort()); // 建立伺服器並監聽 TCP_PORT
             System.out.println("TCP 伺服器啟動，等待客戶端連線 (端口 " + client.getTCPPort() + ")"); // 輸出伺服器啟動訊息
             while (true) { // 無限迴圈等待客戶端連線
@@ -319,7 +323,7 @@ public class Main { // 定義 Main 類別
                 while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
                     fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
                     totalRead += bytesRead; // 更新已讀取位元組數
-                    sendACK(socket); // 傳送 ACK 訊息以確認接收
+                    // sendACK(socket); // 傳送 ACK 訊息以確認接收
                     int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
                     SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
                 }
@@ -383,20 +387,21 @@ public class Main { // 定義 Main 類別
                 if (callback != null) { // 如果有回呼函式
                     callback.onProgress(percent); // 呼叫回呼函式以更新進度
                 }
-                boolean ackReceived = false; // 初始化 ACK 接收狀態
-                while(recevieACK(socket) == false && cnt < 3 && ackReceived == false) { // 等待接收者的 ACK 回覆
-                    println("Waiting for ACK..."); // 輸出等待 ACK 訊息
-                    Thread.sleep(300); // 延遲等待 300 毫秒
-                    cnt++; // 增加等待次數計數器
-                }
-                if(cnt < 3) {
-                    ackReceived = true; // 如果收到 ACK，則更新狀態
-                } else { // 如果三次嘗試後仍未收到 ACK
-                    System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
-                    socket.close(); // 關閉連線
-                    return false; // 返回失敗
-                }
-                cnt = 0; // 重置等待次數計數器
+                // boolean ackReceived = false; // 初始化 ACK 接收狀態
+                // while(recevieACK(socket) == false && cnt < 3 && ackReceived == false) { // 等待接收者的 ACK 回覆
+                    // println("Waiting for ACK..."); // 輸出等待 ACK 訊息
+                    // Thread.sleep(300); // 延遲等待 300 毫秒
+                    // cnt++; // 增加等待次數計數器
+                // }
+                // if(cnt < 3) {
+                    // ackReceived = true; // 如果收到 ACK，則更新狀態
+
+                // } else { // 如果三次嘗試後仍未收到 ACK
+                    // System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
+                    // socket.close(); // 關閉連線
+                    // return false; // 返回失敗
+                // }
+                // cnt = 0; // 重置等待次數計數器
 
             }
             if (callback != null) callback.onComplete(true);

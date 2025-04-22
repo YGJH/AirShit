@@ -19,7 +19,8 @@ public class SendFileGUI extends JFrame {
     private JButton refreshButton;
     private File selectedFile;
     private Timer refreshTimer;
-    
+    public static JLabel textOfReceive;
+
     // Modern color scheme
     private static JProgressBar receiveProgressBar;
 
@@ -48,26 +49,6 @@ public class SendFileGUI extends JFrame {
         // Setup auto-refresh timer (every 5 seconds)
         refreshTimer = new Timer(5000, e -> refreshClientList());
         refreshTimer.start();
-        // new Thread(() -> Main.receiveFile(new FileTransferCallback() {
-        //     @Override
-        //     public void onProgress(int percent) {
-        //         SwingUtilities.invokeLater(() -> {
-        //             receiveProgressBar.setVisible(true);
-        //             receiveProgressBar.setValue(percent);
-        //         });
-        //     }
-        //     @Override
-        //     public void onComplete(boolean success) {
-        //         SwingUtilities.invokeLater(() -> {
-        //             if (success) {
-        //                 log("File received successfully.");
-        //             } else {
-        //                 log("File receive failed.");
-        //             }
-        //             receiveProgressBar.setVisible(false);
-        //         });
-        //     }
-        // })).start();
     
         setVisible(true);
     }
@@ -158,7 +139,9 @@ public class SendFileGUI extends JFrame {
         receiveProgressBar.setStringPainted(true);
         receiveProgressBar.setVisible(false);
         // add it somewhere in your layout, e.g. below progressBar:
-        sendPanel.add(new JLabel("Receive Progress:"), BorderLayout.CENTER);
+        textOfReceive = new JLabel("Receive Progress:");
+        textOfReceive.setVisible(true);
+        sendPanel.add(textOfReceive, BorderLayout.CENTER);
         sendPanel.add(receiveProgressBar, BorderLayout.SOUTH);
     
         // Log area
@@ -264,9 +247,12 @@ public class SendFileGUI extends JFrame {
     
     public static void receiveFileProgress(int percent) {
         if (start) {
+            textOfReceive.setVisible(false);
             receiveProgressBar.setVisible(true);
-        } else {
             receiveProgressBar.setValue(percent);
+        } else {
+            receiveProgressBar.setVisible(false);
+            textOfReceive.setVisible(false);
         }
     }
 
@@ -286,7 +272,7 @@ public class SendFileGUI extends JFrame {
         // Start a background thread for file transfer
         new Thread(() -> {
             Main.sendFileToUser(
-                selectedClient.getIPAddr(),
+                selectedClient.getUserName(),
                 selectedFile,
                 new FileTransferCallback() {
                     @Override
