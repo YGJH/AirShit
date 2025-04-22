@@ -1,3 +1,4 @@
+#!/bin/bash
 clear
 if [ "$1" = "push" ]; then
     clear
