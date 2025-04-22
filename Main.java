@@ -4,7 +4,6 @@ import java.net.*; // 引入網路相關類別
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
-import java.util.Random;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -392,21 +391,6 @@ public class Main { // 定義 Main 類別
                 if (callback != null) { // 如果有回呼函式
                     callback.onProgress(percent); // 呼叫回呼函式以更新進度
                 }
-                // boolean ackReceived = false; // 初始化 ACK 接收狀態
-                // while(recevieACK(socket) == false && cnt < 3 && ackReceived == false) { // 等待接收者的 ACK 回覆
-                    // println("Waiting for ACK..."); // 輸出等待 ACK 訊息
-                    // Thread.sleep(300); // 延遲等待 300 毫秒
-                    // cnt++; // 增加等待次數計數器
-                // }
-                // if(cnt < 3) {
-                    // ackReceived = true; // 如果收到 ACK，則更新狀態
-
-                // } else { // 如果三次嘗試後仍未收到 ACK
-                    // System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
-                    // socket.close(); // 關閉連線
-                    // return false; // 返回失敗
-                // }
-                // cnt = 0; // 重置等待次數計數器
 
             }
             if (callback != null) callback.onComplete(true);
@@ -440,54 +424,26 @@ public class Main { // 定義 Main 類別
         }
     }
 
-
     public static void checkAlive() {
-        for(String key : clientList.keySet()) { // 遍歷客戶端哈希表
-            Client tempClient = clientList.get(key); // 取得客戶端資訊
-            try{
-
-                DatagramSocket socket = new DatagramSocket();
-                byte[] pingData = ("PING:"+client.getUserName()).getBytes();
-                String targetAddress = tempClient.getIPAddr();  
-                int targetPort = DISCOVERY_PORT; // 取得客戶端 UDP 端口號
-                DatagramPacket pingPacket = new DatagramPacket(pingData, pingData.length, InetAddress.getByName(targetAddress), targetPort);
-                // println("ping " + targetAddress + ":" + targetPort); // 輸出 Ping 訊息
-                // 發送 Ping 封包
-                try {
-                    socket.send(pingPacket);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    socket.close();
-                    continue;
+        ArrayList<String> dead = new ArrayList<>();
+        for (Map.Entry<String, Client> e : clientList.entrySet()) {
+            String name = e.getKey();
+            Client c = e.getValue();
+            try {
+                InetAddress ia = InetAddress.getByName(c.getIPAddr());
+                // try ICMP ping (or fallback) with 2 s timeout
+                if (!ia.isReachable(2000)) {
+                    dead.add(name);
                 }
-                
-                // 設定超時時間
-                socket.setSoTimeout(3000); // 3秒
-                
-                byte[] buffer = new byte[1024];
-                DatagramPacket responsePacket = new DatagramPacket(buffer, buffer.length);
-                try {
-                    socket.receive(responsePacket);
-                    String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
-                    if ("PONG".equals(response)) {
-                        // System.out.println("對方在線上！");
-                    } else if("PANG".equals(response)) {
-                        responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), DISCOVERY_PORT); // 回應新客戶端
-                    }
-                } catch (SocketTimeoutException e) {
-                    // 超時，表示對方可能已離線
-                    clientList.remove(key); // 移除已離線的客戶端
-                    // System.out.println("未收到回覆，對方可能已離線");
-                }
-                socket.close();
-            } catch (Exception e) {
-                e.printStackTrace(); // 列印例外資訊
-                clientList.remove(key); // 移除已離線的客戶端
-                // System.out.println("對方可能已離線，移除客戶端: " + key); // 輸出移除客戶端訊息
-                continue;
+            } catch (IOException ex) {
+                dead.add(name);
             }
         }
+        // remove unreachable clients
+        for (String name : dead) {
+            clientList.remove(name);
+            println("Removed dead client: " + name);
+        }
     }
-
 
 }
