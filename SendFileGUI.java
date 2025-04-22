@@ -141,9 +141,23 @@ public class SendFileGUI extends JFrame {
         // add it somewhere in your layout, e.g. below progressBar:
         textOfReceive = new JLabel("Receive Progress:");
         textOfReceive.setVisible(true);
-        sendPanel.add(textOfReceive, BorderLayout.CENTER);
-        sendPanel.add(receiveProgressBar, BorderLayout.SOUTH);
-    
+        
+        JPanel recvPanel = new JPanel(new BorderLayout(5,5));
+        recvPanel.setBackground(BACKGROUND_COLOR);
+        recvPanel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(189,195,199)),
+            "Receive Progress",
+            TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR));
+        textOfReceive = new JLabel("Receiving:");
+        textOfReceive.setVisible(false);
+        recvPanel.add(textOfReceive, BorderLayout.NORTH);
+        receiveProgressBar = new JProgressBar();
+        receiveProgressBar.setStringPainted(true);
+        receiveProgressBar.setVisible(false);
+        recvPanel.add(receiveProgressBar, BorderLayout.CENTER);
+        // add this panel below your sendPanel in the controlPanel
+        controlPanel.add(recvPanel);
         // Log area
         JPanel logPanel = new JPanel(new BorderLayout());
         logPanel.setBackground(BACKGROUND_COLOR);
@@ -246,17 +260,18 @@ public class SendFileGUI extends JFrame {
     public static boolean start;
     
     public static void receiveFileProgress(int percent) {
-        if (start) {
-            textOfReceive.setVisible(true);
-            receiveProgressBar.setVisible(true);
-            receiveProgressBar.setValue(percent);
-        } else {
-            receiveProgressBar.setVisible(false);
-            textOfReceive.setVisible(false);
-            receiveProgressBar.setValue(0);
-        }
+        SwingUtilities.invokeLater(() -> {
+            if (!start) {
+                textOfReceive.setVisible(false);
+                receiveProgressBar.setVisible(false);
+                receiveProgressBar.setValue(0);
+            } else {
+                textOfReceive.setVisible(true);
+                receiveProgressBar.setVisible(true);
+                receiveProgressBar.setValue(percent);
+            }
+        });
     }
-
     private void sendFile() {
         if (clientList.getSelectedValue() == null || selectedFile == null) {
             return;

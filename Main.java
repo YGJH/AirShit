@@ -315,23 +315,30 @@ public class Main { // 定義 Main 類別
                 File saveFile = fileChooser.getSelectedFile(); // 取得使用者選擇的儲存檔案
                 sendACK(socket); // 傳送 ACK 訊息以通知傳送者開始資料傳送
                 SendFileGUI.receiveFileProgress(0); // 更新接收檔案進度
+                SendFileGUI.start = true; // 更新 GUI 狀態
                 FileOutputStream fos = new FileOutputStream(saveFile); // 建立檔案輸出串流以寫入接收資料
                 InputStream is = socket.getInputStream(); // 取得連線的輸入串流
                 byte[] buffer = new byte[100005]; // 建立資料緩衝區
                 int bytesRead; // 定義讀取位元組數變數
                 long totalRead = 0; // 初始化已讀取位元組總數
-                while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
-                    fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
-                    totalRead += bytesRead; // 更新已讀取位元組數
-                    // sendACK(socket); // 傳送 ACK 訊息以確認接收
-                    int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
-                    SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
+                try {
+
+                    while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
+                        fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
+                        totalRead += bytesRead; // 更新已讀取位元組數
+                        // sendACK(socket); // 傳送 ACK 訊息以確認接收
+                        int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
+                        SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
+                    }
+
+                    println("接收檔案完成"); // 輸出檔案接收完成訊息
+                } catch (IOException e) { // 捕捉 I/O 異常
+                    saveFile.delete();
+                    System.out.println("檔案接收失敗，已刪除檔案"); // 輸出檔案接收失敗訊息
                 }
                 
                 fos.close(); // 關閉檔案輸出串流
                 socket.close(); // 關閉 TCP 連線
-                System.out.println("file received and saved to " + saveFile.getAbsolutePath()); // 輸出壓縮檔案儲存位置      
-                System.out.println("檔案接收完成"); // 輸出檔案接收完成訊息
                 SendFileGUI.start = false; // 更新 GUI 狀態
             }
 
