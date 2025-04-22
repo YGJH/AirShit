@@ -136,7 +136,6 @@ public class Main { // 定義 Main 類別
 
 
                 byte[] buffer = new byte[1024];
-                // *** CHANGE THIS: Update log message ***
                 System.out.println("Multicast listener started on port: " + DISCOVERY_PORT);
 
                 while (true) {
@@ -329,8 +328,7 @@ public class Main { // 定義 Main 類別
         }
     }    
 
-    
-    public static boolean sendFileToUser(String selectedUserName , File file) { // 定義傳送檔案給指定使用者的方法
+    public static boolean sendFileToUser(String selectedUserName , File file , FileTransferCallback callback) { // 定義傳送檔案給指定使用者的方法
         System.out.println("Looking for client with IP: " + selectedUserName);
 
         Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
@@ -365,12 +363,37 @@ public class Main { // 定義 Main 類別
             
             FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
             OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
-            byte[] buffer = new byte[10005]; // 建立傳輸用緩衝區
+            byte[] buffer = new byte[100005]; // 建立傳輸用緩衝區
             int bytesRead; // 定義讀取位元組數變數
+            int pct = 0;
+            int total = (int)originalFile.length(); // 取得檔案總大小
+            int sent = 0; // 初始化已傳送位元組數
+
             while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
                 os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
                 os.flush(); // 清空輸出串流
+                sent += bytesRead; // 更新已傳送位元組數
+                pct = (int)(sent * 100 / total);
+                sendACK(socket); // 傳送 ACK 訊息以確認接收
+
+                if (callback != null) callback.onProgress(pct);
+
+                boolean ackReceived = false; // 初始化 ACK 接收狀態
+                while(recevieACK(socket) == false && cnt < 3 && ackReceived == false) { // 等待接收者的 ACK 回覆
+                    println("Waiting for ACK..."); // 輸出等待 ACK 訊息
+                    Thread.sleep(300); // 延遲等待 300 毫秒
+                    cnt++; // 增加等待次數計數器
+                }
+                if(cnt < 3) {
+                    ackReceived = true; // 如果收到 ACK，則更新狀態
+                } else { // 如果三次嘗試後仍未收到 ACK
+                    System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
+                    socket.close(); // 關閉連線
+                    return false; // 返回失敗
+                }
             }
+            if (callback != null) callback.onComplete(true);
+            sendStatus.set(SEND_STATUS.SEND_OK); // 更新傳送狀態為正常結束
             fis.close(); // 關閉檔案輸入串流
             socket.close(); // 關閉 TCP 連線
             System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息

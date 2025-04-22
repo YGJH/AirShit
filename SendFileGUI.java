@@ -231,7 +231,7 @@ public class SendFileGUI extends JFrame {
             log("File selected: " + selectedFile.getName());
         }
     }
-    
+
     private void sendFile() {
         if (clientList.getSelectedValue() == null || selectedFile == null) {
             return;
@@ -247,33 +247,30 @@ public class SendFileGUI extends JFrame {
         
         // Start a background thread for file transfer
         new Thread(() -> {
-            try {
-                // Simulate progress updates (in a real implementation, you'd get actual progress)
-                // for (int i = 0; i <= 100; i += 10) {
-                //     final int progress = i;
-                //     SwingUtilities.invokeLater(() -> progressBar.setValue(progress));
-                //     Thread.sleep(150);
-                // }
-                
-                // Do the actual file send
-                boolean success = Main.sendFileToUser(selectedClient.getUserName(), selectedFile);                // Update UI based on result
-                SwingUtilities.invokeLater(() -> {
-                    if (success) {
-                        log("File sent successfully to " + selectedClient.getUserName());
-                    } else {
-                        log("Failed to send file to " + selectedClient.getUserName());
+            Main.sendFileToUser(
+                selectedClient.getIPAddr(),
+                selectedFile,
+                new FileTransferCallback() {
+                    @Override
+                    public void onProgress(int percent) {
+                        SwingUtilities.invokeLater(() ->
+                            progressBar.setValue(percent)
+                        );
                     }
-                    progressBar.setVisible(false);
-                    updateSendButtonState();
-                });
-                
-            } catch (Exception e) {
-                SwingUtilities.invokeLater(() -> {
-                    log("Error: " + e.getMessage());
-                    progressBar.setVisible(false);
-                    updateSendButtonState();
-                });
-            }
+                    @Override
+                    public void onComplete(boolean success) {
+                        SwingUtilities.invokeLater(() -> {
+                            if (success) {
+                                log("File sent successfully to " + selectedClient.getUserName());
+                            } else {
+                                log("Failed to send file to " + selectedClient.getUserName());
+                            }
+                            progressBar.setVisible(false);
+                            updateSendButtonState();
+                        });
+                    }
+                }
+            );
         }).start();
     }
     
