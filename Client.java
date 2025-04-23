@@ -9,10 +9,7 @@ class Client {
     private String OS;
     public Client(String IPAddr , String userName, int TCP_PORT , int UDP_PORT ,  String os) {
         this.IPAddr = IPAddr;
-        if(userName.contains("-")) {
-            userName.replaceAll("-", "_");
-        }
-        this.USER_NAME = userName;
+        this.USER_NAME = userName.replaceAll("-", "_");
         this.TCP_PORT = TCP_PORT;
         this.UDP_PORT = UDP_PORT;
         this.OS = os;
@@ -31,9 +28,7 @@ class Client {
         this.IPAddr = IPAddr;
     }
     public void setUserName(String userName) {
-        if(userName.contains("-")) {
-            userName.replaceAll("-", "_");
-        }
+        userName = userName.replaceAll("-", "_");
         this.USER_NAME = userName;
     }
 
@@ -80,7 +75,7 @@ class Client {
     }
     
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
-        if(USER_NAME.contains("-")) USER_NAME.replaceAll("-", "_");
+        USER_NAME = USER_NAME.replaceAll("-", "_");
         return IPAddr + "-" + USER_NAME + "-" + TCP_PORT + "-" + UDP_PORT + "-" + OS; // 組合並返回 Hello 訊息字串
     }
 }

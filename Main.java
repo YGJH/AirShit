@@ -153,9 +153,9 @@ public class Main { // 定義 Main 類別
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-
                     // --- Process packet ---
                     String message = new String(packet.getData(), 0, packet.getLength());
+                    println(message);
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
@@ -276,6 +276,7 @@ public class Main { // 定義 Main 類別
                     DatagramPacket recv = new DatagramPacket(buf, buf.length);
                     sock.receive(recv);
                     String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
+                    println(msg);
                     if ((msg).startsWith("HEARTBEAT-")) {
                         String[] parts = msg.split("-"); // use dash as delimiter
                         if (clientList.containsKey(parts[1]) == false) {
