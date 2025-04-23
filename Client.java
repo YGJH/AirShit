@@ -80,6 +80,7 @@ class Client {
     }
     
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
+        if(USER_NAME.contains("-")) USER_NAME.replaceAll("-", "_");
         return IPAddr + "-" + USER_NAME + "-" + TCP_PORT + "-" + UDP_PORT + "-" + OS; // 組合並返回 Hello 訊息字串
     }
 }
