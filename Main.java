@@ -5,6 +5,9 @@ import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 
 public class Main { // 定義 Main 類別
@@ -295,7 +298,7 @@ public class Main { // 定義 Main 類別
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            try{
+            try {
                 Thread.sleep(2000 + random.nextInt(1000)); // Sleep for 1 second before next heartbeat
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -387,68 +390,136 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) { // 定義傳送檔案給指定使用者的方法
+    public static boolean sendFileToUser(String selectedUserName, File[] files, FileTransferCallback callback) {
+        if (files == null || files.length == 0)
+            return false;
 
-        Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
+        Client targetClient = clientList.get(selectedUserName);
+        if (targetClient == null) {
+            System.out.println("Target client not found: " + selectedUserName);
+            return false;
+        }
 
-        try { // 嘗試開始檔案傳送程序
-            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
-                System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
-                return false; // 返回失敗
+        try {
+            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) {
+                System.out.println("Currently, a file is being transferred.");
+                return false;
             }
-            println(selectedUserName);
-            // Compress the file before sending
-            File originalFile = file;
-            // File compressedFile = File.createTempFile("compressed_", ".gz");
 
-            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort()); // 建立與接收者之間的 TCP 連線
-            System.out.println("Starting to send file: " + originalFile.getName() + " to " + targetClient.getIPAddr()
-                    + ":" + targetClient.getTCPPort()); // 輸出開始傳送檔案訊息
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true); // 建立輸出串流以傳送檔案標頭
-            out.println(originalFile.getName() + ":" + originalFile.length()); // 傳送檔案名稱與大小
-            out.flush(); // 清空輸出串流
+            // Prepare file to send - create temp zip for multiple files or directories
+            File fileToSend;
+            boolean isTempZip = false;
 
-            short cnt = 0; // 初始化等待 ACK 的次數
-            while (recevieACK(socket) == false && cnt < 3) { // 嘗試等待 ACK 回覆，最多三次
-                println("Waiting for ACK..."); // 輸出等待 ACK 訊息
-                Thread.sleep(300); // 延遲等待 300 毫秒
-                cnt++; // 增加等待次數計數器
-            }
-            if (cnt == 3) { // 如果三次嘗試後仍未收到 ACK
-                System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
-                socket.close(); // 關閉連線
-                return false; // 返回失敗
-            }
-            FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
-            OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
-            byte[] buffer = new byte[100005]; // 建立傳輸用緩衝區
-            int bytesRead; // 定義讀取位元組數變數
-            long total = originalFile.length();
-            long sent = 0;
-            while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
-                os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
-                os.flush(); // 清空輸出串流
-                // sendACK(socket); // 傳送 ACK 訊息以確認接收
+            if (files.length == 1 && files[0].isFile()) {
+                // Single file - use directly
+                fileToSend = files[0];
+            } else {
+                // Multiple files or directories - create ZIP archive
+                fileToSend = File.createTempFile("airshit_", ".zip");
+                isTempZip = true;
 
-                sent += bytesRead;
-                int percent = (int) ((sent * 100) / total); // 計算傳送進度百分比
-                if (callback != null) { // 如果有回呼函式
-                    callback.onProgress(percent); // 呼叫回呼函式以更新進度
+                try (ZipOutputStream zipOut = new ZipOutputStream(new FileOutputStream(fileToSend))) {
+                    for (File file : files) {
+                        addToZip(file, file.getName(), zipOut);
+                    }
                 }
-
+                System.out.println("Created temporary ZIP: " + fileToSend.getAbsolutePath());
             }
+
+            // Connect and send file header
+            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort());
+            System.out.println("Starting to send file: " + fileToSend.getName() + " to " +
+                    targetClient.getIPAddr() + ":" + targetClient.getTCPPort());
+
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            out.println(fileToSend.getName() + ":" + fileToSend.length());
+            out.flush();
+
+            // Wait for ACK
+            short cnt = 0;
+            while (recevieACK(socket) == false && cnt < 3) {
+                println("Waiting for ACK...");
+                Thread.sleep(300);
+                cnt++;
+            }
+            if (cnt == 3) {
+                System.out.println("Failed to receive ACK, file sending aborted");
+                socket.close();
+                if (isTempZip)
+                    fileToSend.delete();
+                return false;
+            }
+
+            // Send file content
+            try (FileInputStream fis = new FileInputStream(fileToSend)) {
+                OutputStream os = socket.getOutputStream();
+                byte[] buffer = new byte[100005];
+                int bytesRead;
+                long total = fileToSend.length();
+                long sent = 0;
+
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    os.write(buffer, 0, bytesRead);
+                    os.flush();
+
+                    sent += bytesRead;
+                    int percent = (int) ((sent * 100) / total);
+                    if (callback != null) {
+                        callback.onProgress(percent);
+                    }
+                }
+            }
+
             if (callback != null)
                 callback.onComplete(true);
+            socket.close();
+            System.out.println("File sent successfully");
 
-            fis.close(); // 關閉檔案輸入串流
-            socket.close(); // 關閉 TCP 連線
-            System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息
+            // Clean up temp file if created
+            if (isTempZip)
+                fileToSend.delete();
 
-            return true; // 返回成功
-        } catch (Exception e) { // 捕捉例外
-            e.printStackTrace(); // 列印例外資訊
-            return false; // 返回失敗
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
         }
+    }
+
+    // Helper method for creating ZIP archives
+    private static void addToZip(File file, String entryPath, ZipOutputStream zipOut) throws IOException {
+        if (file.isDirectory()) {
+            if (entryPath.endsWith("/")) {
+                zipOut.putNextEntry(new ZipEntry(entryPath));
+                zipOut.closeEntry();
+            } else {
+                zipOut.putNextEntry(new ZipEntry(entryPath + "/"));
+                zipOut.closeEntry();
+            }
+
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File childFile : children) {
+                    addToZip(childFile, entryPath + "/" + childFile.getName(), zipOut);
+                }
+            }
+        } else {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                ZipEntry zipEntry = new ZipEntry(entryPath);
+                zipOut.putNextEntry(zipEntry);
+
+                byte[] bytes = new byte[1024];
+                int length;
+                while ((length = fis.read(bytes)) >= 0) {
+                    zipOut.write(bytes, 0, length);
+                }
+            }
+        }
+    }
+
+    // Overload for backward compatibility
+    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) {
+        return sendFileToUser(selectedUserName, new File[] { file }, callback);
     }
 
     public static boolean recevieACK(Socket socket) {
