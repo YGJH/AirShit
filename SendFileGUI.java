@@ -17,7 +17,7 @@ public class SendFileGUI extends JFrame {
     private JTextArea logArea;
     private JButton sendButton;
     private JButton refreshButton;
-    private File selectedFile;
+    private File[] selectedFiles;  // Replace the existing selectedFile field with this array
     private Timer refreshTimer;
     public static JLabel textOfReceive;
 
@@ -139,8 +139,8 @@ public class SendFileGUI extends JFrame {
         receiveProgressBar.setStringPainted(true);
         receiveProgressBar.setVisible(false);
         // add it somewhere in your layout, e.g. below progressBar:
-        textOfReceive = new JLabel("Receive Progress:");
-        textOfReceive.setVisible(true);
+        // textOfReceive = new JLabel("Receive Progress:");
+        // textOfReceive.setVisible(true);
         
         JPanel recvPanel = new JPanel(new BorderLayout(5,5));
         recvPanel.setBackground(BACKGROUND_COLOR);
@@ -248,19 +248,36 @@ public class SendFileGUI extends JFrame {
     
     private void selectFile() {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Select File to Send");
+        chooser.setDialogTitle("Select Files to Send");
+        
+        // Enable multi-selection and allow directories
+        chooser.setMultiSelectionEnabled(true); 
+        chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
         
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            selectedFile = chooser.getSelectedFile();
-            selectedFileLabel.setText(selectedFile.getName() + " (" + formatFileSize(selectedFile.length()) + ")");
+            selectedFiles = chooser.getSelectedFiles();
+            
+            if (selectedFiles.length == 1) {
+                File file = selectedFiles[0];
+                selectedFileLabel.setText(file.getName() + (file.isDirectory() ? " (directory)" : 
+                    " (" + formatFileSize(file.length()) + ")"));
+                log("Selected: " + file.getName());
+            } else {
+                selectedFileLabel.setText(selectedFiles.length + " items selected");
+                log("Selected " + selectedFiles.length + " files/directories");
+            }
+            
             updateSendButtonState();
-            log("File selected: " + selectedFile.getName());
         }
     }
-    public static boolean start;
+    
+        public static boolean start;
     
     public static void receiveFileProgress(int percent) {
         SwingUtilities.invokeLater(() -> {
+            if(textOfReceive == null || receiveProgressBar == null) {
+                return;
+            }
             if (!start) {
                 textOfReceive.setVisible(false);
                 receiveProgressBar.setVisible(false);
@@ -273,12 +290,12 @@ public class SendFileGUI extends JFrame {
         });
     }
     private void sendFile() {
-        if (clientList.getSelectedValue() == null || selectedFile == null) {
+        if (clientList.getSelectedValue() == null || selectedFiles == null || selectedFiles.length == 0) {
             return;
         }
         
         Client selectedClient = clientList.getSelectedValue();
-        log("Sending file to " + selectedClient.getUserName() + "...");
+        log("Sending files to " + selectedClient.getUserName() + "...");
         
         // Disable send button during transfer
         sendButton.setEnabled(false);
@@ -289,7 +306,7 @@ public class SendFileGUI extends JFrame {
         new Thread(() -> {
             Main.sendFileToUser(
                 selectedClient.getUserName(),
-                selectedFile,
+                selectedFiles,  // Pass the array of files
                 new FileTransferCallback() {
                     @Override
                     public void onProgress(int percent) {
@@ -301,9 +318,9 @@ public class SendFileGUI extends JFrame {
                     public void onComplete(boolean success) {
                         SwingUtilities.invokeLater(() -> {
                             if (success) {
-                                log("File sent successfully to " + selectedClient.getUserName());
+                                log("Files sent successfully to " + selectedClient.getUserName());
                             } else {
-                                log("Failed to send file to " + selectedClient.getUserName());
+                                log("Failed to send files to " + selectedClient.getUserName());
                             }
                             progressBar.setVisible(false);
                             updateSendButtonState();
@@ -313,13 +330,12 @@ public class SendFileGUI extends JFrame {
             );
         }).start();
     }
-    
+        
     private void updateSendButtonState() {
         boolean clientSelected = clientList.getSelectedValue() != null;
-        boolean fileSelected = selectedFile != null;
-        sendButton.setEnabled(clientSelected && fileSelected);
+        boolean filesSelected = selectedFiles != null && selectedFiles.length > 0;
+        sendButton.setEnabled(clientSelected && filesSelected);
     }
-    
     private void log(String message) {
         String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new Date());
         logArea.append("[" + timestamp + "] " + message + "\n");

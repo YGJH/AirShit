@@ -5,6 +5,11 @@ import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Executors;
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 
 public class Main { // 定義 Main 類別
@@ -22,6 +27,7 @@ public class Main { // 定義 Main 類別
 
     public static final int HEARTBEAT_PORT = 50001; // pick any free port
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
+    private static final int CHUNK_SIZE = 64 * 1024 * 1024; // 64KB per chunk
 
     static {
         String userName;
@@ -35,6 +41,8 @@ public class Main { // 定義 Main 類別
     }
 
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
+    private static final ExecutorService sendExecutor = Executors.newCachedThreadPool();
+    private static final ExecutorService recvExecutor = Executors.newFixedThreadPool(4);
 
     public static Hashtable<String, Client> getClientPorts() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
@@ -46,6 +54,41 @@ public class Main { // 定義 Main 類別
     }
 
     private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
+    private static void sendFileInChunks(Socket socket, File file, FileTransferCallback callback) throws Exception {
+        String fileName = file.getName();
+        long fileLen = file.length();
+        int totalChunks = (int)((fileLen + CHUNK_SIZE -1)/CHUNK_SIZE);
+
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        InputStream fis = new FileInputStream(file);
+        byte[] buf = new byte[CHUNK_SIZE];
+        int read;
+        int idx = 0;
+        while ((read = fis.read(buf)) != -1) {
+            // 1) send a 1‑line header for this chunk
+            // format: fileName:chunkIndex:totalChunks:chunkSize
+            out.println(String.join(":", fileName,
+                                     String.valueOf(idx),
+                                     String.valueOf(totalChunks),
+                                     String.valueOf(read)));
+            out.flush();
+
+            // 2) send the raw bytes
+            socket.getOutputStream().write(buf, 0, read);
+            socket.getOutputStream().flush();
+
+            // 3) wait for ACK
+            while (!recevieACK(socket)) { /* spin until ACK */ }
+
+            idx++;
+        }
+        fis.close();
+
+        // final callback
+        if (callback != null) callback.onComplete(true);
+        socket.close();
+    }
+
 
     public static String getNonLoopbackIP() {
         try {
@@ -295,7 +338,7 @@ public class Main { // 定義 Main 類別
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            try{
+            try {
                 Thread.sleep(2000 + random.nextInt(1000)); // Sleep for 1 second before next heartbeat
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -309,8 +352,8 @@ public class Main { // 定義 Main 類別
 
         try { // 嘗試建立 TCP 伺服器以接收連線
 
-            ServerSocket serverSocket = new ServerSocket(client.getTCPPort()); // 建立伺服器並監聽 TCP_PORT
-            System.out.println("TCP 伺服器啟動，等待客戶端連線 (端口 " + client.getTCPPort() + ")"); // 輸出伺服器啟動訊息
+            ServerSocket serverSocket = new ServerSocket(client.getTCPPort());
+            System.out.println("TCP 伺服器啟動，等待客戶端連線 (端口 " + client.getTCPPort() + ")");
             while (true) { // 無限迴圈等待客戶端連線
                 Socket socket = serverSocket.accept(); // 接受客戶端連線請求
                 System.out.println("接收到來自 " + socket.getInetAddress() + " 的連線請求"); // 輸出連線來源資訊
@@ -325,7 +368,7 @@ public class Main { // 定義 Main 類別
                 }
                 String[] parts = header.split(":"); // use pipe as delimiter
 
-                if (parts.length != 2) {
+                if (parts.length != 3) {
                     System.out.println("Invalid header. Closing connection.");
                     socket.close();
                     continue;
@@ -333,6 +376,7 @@ public class Main { // 定義 Main 類別
                 // System.out.println("Header parts: " + header.split("|")[0] ); // 輸出標頭分割後的資訊
                 String fileName = parts[0];
                 long fileSize = Long.parseLong(parts[1]);
+                boolean isFolder = parts[2].equals("isFolder");
                 int option = JOptionPane.showConfirmDialog(null,
                         "接受檔案傳輸?\n檔案名稱: " + fileName + "\n檔案大小: " + fileSize + " bytes",
                         "檔案傳輸",
@@ -342,42 +386,45 @@ public class Main { // 定義 Main 類別
                     socket.close(); // 關閉連線
                     continue; // 繼續等待下一個連線
                 }
-                JFileChooser fileChooser = new JFileChooser(); // 建立檔案選取器
-                fileChooser.setSelectedFile(new File(fileName)); // 設定預設檔案名稱
-                int chooserResult = fileChooser.showSaveDialog(null); // 顯示儲存檔案對話框
-                if (chooserResult != JFileChooser.APPROVE_OPTION) { // 如果使用者取消選取
-                    System.out.println("User cancelled save dialog."); // 輸出取消訊息
-                    socket.close(); // 關閉連線
-                    continue; // 繼續等待下一個連線
+                File saveFile ; // 建立檔案物件以儲存接收的檔案
+                if(isFolder) {
+                    // 如果是資料夾，則建立資料夾
+                    JFileChooser fileChooser = new JFileChooser(); // 建立檔案選擇器
+                    fileChooser.setDialogTitle("儲存檔案"); // 設定對話框標題
+                    fileChooser.setSelectedFile(new File(fileName)); // 設定預設檔案名稱
+                    File folder = FileChooserGUI.chooseDirectory();
+                    if (!folder.exists()) {
+                        folder.mkdirs(); // 建立資料夾
+                    }
+                    saveFile = new File(folder, fileName); // 設定儲存檔案路徑
+                } else {
+                    // 如果是檔案，則顯示儲存檔案對話框
+                    JFileChooser fileChooser = new JFileChooser(); // 建立檔案選擇器
+                    fileChooser.setDialogTitle("儲存檔案"); // 設定對話框標題
+                    fileChooser.setSelectedFile(new File(fileName)); // 設定預設檔案名稱
+                    int userSelection = fileChooser.showSaveDialog(null); // 顯示儲存檔案對話框
+                    if (userSelection != JFileChooser.APPROVE_OPTION) { // 如果使用者取消選擇
+                        System.out.println("使用者取消儲存檔案"); // 輸出取消訊息
+                        socket.close(); // 關閉連線
+                        continue; // 繼續等待下一個連線
+                    }
+                    saveFile = fileChooser.getSelectedFile(); // 取得使用者選擇的儲存檔案
                 }
-                File saveFile = fileChooser.getSelectedFile(); // 取得使用者選擇的儲存檔案
                 sendACK(socket); // 傳送 ACK 訊息以通知傳送者開始資料傳送
                 SendFileGUI.receiveFileProgress(0); // 更新接收檔案進度
                 SendFileGUI.start = true; // 更新 GUI 狀態
-                FileOutputStream fos = new FileOutputStream(saveFile); // 建立檔案輸出串流以寫入接收資料
-                InputStream is = socket.getInputStream(); // 取得連線的輸入串流
-                byte[] buffer = new byte[100005]; // 建立資料緩衝區
-                int bytesRead; // 定義讀取位元組數變數
-                long totalRead = 0; // 初始化已讀取位元組總數
-                try {
-
-                    while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
-                        fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
-                        totalRead += bytesRead; // 更新已讀取位元組數
-                        // sendACK(socket); // 傳送 ACK 訊息以確認接收
-                        int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
-                        SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
+                
+                recvExecutor.submit(() -> {
+                    try {
+                        handleIncomingChunks(socket); // 處理接收的檔案
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        try { socket.close(); } catch(Exception ignore){}
                     }
+                });
 
-                    println("接收檔案完成"); // 輸出檔案接收完成訊息
-                } catch (IOException e) { // 捕捉 I/O 異常
-                    saveFile.delete();
-                    saveFile.delete();
-                    System.out.println("檔案接收失敗，已刪除檔案"); // 輸出檔案接收失敗訊息
-                }
-
-                fos.close(); // 關閉檔案輸出串流
-                socket.close(); // 關閉 TCP 連線
+                sendStatus.set(SEND_STATUS.SEND_OK); // 更新傳送狀態
+                
                 SendFileGUI.start = false; // 更新 GUI 狀態
                 SendFileGUI.receiveFileProgress(0); // 重置接收檔案進度
             }
@@ -386,69 +433,155 @@ public class Main { // 定義 Main 類別
             e.printStackTrace(); // 列印例外資訊
         }
     }
+    private static void handleIncomingChunks(Socket socket) throws Exception {
+        BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(socket.getInputStream()));
+        AtomicInteger receivedCount = new AtomicInteger(0);
+        int totalChunks = -1;
+        String fileName = null;
 
-    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) { // 定義傳送檔案給指定使用者的方法
+        // loop until we've got all chunks
+        while (true) {
+            String hdr = reader.readLine();
+            if (hdr == null) throw new IOException("Unexpected EOF");
+            // parse header
+            String[] parts = hdr.split(":");
+            // parts = {fileName, chunkIdx, totalChunks, chunkSize}
+            fileName    = parts[0];
+            int idx     = Integer.parseInt(parts[1]);
+            totalChunks = Integer.parseInt(parts[2]);
+            int size    = Integer.parseInt(parts[3]);
 
-        Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
-
-        try { // 嘗試開始檔案傳送程序
-            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
-                System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
-                return false; // 返回失敗
+            // read exactly size bytes
+            byte[] buf = new byte[size];
+            int pos = 0;
+            InputStream is = socket.getInputStream();
+            while (pos < size) {
+                int r = is.read(buf, pos, size - pos);
+                if (r < 0) throw new IOException("EOF on chunk data");
+                pos += r;
             }
-            println(selectedUserName);
-            // Compress the file before sending
-            File originalFile = file;
-            // File compressedFile = File.createTempFile("compressed_", ".gz");
 
-            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort()); // 建立與接收者之間的 TCP 連線
-            System.out.println("Starting to send file: " + originalFile.getName() + " to " + targetClient.getIPAddr()
-                    + ":" + targetClient.getTCPPort()); // 輸出開始傳送檔案訊息
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true); // 建立輸出串流以傳送檔案標頭
-            out.println(originalFile.getName() + ":" + originalFile.length()); // 傳送檔案名稱與大小
-            out.flush(); // 清空輸出串流
-
-            short cnt = 0; // 初始化等待 ACK 的次數
-            while (recevieACK(socket) == false && cnt < 3) { // 嘗試等待 ACK 回覆，最多三次
-                println("Waiting for ACK..."); // 輸出等待 ACK 訊息
-                Thread.sleep(300); // 延遲等待 300 毫秒
-                cnt++; // 增加等待次數計數器
+            // write to .part file
+            File part = new File(fileName + ".part" + idx);
+            try (FileOutputStream fos = new FileOutputStream(part)) {
+                fos.write(buf);
             }
-            if (cnt == 3) { // 如果三次嘗試後仍未收到 ACK
-                System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
-                socket.close(); // 關閉連線
-                return false; // 返回失敗
-            }
-            FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
-            OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
-            byte[] buffer = new byte[100005]; // 建立傳輸用緩衝區
-            int bytesRead; // 定義讀取位元組數變數
-            long total = originalFile.length();
-            long sent = 0;
-            while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
-                os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
-                os.flush(); // 清空輸出串流
-                // sendACK(socket); // 傳送 ACK 訊息以確認接收
 
-                sent += bytesRead;
-                int percent = (int) ((sent * 100) / total); // 計算傳送進度百分比
-                if (callback != null) { // 如果有回呼函式
-                    callback.onProgress(percent); // 呼叫回呼函式以更新進度
+            // ACK back
+            sendACK(socket);
+
+            if (receivedCount.incrementAndGet() == totalChunks) {
+                break;
+            }
+        }
+
+        // merge .part files
+        mergeChunks(fileName, totalChunks);
+        socket.close();
+    }
+    private static void mergeChunks(String fileName, int totalChunks) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(fileName, false)) {
+            byte[] buf = new byte[CHUNK_SIZE];
+            for (int i = 0; i < totalChunks; i++) {
+                File part = new File(fileName + ".part" + i);
+                try (FileInputStream in = new FileInputStream(part)) {
+                    int r;
+                    while ((r = in.read(buf)) != -1) {
+                        out.write(buf, 0, r);
+                    }
                 }
+                part.delete();
+            }
+        }
+    }
 
+    private static void deleteChunkFiles(File f) {
+        String base = f.getName();
+        File dir = f.getParentFile();
+        for (File c : dir.listFiles((d,n)-> n.startsWith(base+".part"))) {
+            c.delete();
+        }
+    }
+
+
+    public static boolean sendFileToUser(String selectedUserName, File[] files, FileTransferCallback callback) {
+        if (files == null || files.length == 0)
+            return false;
+
+        Client targetClient = clientList.get(selectedUserName);
+        if (targetClient == null) {
+            System.out.println("Target client not found: " + selectedUserName);
+            return false;
+        }
+
+        try {
+            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) {
+                System.out.println("Currently, a file is being transferred.");
+                return false;
+            }
+
+            // Prepare file to send - create temp zip for multiple files or directories
+
+            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort());
+
+            for (File f : files) {
+                sendExecutor.submit(() -> {
+                    try {
+                        sendFileInChunks(socket, f, callback);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        // cleanup on failure
+                        deleteChunkFiles(f);
+                        if (callback!=null) callback.onComplete(false);
+                    }
+                });
             }
             if (callback != null)
-                callback.onComplete(true);
-
-            fis.close(); // 關閉檔案輸入串流
-            socket.close(); // 關閉 TCP 連線
-            System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息
-
-            return true; // 返回成功
-        } catch (Exception e) { // 捕捉例外
-            e.printStackTrace(); // 列印例外資訊
-            return false; // 返回失敗
+            callback.onComplete(true);
+            System.out.println("File sent successfully");
+            
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
         }
+    }
+
+    // Helper method for creating ZIP archives
+    // private static void addToZip(File file, String entryPath, ZipOutputStream zipOut) throws IOException {
+    //     if (file.isDirectory()) {
+    //         if (entryPath.endsWith("/")) {
+    //             zipOut.putNextEntry(new ZipEntry(entryPath));
+    //             zipOut.closeEntry();
+    //         } else {
+    //             zipOut.putNextEntry(new ZipEntry(entryPath + "/"));
+    //             zipOut.closeEntry();
+    //         }
+
+    //         File[] children = file.listFiles();
+    //         if (children != null) {
+    //             for (File childFile : children) {
+    //                 addToZip(childFile, entryPath + "/" + childFile.getName(), zipOut);
+    //             }
+    //         }
+    //     } else {
+    //         try (FileInputStream fis = new FileInputStream(file)) {
+    //             ZipEntry zipEntry = new ZipEntry(entryPath);
+    //             zipOut.putNextEntry(zipEntry);
+
+    //             byte[] bytes = new byte[1024];
+    //             int length;
+    //             while ((length = fis.read(bytes)) >= 0) {
+    //                 zipOut.write(bytes, 0, length);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // Overload for backward compatibility
+    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) {
+        return sendFileToUser(selectedUserName, new File[] { file }, callback);
     }
 
     public static boolean recevieACK(Socket socket) {

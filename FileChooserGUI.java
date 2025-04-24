@@ -28,15 +28,28 @@ public class FileChooserGUI extends JFrame {
                 JFileChooser fileChooser = new JFileChooser();
                 // 設定初始目錄（這裡設為程式啟動時的當前目錄）
                 fileChooser.setCurrentDirectory(new File("."));
+                // 允許選擇多個檔案
+                fileChooser.setMultiSelectionEnabled(true);
+                // 允許選擇檔案和資料夾
+                fileChooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
                 // 顯示開啟檔案的對話框，使用者可以選擇檔案
                 int result = fileChooser.showOpenDialog(FileChooserGUI.this);
                 
                 // 根據使用者選擇的動作進行處理
                 if (result == JFileChooser.APPROVE_OPTION) {
-                    // 使用者選擇了一個檔案
-                    File selectedFile = fileChooser.getSelectedFile();
-                    // 將選擇的檔案完整路徑顯示在文字區域
-                    textArea.setText("選擇的檔案: " + selectedFile.getAbsolutePath());
+                    // 使用者可能選擇了多個檔案
+                    File[] selectedFiles = fileChooser.getSelectedFiles();
+                    if (selectedFiles.length > 0) {
+                        StringBuilder sb = new StringBuilder("選擇的檔案/資料夾:\n");
+                        for (File file : selectedFiles) {
+                            sb.append(file.getAbsolutePath()).append("\n");
+                        }
+                        textArea.setText(sb.toString());
+                    } else {
+                        // 兼容只選擇單一檔案的情況
+                        File selectedFile = fileChooser.getSelectedFile();
+                        textArea.setText("選擇的檔案/資料夾: " + selectedFile.getAbsolutePath());
+                    }
                 } else if (result == JFileChooser.CANCEL_OPTION) {
                     // 使用者取消了檔案選取
                     textArea.setText("使用者取消選擇檔案");
@@ -68,13 +81,52 @@ public class FileChooserGUI extends JFrame {
             }
         });
     }
+
+    // 選擇單個檔案
     public static File chooseFile() {
         JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setCurrentDirectory(new File(".")); // start in current directory
+        fileChooser.setCurrentDirectory(new File("."));
         int result = fileChooser.showOpenDialog(null);
         if (result == JFileChooser.APPROVE_OPTION) {
             return fileChooser.getSelectedFile();
         }
         return null;
+    }
+    
+    // 選擇多個檔案
+    public static File[] chooseFiles() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setCurrentDirectory(new File(".")); 
+        fileChooser.setMultiSelectionEnabled(true);
+        int result = fileChooser.showOpenDialog(null);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            return fileChooser.getSelectedFiles();
+        }
+        return new File[0];
+    }
+    
+    // 只選擇資料夾
+    public static File chooseDirectory() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setCurrentDirectory(new File("."));
+        fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        int result = fileChooser.showOpenDialog(null);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            return fileChooser.getSelectedFile();
+        }
+        return null;
+    }
+    
+    // 選擇檔案和/或資料夾
+    public static File[] chooseFilesAndDirectories() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setCurrentDirectory(new File("."));
+        fileChooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+        fileChooser.setMultiSelectionEnabled(true);
+        int result = fileChooser.showOpenDialog(null);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            return fileChooser.getSelectedFiles();
+        }
+        return new File[0];
     }
 }
