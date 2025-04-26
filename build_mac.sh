@@ -1,13 +1,13 @@
 #!/bin/zsh
-if [[ $1 -eq "push" ]] then
+if [[ $1 == "push" ]] then
     git add .
     git commit -m "fuck"
     git push
 
-elif [[ "$1" -eq "pull" ]] then
+elif [[ "$1" == "pull" ]] then
     git reset --hard
     git pull
-elif [[ "$1" -eq "test" ]] then
+elif [[ "$1" == "test" ]] then
     rm -rf ../AirShitTest
     cp -r asset ../AirShitTest
     cp *.java ../AirShitTest
@@ -15,6 +15,6 @@ elif [[ "$1" -eq "test" ]] then
     javac -d ../AirShitTest ../AirShitTest/*.java
     java AirShit.Main
 else 
-    javac -d . *.java
-    java AirShit.Main
+    javac -encoding UTF-8 -d . *.java
+    java -Dfile.encoding=UTF-8 AirShit.Main
 fi
