@@ -252,7 +252,7 @@ public class SendFileGUI extends JFrame {
     }
     
     private void selectFile() {
-        selectedFiles = FolderSelector.selectFilesOrFolder(); // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
+        selectedFiles = FolderSelector.selectFolderAndListFiles(); // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
 
         if (selectedFiles.length > 0) {
             StringBuilder fileNames = new StringBuilder("<html>");
