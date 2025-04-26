@@ -57,12 +57,14 @@ public class FileSender {
 
             dos.writeUTF(sb.toString());
             dos.flush();
-
+            System.out.println("Sent handshake: " + sb.toString());
             String resp = dis.readUTF().trim();
             if (!"ACCEPT".equals(resp)) {
                 System.out.println("Receiver declined transfer.");
                 return;
             }
+            System.out.println("Receiver accepted transfer.");
+
         }
 
         // --- 2) schedule transfers ---
@@ -75,6 +77,24 @@ public class FileSender {
         } else {
             for (File f : files) {
                 executor.submit(() -> sendWholeFile(f, callback));
+            }
+        }
+
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
             }
         }
     }

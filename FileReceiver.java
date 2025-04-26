@@ -118,10 +118,24 @@ public class FileReceiver {
 
         // --- 3) accept data connections forever ---
         System.out.println("Handshake complete. Waiting for file/chunk connections...");
-        while (true) {
+        // after pre‐allocating for a chunked single file
+        AtomicLong expected = new AtomicLong(fileSize);
+        System.out.println("Waiting for chunks…");
+
+        // loop until we've received all bytes
+        while (totalReceived.get() < expected.get()) {
+          try {
             Socket client = server.accept();
             executor.submit(() -> handleClient(client, callback));
+          } catch (SocketException se) {
+            // server was closed or network died
+            break;
+          }
         }
+
+        executor.shutdown();
+        server.close();
+        System.out.println("All data in—receiver exiting.");
     }
 
     private void handleClient(Socket sock, TransferCallback cb) {
@@ -149,7 +163,6 @@ public class FileReceiver {
                 int    idx    = dis.readInt();
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
-                String tag    = fileName + "[chunk " + idx + "]";
 
                 cb.onStart(length);
 
