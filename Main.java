@@ -194,6 +194,9 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength());
                     println(message);
+
+
+
                     if ((message).startsWith("HEARTBEAT-")) {
                         String[] parts = message.split("-"); // use dash as delimiter
                         if (clientList.containsKey(parts[1]) == false) {
@@ -296,10 +299,10 @@ public class Main { // 定義 Main 類別
         multicastHello(); // Then announce yourself
 
         // startHeartbeatResponder(); // 啟動心跳回應器
-        // SwingUtilities.invokeLater(() -> {
-        //     new SendFileGUI();
-        //     new Thread(() -> Main.receiveFile()).start();
-        // }); // 建立並顯示檔案傳送介面
+        SwingUtilities.invokeLater(() -> {
+            new SendFileGUI();
+            new Thread(() -> Main.receiveFile()).start();
+        }); // 建立並顯示檔案傳送介面
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -567,7 +570,7 @@ public class Main { // 定義 Main 類別
             try (DatagramSocket ds = new DatagramSocket()) {
                 ds.setSoTimeout(2000);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
-                ds.send(new DatagramPacket(ping, ping.length, addr, HEARTBEAT_PORT));
+                ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送 Hello 訊息
                 byte[] buf = new byte[64];
                 DatagramPacket resp = new DatagramPacket(buf, buf.length);
                 ds.receive(resp);
