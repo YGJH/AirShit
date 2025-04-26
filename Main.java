@@ -209,6 +209,7 @@ public class Main { // 定義 Main 類別
                                 resp, resp.length,
                                 packet.getAddress(), packet.getPort());
                         socket.send(reply);
+                        continue;
                     }
     
         
