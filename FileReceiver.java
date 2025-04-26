@@ -91,6 +91,15 @@ public class FileReceiver {
                     server.close();
                     return;
                 }
+                // send response to sender:
+                dos.writeUTF("ACCEPT");
+                dos.flush();
+                System.out.println("Receiver accepted transfer.");
+            } else {
+
+                dos.writeUTF("DECLINE");
+                dos.flush();
+                System.out.println("Receiver declined transfer.");
             }
             if(singleFile) {
                 // don't create directory if single file:

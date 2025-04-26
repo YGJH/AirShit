@@ -50,15 +50,16 @@ public class FileSender {
         } else {
             for (File f : files) sb.append("|").append(f.getName());
         }
-
-        try (Socket hs = new Socket(targetHost, targetPort);
-             DataOutputStream dos = new DataOutputStream(hs.getOutputStream());
-             DataInputStream  dis = new DataInputStream (hs.getInputStream())) {
+ 
+        try (Socket hs = new Socket(targetHost, targetPort)) {
+            DataOutputStream dos = new DataOutputStream(hs.getOutputStream());
+            DataInputStream dis  = new DataInputStream(hs.getInputStream());
 
             dos.writeUTF(sb.toString());
             dos.flush();
             System.out.println("Sent handshake: " + sb.toString());
-            String resp = dis.readUTF().trim();
+            String resp = dis.readUTF();
+            System.out.println("Receiver response: " + resp);
             if (!"ACCEPT".equals(resp)) {
                 System.out.println("Receiver declined transfer.");
                 return;
