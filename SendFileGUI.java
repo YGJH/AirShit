@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.Arrays;
 
 // import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.Timer;
@@ -266,25 +265,16 @@ public class SendFileGUI extends JFrame {
             selectedFileLabel.setText("No file selected");
         }
     }
-    public static boolean start;
     
     public static void receiveFileProgress(int percent) {
         SwingUtilities.invokeLater(() -> {
-            if(textOfReceive == null || receiveProgressBar == null) {
-                return;
-            }
-            if (!start) {
-                textOfReceive.setVisible(false);
-                receiveProgressBar.setVisible(false);
-                receiveProgressBar.setValue(0);
-            } else {
-                textOfReceive.setVisible(true);
-                receiveProgressBar.setVisible(true);
-                receiveProgressBar.setValue(percent);
-            }
+            // ensure the receive UI is visible
+            textOfReceive.setVisible(true);
+            receiveProgressBar.setVisible(true);
+            // update the bar
+            receiveProgressBar.setValue(percent);
         });
     }
-
     private void sendFile() {
         if (clientList.getSelectedValue() == null || selectedFiles == null || selectedFiles.length == 0) {
             return;
@@ -304,7 +294,7 @@ public class SendFileGUI extends JFrame {
         AtomicLong overallSent = new AtomicLong(0);
         AtomicInteger completedCount = new AtomicInteger(0);
         ConcurrentMap<String, Long> lastProgress = new ConcurrentHashMap<>();
-
+        println("Total size: " + formatFileSize(totalSize));
         // 2) build a TransferCallback that updates the progress bar
         TransferCallback callback = new TransferCallback() {
             @Override
@@ -344,12 +334,12 @@ public class SendFileGUI extends JFrame {
                 );
             }
         };
-
+        println("Sending files to " + selectedClient.getUserName() + "...");
+        log("Total size: " + formatFileSize(totalSize));
         // 3) invoke the sender
         new Thread(() -> {
             FileSender sender = new FileSender(
                 selectedClient.getIPAddr() + ":"
-                + selectedClient.getUDPPort() + ":"
                 + selectedClient.getTCPPort()
             );
             try {

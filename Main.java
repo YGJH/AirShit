@@ -116,13 +116,17 @@ public class Main { // 定義 Main 類別
             byte[] sendData = client.getHelloMessage().getBytes();
             MulticastSocket socket = new MulticastSocket();
             socket.setTimeToLive(32);
+            socket.setNetworkInterface(findCorrectNetworkInterface());
+            socket.joinGroup(group); // Join the multicast group
+            socket.setLoopbackMode(false); // Disable loopback
+            println(sendData.length + " bytes sent to multicast group " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
 
             socket.close();
         } catch (Exception e) {
-            // e.printStackTrace();
+            e.printStackTrace(); // Uncommented for better error handling
         }
     }
 
