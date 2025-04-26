@@ -548,43 +548,10 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    // Helper method for creating ZIP archives
-    // private static void addToZip(File file, String entryPath, ZipOutputStream zipOut) throws IOException {
-    //     if (file.isDirectory()) {
-    //         if (entryPath.endsWith("/")) {
-    //             zipOut.putNextEntry(new ZipEntry(entryPath));
-    //             zipOut.closeEntry();
-    //         } else {
-    //             zipOut.putNextEntry(new ZipEntry(entryPath + "/"));
-    //             zipOut.closeEntry();
-    //         }
-
-    //         File[] children = file.listFiles();
-    //         if (children != null) {
-    //             for (File childFile : children) {
-    //                 addToZip(childFile, entryPath + "/" + childFile.getName(), zipOut);
-    //             }
-    //         }
-    //     } else {
-    //         try (FileInputStream fis = new FileInputStream(file)) {
-    //             ZipEntry zipEntry = new ZipEntry(entryPath);
-    //             zipOut.putNextEntry(zipEntry);
-
-    //             byte[] bytes = new byte[1024];
-    //             int length;
-    //             while ((length = fis.read(bytes)) >= 0) {
-    //                 zipOut.write(bytes, 0, length);
-    //             }
-    //         }
-    //     }
-    // }
-
     // Overload for backward compatibility
-    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) {
-        return sendFileToUser(selectedUserName, new File[] { file }, callback);
-    }
 
-    public static boolean recevieACK(Socket socket) {
+
+    public static boolean receiveACK(Socket socket) {
         try {
             InputStream is = socket.getInputStream();
             byte[] buffer = new byte[10005];
