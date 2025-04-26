@@ -5,6 +5,8 @@ import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
+import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
+import java.util.concurrent.ConcurrentHashMap; // 引入 ConcurrentHashMap
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
 
@@ -287,26 +289,38 @@ public class Main { // 定義 Main 類別
         FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
         new Thread(() -> {
             try {
+                AtomicLong totalExpected = new AtomicLong(0);
+                AtomicLong totalReceived = new AtomicLong(0);
+                ConcurrentHashMap<String,Long> lastSeen = new ConcurrentHashMap<>();
+
                 fileReceiver.start(new TransferCallback() {
-                    private long expectedBytes;               // ← store total here
-        
                     @Override
-                    public void onStart(String fileName, long totalBytes) {
-                        this.expectedBytes = totalBytes;     // ← capture total
-                        SendFileGUI.receiveFileProgress(0);
+                    public void onStart(String fileName, long fileTotal) {
+                        // add this file’s full size into the grand total
+                        totalExpected.addAndGet(fileTotal);
                     }
-        
+
                     @Override
-                    public void onProgress(String fileName, long receivedBytes) {
-                        int pct = (int)(receivedBytes * 100L / expectedBytes);
+                    public void onProgress(String fileName, long fileBytes) {
+                        // compute how many new bytes arrived since last report
+                        long prev = lastSeen.getOrDefault(fileName, 0L);
+                        long delta = fileBytes - prev;
+                        lastSeen.put(fileName, fileBytes);
+
+                        // add into the global received counter
+                        long cumul = totalReceived.addAndGet(delta);
+                        int pct = (int)(cumul * 100L / totalExpected.get());
                         SendFileGUI.receiveFileProgress(pct);
                     }
-        
+
                     @Override
                     public void onComplete(String fileName) {
-                        SendFileGUI.receiveFileProgress(100);
+                        // if you like, you can detect completion of all files here:
+                        if (totalReceived.get() == totalExpected.get()) {
+                            SendFileGUI.receiveFileProgress(100);
+                        }
                     }
-        
+
                     @Override
                     public void onError(String fileName, Exception e) {
                         e.printStackTrace();
