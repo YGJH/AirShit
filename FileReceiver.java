@@ -53,8 +53,9 @@ public class FileReceiver {
 
             String msg = dis.readUTF();
             String[] parts = msg.split("\\|");
-            folder = parts[0];
-
+            // incoming parts[0] may be a full path—keep only the last name element
+            folder = new File(parts[0]).getName();
+            
             if (parts.length == 4) {
                 // single‐file chunked
                 names      = Collections.singletonList(parts[1]);
