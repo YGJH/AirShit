@@ -7,6 +7,10 @@ import java.util.Arrays;
 import java.util.List;
 
 public class FolderSelector {
+    private static String folderName = null;
+    public static String getFolderName() {
+        return folderName;
+    }
 
     /**
      * 顯示一個資料夾選擇對話框，讓使用者選擇資料夾後，
@@ -24,6 +28,7 @@ public class FolderSelector {
         int result = chooser.showOpenDialog(parentComponent);
         if (result == JFileChooser.APPROVE_OPTION) {
             File folder = chooser.getSelectedFile();
+            folderName = folder.getAbsolutePath();
             // folder.listFiles() 可能回傳 null（例：權限不足）
             File[] files = folder.listFiles();
             if (files != null) {

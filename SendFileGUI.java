@@ -6,7 +6,11 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.util.*;
-import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.Arrays;
 
 // import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.Timer;
@@ -250,6 +254,7 @@ public class SendFileGUI extends JFrame {
     
     private void selectFile() {
         selectedFiles = FolderSelector.selectFolderAndListFiles(null).toArray(new File[0]); // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
+
         if (selectedFiles.length > 0) {
             StringBuilder fileNames = new StringBuilder("<html>");
             for (File file : selectedFiles) {
@@ -279,46 +284,80 @@ public class SendFileGUI extends JFrame {
             }
         });
     }
+
     private void sendFile() {
         if (clientList.getSelectedValue() == null || selectedFiles == null || selectedFiles.length == 0) {
             return;
         }
-        
+
         Client selectedClient = clientList.getSelectedValue();
         log("Sending files to " + selectedClient.getUserName() + "...");
-        
-        // Disable send button during transfer
+
         sendButton.setEnabled(false);
         progressBar.setValue(0);
         progressBar.setVisible(true);
-        
-        // Start a background thread for file transfer
-        new Thread(() -> {
-            Main.sendFileToUser(
-                selectedClient.getUserName(),
-                selectedFiles,  // Pass the array of files
-                new FileTransferCallback() {
-                    @Override
-                    public void onProgress(int percent) {
-                        SwingUtilities.invokeLater(() ->
-                            progressBar.setValue(percent)
-                        );
-                    }
-                    @Override
-                    public void onComplete(boolean success) {
-                        SwingUtilities.invokeLater(() -> {
-                            if (success) {
-                                log("Files sent successfully to " + selectedClient.getUserName());
-                            } else {
-                                log("Failed to send files to " + selectedClient.getUserName());
-                            }
-                            progressBar.setVisible(false);
-                            updateSendButtonState();
-                        });
-                    }
+
+        // 1) compute total size of all selected files
+        long totalSize = Arrays.stream(selectedFiles)
+                               .mapToLong(File::length)
+                               .sum();
+        AtomicLong overallSent = new AtomicLong(0);
+        AtomicInteger completedCount = new AtomicInteger(0);
+        ConcurrentMap<String, Long> lastProgress = new ConcurrentHashMap<>();
+
+        // 2) build a TransferCallback that updates the progress bar
+        TransferCallback callback = new TransferCallback() {
+            @Override
+            public void onStart(String fileName, long fileTotal) {
+                lastProgress.put(fileName, 0L);
+                SwingUtilities.invokeLater(() -> progressBar.setValue(0));
+            }
+
+            @Override
+            public void onProgress(String fileName, long sentForFile) {
+                // delta = how many new bytes this callback
+                long prev = lastProgress.getOrDefault(fileName, 0L);
+                long delta = sentForFile - prev;
+                lastProgress.put(fileName, sentForFile);
+
+                long total = overallSent.addAndGet(delta);
+                int percent = (int)(total * 100 / totalSize);
+                SwingUtilities.invokeLater(() -> progressBar.setValue(percent));
+            }
+
+            @Override
+            public void onComplete(String fileName) {
+                // once all threads report complete, restore UI
+                if (completedCount.incrementAndGet() == selectedFiles.length) {
+                    SwingUtilities.invokeLater(() -> {
+                        progressBar.setValue(100);
+                        sendButton.setEnabled(true);
+                        log("All files sent.");
+                    });
                 }
+            }
+
+            @Override
+            public void onError(String fileName, Exception e) {
+                SwingUtilities.invokeLater(() ->
+                    log("Error sending " + fileName + ": " + e.getMessage())
+                );
+            }
+        };
+
+        // 3) invoke the sender
+        new Thread(() -> {
+            FileSender sender = new FileSender(
+                selectedClient.getIPAddr() + ":"
+                + selectedClient.getUDPPort() + ":"
+                + selectedClient.getTCPPort()
             );
-        }).start();
+            try {
+                sender.sendFiles(selectedFiles, FolderSelector.getFolderName(), callback);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, "send-thread").start();
     }
         
     private void updateSendButtonState() {
