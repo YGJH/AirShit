@@ -39,6 +39,9 @@ public class FileSender {
         if (singleFile) {
             fileSize   = files[0].length();
             chunkCount = (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE);
+        } else {
+            // folderName is null, so it is a single file transfer
+            chunkCount = (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE);
         }
 
         // 1) UDP handshake
@@ -55,7 +58,10 @@ public class FileSender {
             .append(chunkCount);
         } else {
             sb.append(folderName);
-            for (File f : files) sb.append("|").append(f.getName());
+            for (File f : files) {
+                sb.append("|").append(f.getName());
+                fileSize += f.length();
+            }
         }
         sb.append("|").append(fileSize);
         sb.append("|").append(chunkCount);
