@@ -11,7 +11,9 @@ public class FolderSelector {
     public static String getFolderName() {
         return folderName;
     }
-
+    public static void println(String str) {
+        System.out.println(str);
+    }
 
 
     /**
@@ -21,16 +23,24 @@ public class FolderSelector {
      * @param parentComponent 作為對話框的父元件，若為 null 則無父元件
      * @return 選擇的資料夾底下所有檔案／子資料夾的 List，若使用者取消則回傳空 List
      */
-    public static List<File> selectFolderAndListFiles(Component parentComponent) {
+    public static File[] selectFolderAndListFiles(Component parentComponent) {
         JFileChooser chooser = new JFileChooser();
         // 只允許選擇目錄
         chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
         chooser.setDialogTitle("請選擇一個資料夾");
 
         int result = chooser.showOpenDialog(parentComponent);
+        System.out.println(result);
         if (result == JFileChooser.APPROVE_OPTION) {
             File folder = chooser.getSelectedFile();
             folderName = folder.getAbsolutePath();
+            File file = new File(folderName);
+            if(file.isFile()) {
+                File[] files = new File[1];
+                files[0] = file;
+                return files;
+            }
+            // 取得資料夾名稱，並去掉路徑部分
             for(int i = folderName.length() - 1; i >= 0; i--) {
                 if(folderName.charAt(i) == '\\' 
                         || folderName.charAt(i) == '/') {
@@ -42,14 +52,14 @@ public class FolderSelector {
             File[] files = folder.listFiles();
             if (files != null) {
                 // 將陣列轉成 List
-                return new ArrayList<>(Arrays.asList(files));
+                return files;
             } else {
                 // 如果讀取不到任何檔案，就回傳空清單
-                return new ArrayList<>();
+                return null;
             }
         } else {
             // 使用者按了「取消」或關閉視窗
-            return new ArrayList<>();
+            return null;
         }
     }
 

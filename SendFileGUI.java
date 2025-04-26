@@ -6,9 +6,6 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 // import javax.swing.filechooser.FileNameExtensionFilter;
@@ -252,9 +249,9 @@ public class SendFileGUI extends JFrame {
     }
     
     private void selectFile() {
-        selectedFiles = FolderSelector.selectFolderAndListFiles(null).toArray(new File[0]);
+        selectedFiles = FolderSelector.selectFolderAndListFiles(null);
 
-        if (selectedFiles.length > 0) {
+        if (selectedFiles != null && selectedFiles.length > 0) {
             StringBuilder fileNames = new StringBuilder("<html>");
             for (File file : selectedFiles) {
                 fileNames.append(file.getName()).append(" (").append(formatFileSize(file.length())).append(")<br>");
