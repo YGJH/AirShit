@@ -15,9 +15,10 @@ public class FileReceiver {
     private static int TCP_BACKLOG = 50;
     private final int          port;
     private  File         saveDir;
+    private  long       totalSize;
     private final ExecutorService executor;
     private static AtomicLong received = new AtomicLong(0); // for debugging
-
+    private static boolean singleFile;
     /** @param targetPort  the single TCP port for both handshake & data */
     public FileReceiver(int targetPort) {
         this.port     = targetPort;
@@ -62,11 +63,12 @@ public class FileReceiver {
                 names      = Collections.singletonList(parts[1]);
                 fileSize   = Long.parseLong(parts[2]);
                 chunkCount = Integer.parseInt(parts[3]);
+                totalSize  = fileSize;
             } else {
                 // multi‐file
                 names = Arrays.asList(parts).subList(1, parts.length);
             }
-            boolean singleFile = (names.size() == 1);
+            singleFile = (names.size() == 1);
             // wait for accept/decline and show GUI dialog
             boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + " File Total Size: " + fileSize + "?", "File Transfer" , JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
             dos.writeUTF(accept ? "ACCEPT" : "DECLINE");
@@ -116,11 +118,16 @@ public class FileReceiver {
 
         // --- 3) accept data connections until we hit the expected total ---
         try {
-          while (received.get() < fileSize) {
-            Socket client = server.accept();
-            // handle inline if you want deterministic byte counting:
-            handleClient(client, callback);
-          }
+            if(singleFile) {
+                // single file → wait for one connection only
+                processSingleFileChunks(server, chunkCount, callback);
+            } else {
+                while (received.get() < fileSize) {
+                  Socket client = server.accept();
+                  // handle inline if you want deterministic byte counting:
+                  handleClient(client, callback);
+                }
+            }
         } finally {
           // clean up
           server.close();
@@ -135,7 +142,7 @@ public class FileReceiver {
 
             if (!isChunk) {
                 long total = dis.readLong();
-                
+                println(total + " bytes to receive.");
                 File outFile = new File(saveDir, fileName);
                 try (FileOutputStream fos = new FileOutputStream(outFile)) {
                     byte[] buf = new byte[8192];
@@ -167,6 +174,39 @@ public class FileReceiver {
             }
         } catch (Exception e) {
             cb.onError(e);
+        }
+    }
+
+    /**
+     * For a single‐file chunked transfer, accept and handle each chunk
+     * in its own thread, then wait until all chunks have been written.
+     *
+     * @param server     the ServerSocket already bound to the transfer port
+     * @param chunkCount number of chunks expected for this single file
+     * @param cb         callback to drive GUI progress
+     */
+    private void processSingleFileChunks(ServerSocket server, int chunkCount, TransferCallback cb) throws IOException {
+        CountDownLatch latch = new CountDownLatch(chunkCount);
+
+        for (int i = 0; i < chunkCount; i++) {
+            executor.submit(() -> {
+                try {
+                    // accept one chunk‐connection and write it
+                    Socket client = server.accept();
+                    handleClient(client, cb);
+                } catch (Exception e) {
+                    cb.onError(e);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        // wait until all chunk tasks have completed
+        try {
+            latch.await();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 }
