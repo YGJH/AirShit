@@ -25,7 +25,7 @@ public class Main { // 定義 Main 類別
         return client; // 返回客戶端資訊
     }
 
-    public static final int HEARTBEAT_PORT = 50001; // pick any free port
+    public static final int HEARTBEAT_PORT = 50000; // pick any free port
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
     private static final int CHUNK_SIZE = 64 * 1024 * 1024; // 64KB per chunk
 
@@ -78,7 +78,7 @@ public class Main { // 定義 Main 類別
             socket.getOutputStream().flush();
 
             // 3) wait for ACK
-            while (!recevieACK(socket)) { /* spin until ACK */ }
+            while (!receiveACK(socket)) { /* spin until ACK */ }
 
             idx++;
         }
@@ -157,7 +157,6 @@ public class Main { // 定義 Main 類別
             byte[] sendData = client.getHelloMessage().getBytes();
             MulticastSocket socket = new MulticastSocket();
             socket.setTimeToLive(32);
-
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
@@ -182,19 +181,34 @@ public class Main { // 定義 Main 類別
                 socket.setTimeToLive(32);
 
                 // --- Improved Interface Selection ---
-                // NetworkInterface iface = findCorrectNetworkInterface();
-                // if (iface != null) {
-                //     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
-                // }
+                NetworkInterface iface = findCorrectNetworkInterface();
+                if (iface != null) {
+                    socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
+                }
     
                 byte[] buffer = new byte[1024];
                 System.out.println("Multicast listener started on port " + DISCOVERY_PORT);
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-                    // --- Process packet ---
+
                     String message = new String(packet.getData(), 0, packet.getLength());
                     println(message);
+                    if ((message).startsWith("HEARTBEAT-")) {
+                        String[] parts = message.split("-"); // use dash as delimiter
+                        if (clientList.containsKey(parts[1]) == false) {
+                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
+                                    DISCOVERY_PORT, parts[4]);
+                            clientList.put(tempClient.getUserName(), tempClient);
+                        }
+                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+                        DatagramPacket reply = new DatagramPacket(
+                                resp, resp.length,
+                                packet.getAddress(), packet.getPort());
+                        socket.send(reply);
+                    }
+    
+        
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
@@ -281,11 +295,11 @@ public class Main { // 定義 Main 類別
         startMulticastListener(); // Start listening first
         multicastHello(); // Then announce yourself
 
-        startHeartbeatResponder(); // 啟動心跳回應器
-        SwingUtilities.invokeLater(() -> {
-            new SendFileGUI();
-            new Thread(() -> Main.receiveFile()).start();
-        }); // 建立並顯示檔案傳送介面
+        // startHeartbeatResponder(); // 啟動心跳回應器
+        // SwingUtilities.invokeLater(() -> {
+        //     new SendFileGUI();
+        //     new Thread(() -> Main.receiveFile()).start();
+        // }); // 建立並顯示檔案傳送介面
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -307,40 +321,40 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static void startHeartbeatResponder() {
-        new Thread(() -> {
-            try (DatagramSocket sock = new DatagramSocket(HEARTBEAT_PORT)) {
-                byte[] buf = new byte[64];
-                while (true) {
-                    DatagramPacket recv = new DatagramPacket(buf, buf.length);
-                    sock.receive(recv);
-                    String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
-                    println(msg);
-                    if ((msg).startsWith("HEARTBEAT-")) {
-                        String[] parts = msg.split("-"); // use dash as delimiter
-                        if (clientList.containsKey(parts[1]) == false) {
-                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
-                                    DISCOVERY_PORT, parts[4]);
-                            clientList.put(tempClient.getUserName(), tempClient);
-                        }
+    // public static void startHeartbeatResponder() {
+    //     new Thread(() -> {
+    //         try (DatagramSocket sock = new DatagramSocket(HEARTBEAT_PORT)) {
+    //             byte[] buf = new byte[64];
+    //             while (true) {
+    //                 DatagramPacket recv = new DatagramPacket(buf, buf.length);
+    //                 sock.receive(recv);
+    //                 String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
+    //                 println(msg);
+    //                 if ((msg).startsWith("HEARTBEAT-")) {
+    //                     String[] parts = msg.split("-"); // use dash as delimiter
+    //                     if (clientList.containsKey(parts[1]) == false) {
+    //                         Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
+    //                                 DISCOVERY_PORT, parts[4]);
+    //                         clientList.put(tempClient.getUserName(), tempClient);
+    //                     }
 
-                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket reply = new DatagramPacket(
-                                resp, resp.length,
-                                recv.getAddress(), recv.getPort());
-                        sock.send(reply);
-                    }
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            try {
-                Thread.sleep(2000 + random.nextInt(1000)); // Sleep for 1 second before next heartbeat
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }, "heartbeat-responder").start();
-    }
+    //                     byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+    //                     DatagramPacket reply = new DatagramPacket(
+    //                             resp, resp.length,
+    //                             recv.getAddress(), recv.getPort());
+    //                     sock.send(reply);
+    //                 }
+    //             }
+    //         } catch (IOException e) {
+    //             e.printStackTrace();
+    //         }
+    //         try {
+    //             Thread.sleep(2000 + random.nextInt(1000)); // Sleep for 1 second before next heartbeat
+    //         } catch (InterruptedException e) {
+    //             e.printStackTrace();
+    //         }
+    //     }, "heartbeat-responder").start();
+    // }
 
     public static void receiveFile() { // 定義接收檔案的方法
         SendFileGUI.start = false;
@@ -502,45 +516,23 @@ public class Main { // 定義 Main 類別
 
 
     public static boolean sendFileToUser(String selectedUserName, File[] files, FileTransferCallback callback) {
-        if (files == null || files.length == 0)
-            return false;
-
-        Client targetClient = clientList.get(selectedUserName);
-        if (targetClient == null) {
-            System.out.println("Target client not found: " + selectedUserName);
-            return false;
+        Client targetClient = clientList.get(selectedUserName); // 取得目標客戶端資訊
+        if (targetClient == null) { // 如果目標客戶端不存在
+            System.out.println("目標客戶端不存在"); // 輸出錯誤訊息
+            return false; // 返回傳送失敗
         }
-
-        try {
-            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) {
-                System.out.println("Currently, a file is being transferred.");
-                return false;
+        try { // 嘗試建立 TCP 連線以傳送檔案
+            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort()); // 建立 TCP 連線
+            System.out.println("連線到 " + targetClient.getIPAddr() + ":" + targetClient.getTCPPort()); // 輸出連線資訊
+            for (File file : files) { // 遍歷所有檔案
+                sendFileInChunks(socket, file, callback); // 傳送檔案
+                deleteChunkFiles(file); // 刪除暫存檔案
             }
-
-            // Prepare file to send - create temp zip for multiple files or directories
-
-            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort());
-
-            for (File f : files) {
-                sendExecutor.submit(() -> {
-                    try {
-                        sendFileInChunks(socket, f, callback);
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                        // cleanup on failure
-                        deleteChunkFiles(f);
-                        if (callback!=null) callback.onComplete(false);
-                    }
-                });
-            }
-            if (callback != null)
-            callback.onComplete(true);
-            System.out.println("File sent successfully");
-            
-            return true;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
+            socket.close(); // 關閉連線
+            return true; // 返回傳送成功
+        } catch (Exception e) { // 捕捉所有例外
+            e.printStackTrace(); // 列印例外資訊
+            return false; // 返回傳送失敗
         }
     }
 

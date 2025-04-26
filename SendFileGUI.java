@@ -6,6 +6,8 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.util.*;
+import java.util.List;
+
 // import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.Timer;
 
@@ -247,31 +249,19 @@ public class SendFileGUI extends JFrame {
     }
     
     private void selectFile() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Select Files to Send");
-        
-        // Enable multi-selection and allow directories
-        chooser.setMultiSelectionEnabled(true); 
-        chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-        
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            selectedFiles = chooser.getSelectedFiles();
-            
-            if (selectedFiles.length == 1) {
-                File file = selectedFiles[0];
-                selectedFileLabel.setText(file.getName() + (file.isDirectory() ? " (directory)" : 
-                    " (" + formatFileSize(file.length()) + ")"));
-                log("Selected: " + file.getName());
-            } else {
-                selectedFileLabel.setText(selectedFiles.length + " items selected");
-                log("Selected " + selectedFiles.length + " files/directories");
+        selectedFiles = FolderSelector.selectFolderAndListFiles(null).toArray(new File[0]); // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
+        if (selectedFiles.length > 0) {
+            StringBuilder fileNames = new StringBuilder("<html>");
+            for (File file : selectedFiles) {
+                fileNames.append(file.getName()).append(" (").append(formatFileSize(file.length())).append(")<br>");
             }
-            
-            updateSendButtonState();
+            fileNames.append("</html>");
+            selectedFileLabel.setText(fileNames.toString());
+        } else {
+            selectedFileLabel.setText("No file selected");
         }
     }
-    
-        public static boolean start;
+    public static boolean start;
     
     public static void receiveFileProgress(int percent) {
         SwingUtilities.invokeLater(() -> {
