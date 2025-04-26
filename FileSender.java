@@ -5,20 +5,17 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class FileSender {
-    public static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
+    private static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
 
     private final String targetHost;
-    private final int    targetUdpPort;
-    private final int    targetTcpPort;
+    private final int    targetPort;
     private final ExecutorService executor;
 
-    /** targetClient = "host:udpPort:tcpPort", e.g. "192.168.1.50:9000:9001" */
+    /** targetClient = "host:port", e.g. "192.168.1.50:9001" */
     public FileSender(String targetClient) {
         String[] parts = targetClient.split(":");
-        this.targetHost    = parts[0];
-        this.targetUdpPort = Integer.parseInt(parts[1]);
-        this.targetTcpPort = Integer.parseInt(parts[2]);
-        // cached pool → one thread per chunk/file, reusing idle threads
+        this.targetHost = parts[0];
+        this.targetPort = Integer.parseInt(parts[1]);
         this.executor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r);
             t.setName("sender-thread");
@@ -27,123 +24,102 @@ public class FileSender {
     }
 
     /**
-     * @param files      Array of files to send
-     * @param folderName Logical folder name (for handshake)
-     * @param callback   Progress / completion / error callbacks
+     * 1) TCP handshake on targetPort  
+     * 2) If accepted, schedule one task per file—or one per chunk if single file.
      */
-    public void sendFiles(File[] files, String folderName, TransferCallback callback) throws IOException {
+    public void sendFiles(File[] files, String folderName, TransferCallback callback)
+            throws IOException {
         boolean singleFile = (files.length == 1);
-        int chunkCount = 1;
-        long fileSize = 0;
+        long fileSize = singleFile ? files[0].length() : 0;
+        int  chunkCount = singleFile
+                ? (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE)
+                : 1;
 
+        // --- 1) TCP handshake ---
+        StringBuilder sb = new StringBuilder(folderName);
         if (singleFile) {
-            fileSize   = files[0].length();
-            chunkCount = (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE);
-        } else {
-            // folderName is null, so it is a single file transfer
-            chunkCount = (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE);
-        }
-
-        // 1) UDP handshake
-        //    If single file → "folder|name|size|chunks"
-        //    Else            → "folder|f1|f2|..."
-        StringBuilder sb = new StringBuilder("SReq|");
-        if (singleFile) {
-            sb.append("singleFile");
             sb.append("|")
-            .append(files[0].getName())
-            .append("|")
-            .append(fileSize)
-            .append("|")
-            .append(chunkCount);
+              .append(files[0].getName())
+              .append("|")
+              .append(fileSize)
+              .append("|")
+              .append(chunkCount);
         } else {
-            sb.append(folderName);
-            for (File f : files) {
-                sb.append("|").append(f.getName());
-                fileSize += f.length();
-            }
+            for (File f : files) sb.append("|").append(f.getName());
         }
-        sb.append("|").append(fileSize);
-        sb.append("|").append(chunkCount);
-        byte[] payload = sb.toString().getBytes("UTF-8");
-        try (DatagramSocket ds = new DatagramSocket()) {
-            DatagramPacket pkt = new DatagramPacket(
-                payload, payload.length,
-                InetAddress.getByName(targetHost), targetUdpPort);
-            ds.send(pkt);
 
-            ds.setSoTimeout(10_000);
-            DatagramPacket ack = new DatagramPacket(new byte[16], 16);
-            ds.receive(ack);
-            String resp = new String(ack.getData(), 0, ack.getLength(), "UTF-8").trim();
+        try (Socket hs = new Socket(targetHost, targetPort);
+             DataOutputStream dos = new DataOutputStream(hs.getOutputStream());
+             DataInputStream  dis = new DataInputStream (hs.getInputStream())) {
+
+            // send handshake payload
+            dos.writeUTF(sb.toString());
+            dos.flush();
+
+            // wait for accept/decline
+            String resp = dis.readUTF().trim();
             if (!"ACCEPT".equals(resp)) {
                 System.out.println("Receiver declined transfer.");
                 return;
             }
-        } catch (SocketTimeoutException ex) {
-            System.out.println("No response from receiver; aborting.");
-            return;
         }
 
-        // 2) Schedule send tasks
+        // --- 2) schedule transfers ---
         if (singleFile) {
-            File file = files[0];
-            for (int idx = 0; idx < chunkCount; idx++) {
-                final int chunkIndex = idx;
-                executor.submit(() -> sendChunk(file, chunkIndex, callback));
+            File f = files[0];
+            for (int i = 0; i < chunkCount; i++) {
+                final int idx = i;
+                executor.submit(() -> sendChunk(f, idx, callback));
             }
         } else {
-            for (File file : files) {
-                executor.submit(() -> sendWholeFile(file, callback));
+            for (File f : files) {
+                executor.submit(() -> sendWholeFile(f, callback));
             }
         }
     }
 
-    /** Send one full file in a single thread. */
     private void sendWholeFile(File file, TransferCallback cb) {
-        String name = file.getName();
-        try (Socket sock = new Socket(targetHost, targetTcpPort);
+        try (Socket sock = new Socket(targetHost, targetPort);
              DataOutputStream dos = new DataOutputStream(sock.getOutputStream());
              FileInputStream  fis = new FileInputStream(file)) {
 
             long total = file.length();
-            cb.onStart(name, total);
+            cb.onStart(file.getName(), total);
 
-            dos.writeUTF(name);
+            dos.writeUTF(file.getName());
             dos.writeBoolean(false);    // isChunk = false
-            dos.writeLong(total);       // total size
+            dos.writeLong(total);
 
             byte[] buf = new byte[8192];
             long sent = 0;
-            int r;
+            int  r;
             while ((r = fis.read(buf)) != -1) {
                 dos.write(buf, 0, r);
                 sent += r;
-                cb.onProgress(name, sent);
+                cb.onProgress(file.getName(), sent);
             }
             dos.flush();
-            cb.onComplete(name);
+            cb.onComplete(file.getName());
         } catch (Exception e) {
-            cb.onError(name, e);
+            cb.onError(file.getName(), e);
         }
     }
 
-    /** Send one chunk of a single large file. */
-    private void sendChunk(File file, int chunkIndex, TransferCallback cb) {
-        String name = file.getName();
-        try (Socket sock = new Socket(targetHost, targetTcpPort);
+    private void sendChunk(File file, int idx, TransferCallback cb) {
+        try (Socket sock = new Socket(targetHost, targetPort);
              DataOutputStream dos = new DataOutputStream(sock.getOutputStream());
              RandomAccessFile raf = new RandomAccessFile(file, "r")) {
 
             long fileSize = raf.length();
-            long offset   = (long)chunkIndex * MAX_CHUNK_SIZE;
+            long offset   = (long)idx * MAX_CHUNK_SIZE;
             long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
 
-            cb.onStart(name + "[chunk " + chunkIndex + "]", length);
+            String tag = file.getName() + "[chunk " + idx + "]";
+            cb.onStart(tag, length);
 
-            dos.writeUTF(name);
+            dos.writeUTF(file.getName());
             dos.writeBoolean(true);        // isChunk = true
-            dos.writeInt(chunkIndex);
+            dos.writeInt(idx);
             dos.writeLong(offset);
             dos.writeLong(length);
 
@@ -156,12 +132,12 @@ public class FileSender {
                 if (r < 0) break;
                 dos.write(buf, 0, r);
                 sent += r;
-                cb.onProgress(name + "[chunk " + chunkIndex + "]", sent);
+                cb.onProgress(tag, sent);
             }
             dos.flush();
-            cb.onComplete(name + "[chunk " + chunkIndex + "]");
+            cb.onComplete(tag);
         } catch (Exception e) {
-            cb.onError(name + "[chunk " + chunkIndex + "]", e);
+            cb.onError(file.getName() + "[chunk " + idx + "]", e);
         }
     }
 }

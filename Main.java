@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
+import java.awt.Font; // 引入 AWT Font類別
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -59,7 +60,7 @@ public class Main { // 定義 Main 類別
                     if (addr instanceof Inet4Address 
                         && !addr.isLoopbackAddress() 
                         && !addr.isLinkLocalAddress()) {
-                        System.out.println("Picked Wi‑Fi IP on “" + ni.getDisplayName() + "”: " 
+                        System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": " 
                                            + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
@@ -125,7 +126,7 @@ public class Main { // 定義 Main 類別
 
 
     public static void startMulticastListener() {
-        new Thread(() -> {
+        Thread MultiCast = new Thread(() -> {
             MulticastSocket socket = null;
             try {
                 InetAddress group = getMulticastAddress();
@@ -149,7 +150,7 @@ public class Main { // 定義 Main 類別
                     socket.receive(packet);
 
                     String message = new String(packet.getData(), 0, packet.getLength());
-                    println(message);
+                    System.out.println(message);
 
 
                     // Check if the message is a heartbeat
@@ -167,73 +168,7 @@ public class Main { // 定義 Main 類別
                         socket.send(reply);
                         continue;
                     }
-                    // get file name and total chunks
 
-                    // SReq|folderName|fileName|fileSize|totalChunks
-                    // SReq|singleFile|fileName|fileSize|totalChunks
-                    if(message.startsWith("SReq|")) {
-                        String[] parts = message.split("|"); // use pipe as delimiter
-                        if (parts.length < 5) {
-                            System.out.println("Invalid SReq message: " + message);
-                            continue;
-                        }
-                        String folderName = parts[1];
-                        File[] files = new File[parts.length - 4];
-                        if(folderName.equals("singleFile") == false) {
-                            folderName = folderName.replaceAll("\\\\", "/");
-                        }
-                        for (int i = 2; i < files.length; i++) {
-                            files[i] = new File(parts[i + 2]); // Assuming file sizes are in parts[2] onwards
-                        }
-                        int fileSize = Integer.parseInt(parts[parts.length - 2]);
-                        int totalChunks = Integer.parseInt(parts[parts.length - 1]);
-                        
-                        // wait for user to accept or decline the transfer
-                        int result = JOptionPane.showConfirmDialog(null,
-                                "Incoming transfer: " + folderName + "\n" +
-                                "File: " + Arrays.toString(files) + "\n" +
-                                "Size: " + fileSize + " bytes\n" +
-                                "Total chunks: " + totalChunks + "\n" +
-                                "Accept?",
-                                "Incoming Transfer", JOptionPane.YES_NO_OPTION);
-                        if (result == JOptionPane.YES_OPTION) {
-                            // send accept message
-                            byte[] resp = "ACCEPT".getBytes(StandardCharsets.UTF_8);
-                            DatagramPacket reply = new DatagramPacket(
-                                    resp, resp.length,
-                                    packet.getAddress(), packet.getPort());
-                            socket.send(reply);
-                            System.out.println("Accepted transfer: " + folderName + "/" + Arrays.toString(files) + "");
-                        } else {
-                            // send decline message
-                            byte[] resp = "DECLINE".getBytes(StandardCharsets.UTF_8);
-                            DatagramPacket reply = new DatagramPacket(
-                                    resp, resp.length,
-                                    packet.getAddress(), packet.getPort());
-                            socket.send(reply);
-                            System.out.println("Declined transfer: " + folderName + "/" + Arrays.toString(files) + "");
-                        }
-                        // choose folder to save the file
-                        String folderPath = FolderSelector.selectFolder();
-                        while (folderPath == null) {
-                            JOptionPane.showMessageDialog(null, "Do you want to cancel file transfer?");
-                            int result2 = JOptionPane.showConfirmDialog(null,
-                                    "Do you want to cancel file transfer?",
-                                    "Cancel Transfer", JOptionPane.YES_NO_OPTION);
-                            if (result2 == JOptionPane.YES_OPTION) {
-                                break;
-                            } else {
-                                folderPath = FolderSelector.selectFolder();
-                            }
-                        }
-                        // public FileReceiver(int udpPort, int tcpPort, File saveDirectory) {
-
-                        FileReceiver receiver = new FileReceiver(client.getUDPPort(), client.getTCPPort(), new File(folderPath));
-                        
-                        receiver.start(files , folderName);
-
-                        continue;
-                    }
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
@@ -276,7 +211,8 @@ public class Main { // 定義 Main 類別
                     socket.close();
                 }
             }
-        }).start();
+        });
+        MultiCast.start(); // 啟動多播監聽執行緒
     }
 
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
@@ -315,23 +251,28 @@ public class Main { // 定義 Main 類別
 
  
     public static void main(String[] args) { // 主方法，程式入口點
-        //chcp 65001; // 設定命令提示字元編碼為 UTF-8
+        // 1) Force JVM encoding to UTF‑8
+        System.setProperty("file.encoding", "UTF-8");
+        ProcessBuilder pb = new ProcessBuilder("cmd","/c","chcp","65001")
+                                    .redirectErrorStream(true)
+                                    .inheritIO();
         try {
+            pb.start().waitFor();
             System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
             System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
-        } catch (java.io.UnsupportedEncodingException e) {
-            e.printStackTrace();
-        }
-        try {
-            Process p = new ProcessBuilder("cmd", "/c", "chcp", "65001")
-                            .redirectErrorStream(true)
-                            .inheritIO()
-                            .start();
-            p.waitFor();
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
-        System.setProperty("file.encoding", "UTF-8"); // 設定檔案編碼為 UTF-8
+        // 2) Recreate stdout/stderr with UTF‑8
+
+        // 3) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft YaHei, or Noto)
+        Font uiFont = new Font("Microsoft YaHei UI", Font.PLAIN, 12);
+        UIDefaults d = UIManager.getLookAndFeelDefaults();
+        for (Object key : d.keySet()) {
+            if (key.toString().toLowerCase().endsWith(".font")) {
+                UIManager.put(key, uiFont);
+            }
+        }
         
         
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
@@ -340,12 +281,10 @@ public class Main { // 定義 Main 類別
         startMulticastListener(); // Start listening first
     
         sendStatus.set(SEND_STATUS.SEND_OK);
-    
-        // startHeartbeatResponder(); // 啟動心跳回應器
+
         SwingUtilities.invokeLater(() -> {
             new SendFileGUI();
         }); // 建立並顯示檔案傳送介面
-        multicastHello(); // Then announce yourself
         multicastHello(); // Then announce yourself
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
