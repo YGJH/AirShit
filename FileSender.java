@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class FileSender {
-    private static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
+    private static final int MAX_CHUNK_SIZE = 800 * 1024 * 1024; // 800 MB
 
     private final String targetHost;
     private final int    targetPort;
@@ -135,7 +135,11 @@ public class FileSender {
             long offset   = (long)idx * MAX_CHUNK_SIZE;
             long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
 
-            String tag = file.getName() + "[chunk " + idx + "]";
+            if(length <= 0) {
+                System.out.println("Chunk " + idx + " is empty or out of bounds.");
+                return;
+            }
+
             cb.onStart(length);
 
             dos.writeUTF(file.getName());
@@ -145,7 +149,7 @@ public class FileSender {
             dos.writeLong(length);
 
             raf.seek(offset);
-            byte[] buf = new byte[8192];
+            byte[] buf = new byte[819200]; // 800 KB
             long sent = 0;
             while (sent < length) {
                 int toRead = (int)Math.min(buf.length, length - sent);
