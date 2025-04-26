@@ -76,7 +76,6 @@ public class FileReceiver {
             if (accept) {
                 // let user select folder to save files
                 
-
                 String basePath = FolderSelector.selectFolderAndListFiles(null)  // or your selectFolder()
                                     .stream().findFirst().map(f->f.getParent()).orElse(null);
                 if (basePath == null) {
@@ -86,8 +85,14 @@ public class FileReceiver {
                     // assign the class field, and create the sub‐folder
                     saveDir = new File(basePath, folder);
                     println("Saving to: " + saveDir.getAbsolutePath());
-                    if (!saveDir.exists()) {
-                        saveDir.mkdirs();
+                    if(names.size() == 1) { // single file
+                        // if single file, create a subfolder with the file name
+                        // to avoid overwriting existing files
+                        saveDir = new File(saveDir, names.get(0));
+                    } else {
+                        if (!saveDir.exists()) {
+                            saveDir.mkdirs();
+                        }
                     }
                 }
             }
