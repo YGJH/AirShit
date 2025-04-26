@@ -10,8 +10,6 @@ import java.util.concurrent.*;
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
-import java.util.ArrayList;
-import java.util.Arrays;
 
 public class FileReceiver {
     private static int TCP_BACKLOG = 50;
@@ -34,6 +32,11 @@ public class FileReceiver {
      * 2) Pre-allocate if needed  
      * 3) Loop accepting further TCP connections, handing each to handleClient()
      */
+    
+    public void println(String str) {
+        System.out.println(str);
+    }
+    
     public void start(TransferCallback callback) throws IOException {
         ServerSocket server = new ServerSocket(port, TCP_BACKLOG);
 
@@ -71,17 +74,20 @@ public class FileReceiver {
 
             if (accept) {
                 // let user select folder to save files
-                String saveDir = FolderSelector.selectFolder();
                 
 
-                // create folder if it doesn't exist
-                File folderDir = new File(saveDir, folder);
-                if (!folderDir.exists()) {
-                    folderDir.mkdirs();
-                }
-                if (saveDir == null) {
-                    System.out.println("No folder selected. Transfer declined.");
+                String basePath = FolderSelector.selectFolderAndListFiles(null)  // or your selectFolder()
+                                    .stream().findFirst().map(f->f.getParent()).orElse(null);
+                if (basePath == null) {
+                    println("No folder selected. Transfer declined.");
                     accept = false;
+                } else {
+                    // assign the class field, and create the sub‐folder
+                    saveDir = new File(basePath, folder);
+                    println("Saving to: " + saveDir.getAbsolutePath());
+                    if (!saveDir.exists()) {
+                        saveDir.mkdirs();
+                    }
                 }
             }
             // show dialog to select folder
