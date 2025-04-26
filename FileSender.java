@@ -5,8 +5,8 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class FileSender {
-    private static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
-
+    public static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
+    
     private final String targetHost;
     private final int    targetUdpPort;
     private final int    targetTcpPort;
@@ -44,15 +44,17 @@ public class FileSender {
         // 1) UDP handshake
         //    If single file → "folder|name|size|chunks"
         //    Else            → "folder|f1|f2|..."
-        StringBuilder sb = new StringBuilder(folderName);
+        StringBuilder sb = new StringBuilder("SReq|");
         if (singleFile) {
+            sb.append("singleFile");
             sb.append("|")
-              .append(files[0].getName())
-              .append("|")
-              .append(fileSize)
-              .append("|")
-              .append(chunkCount);
+            .append(files[0].getName())
+            .append("|")
+            .append(fileSize)
+            .append("|")
+            .append(chunkCount);
         } else {
+            sb.append(folderName);
             for (File f : files) sb.append("|").append(f.getName());
         }
         byte[] payload = sb.toString().getBytes("UTF-8");

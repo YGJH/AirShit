@@ -168,14 +168,71 @@ public class Main { // 定義 Main 類別
                         continue;
                     }
                     // get file name and total chunks
-                    if((message).startsWith("fileName:")) {
-                        String[] parts = message.split(":"); // use colon as delimiter
-                        String fileName = parts[0].substring(9); // remove "fileName:" prefix
-                        int totalChunks = Integer.parseInt(parts[1]);
-                        System.out.println("Received file name: " + fileName + ", total chunks: " + totalChunks);
+
+                    // SReq|folderName|fileName|fileSize|totalChunks
+                    // SReq|singleFile|fileName|fileSize|totalChunks
+                    if(message.startsWith("SReq|")) {
+                        String[] parts = message.split("|"); // use pipe as delimiter
+                        if (parts.length < 5) {
+                            System.out.println("Invalid SReq message: " + message);
+                            continue;
+                        }
+                        String folderName = parts[1];
+                        File[] files = new File[parts.length - 4];
+                        if(folderName.equals("singleFile") == false) {
+                            folderName = folderName.replaceAll("\\\\", "/");
+                        } 
+                        for(int i = 0; i < files.length; i++) {
+                            files[i] = new File(parts[i + 2]);
+                        }
+                        long fileSize = Long.parseLong(parts[parts.length - 2]);
+                        int totalChunks = Integer.parseInt(parts[parts.length - 1]);
+                        // wait for user to accept or decline the transfer
+                        int result = JOptionPane.showConfirmDialog(null,
+                                "Incoming transfer: " + folderName + "\n" +
+                                "File: " + Arrays.toString(files) + "\n" +
+                                "Size: " + fileSize + " bytes\n" +
+                                "Total chunks: " + totalChunks + "\n" +
+                                "Accept?",
+                                "Incoming Transfer", JOptionPane.YES_NO_OPTION);
+                        if (result == JOptionPane.YES_OPTION) {
+                            // send accept message
+                            byte[] resp = "ACCEPT".getBytes(StandardCharsets.UTF_8);
+                            DatagramPacket reply = new DatagramPacket(
+                                    resp, resp.length,
+                                    packet.getAddress(), packet.getPort());
+                            socket.send(reply);
+                            System.out.println("Accepted transfer: " + folderName + "/" + Arrays.toString(files) + "");
+                        } else {
+                            // send decline message
+                            byte[] resp = "DECLINE".getBytes(StandardCharsets.UTF_8);
+                            DatagramPacket reply = new DatagramPacket(
+                                    resp, resp.length,
+                                    packet.getAddress(), packet.getPort());
+                            socket.send(reply);
+                            System.out.println("Declined transfer: " + folderName + "/" + Arrays.toString(files) + "");
+                        }
+                        // choose folder to save the file
+                        String folderPath = FolderSelector.selectFolder();
+                        while (folderPath == null) {
+                            JOptionPane.showMessageDialog(null, "Do you want to cancel file transfer?");
+                            int result2 = JOptionPane.showConfirmDialog(null,
+                                    "Do you want to cancel file transfer?",
+                                    "Cancel Transfer", JOptionPane.YES_NO_OPTION);
+                            if (result2 == JOptionPane.YES_OPTION) {
+                                break;
+                            } else {
+                                folderPath = FolderSelector.selectFolder();
+                            }
+                        }
+                        // public FileReceiver(int udpPort, int tcpPort, File saveDirectory) {
+
+                        FileReceiver receiver = new FileReceiver(client.getUDPPort(), client.getTCPPort(), new File(folderPath));
+                        
+                        receiver.start(files , folderName);
+
                         continue;
                     }
-        
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {

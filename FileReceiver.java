@@ -28,61 +28,30 @@ public class FileReceiver {
     }
 
     /** Blocks for the UDP handshake, then spins up TCP handlers forever. */
-    public void start(TransferCallback callback) throws IOException {
+    public void start(File[] files , String FolderName) throws IOException {
         boolean single;
         String folderName;
-        List<String> fileNames;
         long fileSize = 0;
         int  chunkCount = 1;
-
-        // 1) UDP handshake
-        try (DatagramSocket ds = new DatagramSocket(udpPort)) {
-            byte[] buf = new byte[4096];
-            DatagramPacket pkt = new DatagramPacket(buf, buf.length);
-            System.out.println("Waiting for transfer announcement...");
-            ds.receive(pkt);
-
-            String msg = new String(pkt.getData(), 0, pkt.getLength(), "UTF-8");
-            String[] parts = msg.split("\\|");
-            folderName = parts[0];
-            if (parts.length == 4) {
-                // single-file, chunked
-                single     = true;
-                fileNames  = Collections.singletonList(parts[1]);
-                fileSize   = Long.parseLong(parts[2]);
-                chunkCount = Integer.parseInt(parts[3]);
-            } else {
-                // normal multi-file
-                single     = false;
-                fileNames  = Arrays.asList(parts).subList(1, parts.length);
-            }
-
-            // prompt user
-            System.out.println("Incoming transfer: " + folderName);
-            System.out.println("Files: " + fileNames);
-            System.out.print("Accept? (y/N): ");
-            BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-            boolean accept = "y".equalsIgnoreCase(br.readLine().trim());
-
-            // send response
-            String resp = accept ? "ACCEPT" : "DECLINE";
-            byte[] rp = resp.getBytes("UTF-8");
-            DatagramPacket ack = new DatagramPacket(
-                rp, rp.length, pkt.getAddress(), pkt.getPort());
-            ds.send(ack);
-
-            if (!accept) {
-                System.out.println("Transfer declined.");
-                return;
-            }
-
-            // for a chunked single file, pre-create and set full length
-            if (single) {
-                File out = new File(saveDir, fileNames.get(0));
-                try (RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-                    raf.setLength(fileSize);
-                }
-            }
+        // 1) if folderName is null, then it is a single file transfer
+        if (FolderName == null) {
+            single = true;
+            folderName = files[0].getName();
+            fileSize   = files[0].length();
+            chunkCount = (int)((fileSize + FileSender.MAX_CHUNK_SIZE - 1) / FileSender.MAX_CHUNK_SIZE);
+        } else {
+            single = false;
+            folderName = FolderName;
+            fileSize = 0;
+            chunkCount = files.length;
+        }
+        // check folder is exists
+        File folder = new File(saveDir, folderName);
+        try {
+            if (!folder.exists()) folder.mkdirs();
+        } catch (Exception e) {
+            System.out.println("Error creating folder: " + folder.getAbsolutePath());
+            return;
         }
 
         // 2) TCP server
@@ -91,11 +60,11 @@ public class FileReceiver {
 
         while (true) {
             Socket client = server.accept();
-            executor.submit(() -> handleClient(client, callback));
+            executor.submit(() -> handleClient(client));
         }
     }
 
-    private void handleClient(Socket sock, TransferCallback cb) {
+    private void handleClient(Socket sock) {
         try (DataInputStream dis = new DataInputStream(
                  new BufferedInputStream(sock.getInputStream()))) {
 
@@ -105,7 +74,6 @@ public class FileReceiver {
             if (!isChunk) {
                 // whole-file
                 long total = dis.readLong();
-                cb.onStart(fileName, total);
                 File outFile = new File(saveDir, fileName);
                 try (FileOutputStream fos = new FileOutputStream(outFile)) {
                     byte[] buf = new byte[8192];
@@ -114,19 +82,14 @@ public class FileReceiver {
                     while (rec < total && (r = dis.read(buf)) != -1) {
                         fos.write(buf, 0, r);
                         rec += r;
-                        cb.onProgress(fileName, rec);
                     }
                 }
-                cb.onComplete(fileName);
 
             } else {
                 // chunked
-                int    idx    = dis.readInt();
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
-                String tag    = fileName + "[chunk " + idx + "]";
 
-                cb.onStart(tag, length);
                 File outFile = new File(saveDir, fileName);
 
                 // write into the pre-sized file at the correct offset
@@ -142,13 +105,13 @@ public class FileReceiver {
                         ByteBuffer bb = ByteBuffer.wrap(buf, 0, r);
                         ch.write(bb, offset + rec);
                         rec += r;
-                        cb.onProgress(tag, rec);
                     }
                 }
-                cb.onComplete(tag);
             }
         } catch (Exception e) {
-            cb.onError("receiver", e);
+            e.printStackTrace();
+        } finally {
+            try { sock.close(); } catch (IOException e) { e.printStackTrace(); }
         }
     }
 }

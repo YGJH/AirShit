@@ -29,6 +29,13 @@ public class FolderSelector {
         if (result == JFileChooser.APPROVE_OPTION) {
             File folder = chooser.getSelectedFile();
             folderName = folder.getAbsolutePath();
+            for(int i = folderName.length() - 1; i >= 0; i--) {
+                if(folderName.charAt(i) == '\\') {
+                    folderName = folderName.substring(0, i + 1);
+                    break;
+                }
+            }
+
             // folder.listFiles() 可能回傳 null（例：權限不足）
             File[] files = folder.listFiles();
             if (files != null) {
@@ -44,23 +51,46 @@ public class FolderSelector {
         }
     }
 
-    public static void main(String[] args) {
-        // 因為是 Swing GUI，要在 Event Dispatch Thread 中執行
-        SwingUtilities.invokeLater(() -> {
-            // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
-            List<File> fileList = selectFolderAndListFiles(null);
+    public static String selectFolder() {
+        JFileChooser chooser = new JFileChooser();
+        // 只允許選擇目錄
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setDialogTitle("請選擇一個資料夾");
 
-            if (fileList.isEmpty()) {
-                System.out.println("沒有選擇資料夾，或該資料夾中沒有任何檔案。");
-            } else {
-                System.out.println("您選擇的資料夾中包含以下檔案／子資料夾：");
-                for (File f : fileList) {
-                    // 印出絕對路徑，也可以用 f.getName() 只印出檔名
-                    System.out.println(" - " + f.getAbsolutePath());
+        int result = chooser.showOpenDialog(null);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File folder = chooser.getSelectedFile();
+            folderName = folder.getAbsolutePath();
+            for(int i = folderName.length() - 1; i >= 0; i--) {
+                if(folderName.charAt(i) == '\\') {
+                    folderName = folderName.substring(0, i + 1);
+                    break;
                 }
             }
-            // 結束程式
-            System.exit(0);
-        });
+            return folderName;
+        } else {
+            // 使用者按了「取消」或關閉視窗
+            return null;
+        }
     }
+
+    // public static void main(String[] args) {
+    //     // 因為是 Swing GUI，要在 Event Dispatch Thread 中執行
+    //     SwingUtilities.invokeLater(() -> 
+    //         // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
+    //         List<File> fileList = selectFolderAndListFiles(null);
+
+    //         if (fileList.isEmpty()) {
+    //             System.out.println("沒有選擇資料夾，或該資料夾中沒有任何檔案。");
+    //         } else {
+    //             System.out.println("您選擇的資料夾中包含以下檔案／子資料夾：");
+    //             for (File f : fileList) {
+    //                 // 印出絕對路徑，也可以用 f.getName() 只印出檔名
+    //                 System.out.println(" - " + f.getAbsolutePath());
+    //             }
+    //         }
+    //         // 結束程式
+    //         System.exit(0);
+    //     });
+    // }
 }
