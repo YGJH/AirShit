@@ -50,29 +50,30 @@ public class Main { // 定義 Main 類別
     public static String getNonLoopbackIP() {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) 
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr instanceof Inet4Address 
-                        && !addr.isLoopbackAddress() 
-                        && !addr.isLinkLocalAddress()) {
-                        System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": " 
-                                           + addr.getHostAddress());
+                    if (addr instanceof Inet4Address
+                            && !addr.isLoopbackAddress()
+                            && !addr.isLinkLocalAddress()) {
+                        System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": "
+                                + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
                 }
             }
-            
+
         } catch (Exception e) {
             e.printStackTrace();
         }
         // fallback
         return "127.0.0.1";
     }
+
     public static InetAddress getMulticastAddress() {
         try {
             return InetAddress.getByName("239.255.42.99"); // Valid multicast address
@@ -85,16 +86,16 @@ public class Main { // 定義 Main 類別
     private static NetworkInterface findCorrectNetworkInterface() {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) 
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr instanceof Inet4Address 
-                        && !addr.isLoopbackAddress() 
-                        && !addr.isLinkLocalAddress()) {
+                    if (addr instanceof Inet4Address
+                            && !addr.isLoopbackAddress()
+                            && !addr.isLinkLocalAddress()) {
                         return ni;
                     }
                 }
@@ -105,6 +106,7 @@ public class Main { // 定義 Main 類別
         }
         return null;
     }
+
     public static void multicastHello() {
         try {
             InetAddress group = getMulticastAddress();
@@ -124,7 +126,6 @@ public class Main { // 定義 Main 類別
         }
     }
 
-
     public static void startMulticastListener() {
         Thread MultiCast = new Thread(() -> {
             MulticastSocket socket = null;
@@ -142,7 +143,7 @@ public class Main { // 定義 Main 類別
                 if (iface != null) {
                     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
                 }
-    
+
                 byte[] buffer = new byte[1024];
                 System.out.println("Multicast listener started on port " + DISCOVERY_PORT);
                 while (true) {
@@ -151,7 +152,6 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength());
                     System.out.println(message);
-
 
                     // Check if the message is a heartbeat
                     if ((message).startsWith("HEARTBEAT-")) {
@@ -249,13 +249,12 @@ public class Main { // 定義 Main 類別
         }
     }
 
- 
     public static void main(String[] args) { // 主方法，程式入口點
         // 1) Force JVM encoding to UTF‑8
         System.setProperty("file.encoding", "UTF-8");
-        ProcessBuilder pb = new ProcessBuilder("cmd","/c","chcp","65001")
-                                    .redirectErrorStream(true)
-                                    .inheritIO();
+        ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
+                .redirectErrorStream(true)
+                .inheritIO();
         try {
             pb.start().waitFor();
             System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
@@ -263,9 +262,9 @@ public class Main { // 定義 Main 類別
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
-        // 2) Recreate stdout/stderr with UTF‑8
 
-        // 3) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft YaHei, or Noto)
+        // 2) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft
+        // YaHei, or Noto)
         Font uiFont = new Font("Microsoft YaHei UI", Font.PLAIN, 12);
         UIDefaults d = UIManager.getLookAndFeelDefaults();
         for (Object key : d.keySet()) {
@@ -273,18 +272,48 @@ public class Main { // 定義 Main 類別
                 UIManager.put(key, uiFont);
             }
         }
-        
-        
+
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
                 + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
-    
-        sendStatus.set(SEND_STATUS.SEND_OK);
 
+        sendStatus.set(SEND_STATUS.SEND_OK);
+        FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
+        new Thread(() -> {
+            try {
+                fileReceiver.start(new TransferCallback() {
+                    private long expectedBytes;               // ← store total here
+        
+                    @Override
+                    public void onStart(String fileName, long totalBytes) {
+                        this.expectedBytes = totalBytes;     // ← capture total
+                        SendFileGUI.receiveFileProgress(0);
+                    }
+        
+                    @Override
+                    public void onProgress(String fileName, long receivedBytes) {
+                        int pct = (int)(receivedBytes * 100L / expectedBytes);
+                        SendFileGUI.receiveFileProgress(pct);
+                    }
+        
+                    @Override
+                    public void onComplete(String fileName) {
+                        SendFileGUI.receiveFileProgress(100);
+                    }
+        
+                    @Override
+                    public void onError(String fileName, Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }, "file-receiver-thread").start();
         SwingUtilities.invokeLater(() -> {
             new SendFileGUI();
-        }); // 建立並顯示檔案傳送介面
+        });
         multicastHello(); // Then announce yourself
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
@@ -299,8 +328,6 @@ public class Main { // 定義 Main 類別
 
     }
 
-
-
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
         try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
             return socket.getLocalPort(); // 返回分配到的 TCP 端口號
@@ -308,7 +335,6 @@ public class Main { // 定義 Main 類別
             throw new RuntimeException("No free TCP port available", e); // 拋出執行例外表示未找到可用端口
         }
     }
-
 
     public static boolean receiveACK(Socket socket) {
         try {

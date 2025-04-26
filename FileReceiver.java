@@ -14,16 +14,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 public class FileReceiver {
-    private static final int TCP_BACKLOG = 50;
+    private static int TCP_BACKLOG = 50;
     private final int          port;
     private  File         saveDir;
     private final ExecutorService executor;
 
     /** @param targetPort  the single TCP port for both handshake & data */
-    public FileReceiver(int targetPort, File saveDirectory) {
+    public FileReceiver(int targetPort) {
         this.port     = targetPort;
-        this.saveDir  = saveDirectory;
-        if (!saveDir.exists()) saveDir.mkdirs();
         this.executor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r);
             t.setName("receiver-thread");
@@ -68,19 +66,20 @@ public class FileReceiver {
             boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + "?", "File Transfer", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
             dos.writeUTF(accept ? "ACCEPT" : "DECLINE");
             dos.flush();
-            System.out.println(accept ? "Transfer accepted." : "Transfer declined.");
+
+
+
             if (accept) {
+                // let user select folder to save files
+                String saveDir = FolderSelector.selectFolder();
+                
+
                 // create folder if it doesn't exist
                 File folderDir = new File(saveDir, folder);
                 if (!folderDir.exists()) {
                     folderDir.mkdirs();
                 }
-                JFileChooser chooser = new JFileChooser();
-                chooser.setDialogTitle("Select Folder to Save Files");
-                chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    saveDir = chooser.getSelectedFile();
-                } else {
+                if (saveDir == null) {
                     System.out.println("No folder selected. Transfer declined.");
                     accept = false;
                 }
