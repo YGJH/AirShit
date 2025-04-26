@@ -12,6 +12,24 @@ public class FolderSelector {
         return folderName;
     }
 
+
+    public static File[] selectFilesOrFolder() {
+        JFileChooser chooser = new JFileChooser();
+        // 允許選擇檔案或資料夾
+        chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+        chooser.setDialogTitle("請選擇檔案或資料夾");
+
+        int result = chooser.showOpenDialog(null);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = chooser.getSelectedFile();
+            folderName = selectedFile.getAbsolutePath();
+            return new File[] { selectedFile };
+        } else {
+            // 使用者按了「取消」或關閉視窗
+            return null;
+        }
+    }
+
     /**
      * 顯示一個資料夾選擇對話框，讓使用者選擇資料夾後，
      * 回傳該資料夾底下所有檔案與子資料夾的 List<File>。
@@ -19,7 +37,6 @@ public class FolderSelector {
      * @param parentComponent 作為對話框的父元件，若為 null 則無父元件
      * @return 選擇的資料夾底下所有檔案／子資料夾的 List，若使用者取消則回傳空 List
      */
-
     public static List<File> selectFolderAndListFiles(Component parentComponent) {
         JFileChooser chooser = new JFileChooser();
         // 只允許選擇目錄
