@@ -65,7 +65,7 @@ public class FileReceiver {
                 // multi‐file
                 names = Arrays.asList(parts).subList(1, parts.length);
             }
-
+            boolean singleFile = (names.size() == 1);
             // wait for accept/decline and show GUI dialog
             boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + "?", "File Transfer", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
             dos.writeUTF(accept ? "ACCEPT" : "DECLINE");
@@ -74,25 +74,20 @@ public class FileReceiver {
 
 
             if (accept) {
-                // let user select folder to save files
-                
-                String basePath = FolderSelector.selectFolderAndListFiles(null)  // or your selectFolder()
-                                    .stream().findFirst().map(f->f.getParent()).orElse(null);
+                // let user pick a base directory
+                String basePath = FolderSelector
+                    .selectFolderAndListFiles(null)
+                    .stream().findFirst().map(f -> f.getParent()).orElse(null);
                 if (basePath == null) {
                     println("No folder selected. Transfer declined.");
                     accept = false;
                 } else {
-                    // assign the class field, and create the sub‐folder
-                    saveDir = new File(basePath, folder);
-                    println("Saving to: " + saveDir.getAbsolutePath());
-                    if(names.size() == 1) { // single file
-                        // if single file, create a subfolder with the file name
-                        // to avoid overwriting existing files
-                        saveDir = new File(saveDir, names.get(0));
+                    if (singleFile) {
+                        // single file → save directly to the base folder
+                        saveDir = new File(basePath);
                     } else {
-                        if (!saveDir.exists()) {
-                            saveDir.mkdirs();
-                        }
+                        // multi-file → create a subfolder named after 'folder'
+                        saveDir = new File(basePath, folder);
                     }
                 }
             }
@@ -112,7 +107,7 @@ public class FileReceiver {
                 raf.setLength(fileSize);
             }
         }
-
+        println("saveing to " + saveDir.getAbsolutePath());
         // --- 3) accept data connections forever ---
         System.out.println("Handshake complete. Waiting for file/chunk connections...");
         while (true) {
@@ -130,17 +125,41 @@ public class FileReceiver {
                 long total = dis.readLong();
                 cb.onStart(fileName, total);
                 File outFile = new File(saveDir, fileName);
-                try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                    byte[] buf = new byte[8192];
-                    long rec = 0;
-                    int  r;
-                    while (rec < total && (r = dis.read(buf)) != -1) {
-                        fos.write(buf, 0, r);
-                        rec += r;
-                        cb.onProgress(fileName, rec);
+                try {
+                    // if the file exists already, try deleting so we can overwrite
+                    if (outFile.exists() && !outFile.delete()) {
+                        throw new IOException("Cannot overwrite existing: " + outFile);
                     }
+                    // now open for write
+                    try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                        byte[] buf = new byte[8192];
+                        long rec = 0;
+                        int  r;
+                        while (rec < total && (r = dis.read(buf)) != -1) {
+                            fos.write(buf, 0, r);
+                            rec += r;
+                            cb.onProgress(fileName, rec);
+                        }
+                    }
+                    cb.onComplete(fileName);
+
+                } catch (FileNotFoundException fnfe) {
+                    // locked by another process
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(
+                            null,
+                            "Cannot write to \"" + outFile + "\".\n"
+                          + "It appears to be locked or in use by another program.",
+                            "Save Error",
+                            JOptionPane.ERROR_MESSAGE
+                        );
+                    });
+                    cb.onError(fileName, fnfe);
+
+                } catch (IOException ioe) {
+                    // any other I/O problem
+                    cb.onError(fileName, ioe);
                 }
-                cb.onComplete(fileName);
             } else {
                 int    idx    = dis.readInt();
                 long   offset = dis.readLong();

@@ -79,9 +79,15 @@ public class FileSender {
     }
 
     private void sendWholeFile(File file, TransferCallback cb) {
-        try (Socket sock = new Socket(targetHost, targetPort);
-             DataOutputStream dos = new DataOutputStream(sock.getOutputStream());
-             FileInputStream  fis = new FileInputStream(file)) {
+        try (Socket sock = new Socket();
+            BufferedOutputStream bos = new BufferedOutputStream(sock.getOutputStream(),64*1024);
+            DataOutputStream dos = new DataOutputStream(bos);
+            FileInputStream fis = new FileInputStream(file)) {
+            
+            sock.setTcpNoDelay(true);
+            sock.setSendBufferSize(64*1024);
+            sock.setSoTimeout(30_000);
+            sock.connect(new InetSocketAddress(targetHost,targetPort));
 
             long total = file.length();
             cb.onStart(file.getName(), total);
