@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 
 public class FileSender {
     public static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
-    
+
     private final String targetHost;
     private final int    targetUdpPort;
     private final int    targetTcpPort;
@@ -57,6 +57,8 @@ public class FileSender {
             sb.append(folderName);
             for (File f : files) sb.append("|").append(f.getName());
         }
+        sb.append("|").append(fileSize);
+        sb.append("|").append(chunkCount);
         byte[] payload = sb.toString().getBytes("UTF-8");
         try (DatagramSocket ds = new DatagramSocket()) {
             DatagramPacket pkt = new DatagramPacket(

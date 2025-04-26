@@ -181,12 +181,13 @@ public class Main { // 定義 Main 類別
                         File[] files = new File[parts.length - 4];
                         if(folderName.equals("singleFile") == false) {
                             folderName = folderName.replaceAll("\\\\", "/");
-                        } 
-                        for(int i = 0; i < files.length; i++) {
-                            files[i] = new File(parts[i + 2]);
                         }
-                        long fileSize = Long.parseLong(parts[parts.length - 2]);
+                        for (int i = 2; i < files.length; i++) {
+                            files[i] = new File(parts[i + 2]); // Assuming file sizes are in parts[2] onwards
+                        }
+                        int fileSize = Integer.parseInt(parts[parts.length - 2]);
                         int totalChunks = Integer.parseInt(parts[parts.length - 1]);
+                        
                         // wait for user to accept or decline the transfer
                         int result = JOptionPane.showConfirmDialog(null,
                                 "Incoming transfer: " + folderName + "\n" +

@@ -19,6 +19,7 @@ public class FolderSelector {
      * @param parentComponent 作為對話框的父元件，若為 null 則無父元件
      * @return 選擇的資料夾底下所有檔案／子資料夾的 List，若使用者取消則回傳空 List
      */
+
     public static List<File> selectFolderAndListFiles(Component parentComponent) {
         JFileChooser chooser = new JFileChooser();
         // 只允許選擇目錄
@@ -30,12 +31,12 @@ public class FolderSelector {
             File folder = chooser.getSelectedFile();
             folderName = folder.getAbsolutePath();
             for(int i = folderName.length() - 1; i >= 0; i--) {
-                if(folderName.charAt(i) == '\\') {
-                    folderName = folderName.substring(0, i + 1);
+                if(folderName.charAt(i) == '\\' 
+                        || folderName.charAt(i) == '/') {
+                    folderName = folderName.substring(i + 1 , folderName.length());
                     break;
                 }
             }
-
             // folder.listFiles() 可能回傳 null（例：權限不足）
             File[] files = folder.listFiles();
             if (files != null) {
