@@ -298,42 +298,29 @@ public class SendFileGUI extends JFrame {
         // 2) build a TransferCallback that updates the progress bar
         TransferCallback callback = new TransferCallback() {
             @Override
-            public void onStart(String fileName, long fileTotal) {
-                lastProgress.put(fileName, 0L);
-                SwingUtilities.invokeLater(() -> progressBar.setValue(0));
+            public void onStart(long totalBytes) {
+                progressBar.setMaximum((int)totalBytes);
             }
-
+            
             @Override
-            public void onProgress(String fileName, long sentForFile) {
-                // delta = how many new bytes this callback
-                long prev = lastProgress.getOrDefault(fileName, 0L);
-                long delta = sentForFile - prev;
-                lastProgress.put(fileName, sentForFile);
-
-                long total = overallSent.addAndGet(delta);
-                int percent = (int)(total * 100 / totalSize);
-                SwingUtilities.invokeLater(() -> progressBar.setValue(percent));
-            }
-
-            @Override
-            public void onComplete(String fileName) {
-                // once all threads report complete, restore UI
-                if (completedCount.incrementAndGet() == selectedFiles.length) {
-                    SwingUtilities.invokeLater(() -> {
-                        progressBar.setValue(100);
-                        sendButton.setEnabled(true);
-                        log("All files sent.");
-                    });
+            public void onProgress(long bytesTransferred) {
+                overallSent.addAndGet(bytesTransferred);
+                int percent = (int)(overallSent.get() * 100 / totalSize);
+                progressBar.setValue((int)overallSent.get());
+                if (percent % 10 == 0) {
+                    log("Progress: " + percent + "% (" + formatFileSize(overallSent.get()) + ")");
                 }
             }
-
+            
             @Override
-            public void onError(String fileName, Exception e) {
-                SwingUtilities.invokeLater(() ->
-                    log("Error sending " + fileName + ": " + e.getMessage())
-                );
+            public void onError(Exception e) {
+                log("Error: " + e.getMessage());
+                sendButton.setEnabled(true);
+                progressBar.setVisible(false);
             }
         };
+
+
         println("Sending files to " + selectedClient.getUserName() + "...");
         log("Total size: " + formatFileSize(totalSize));
         // 3) invoke the sender

@@ -40,7 +40,7 @@ public class FileReceiver {
     
     public void start(TransferCallback callback) throws IOException {
         ServerSocket server = new ServerSocket(port, TCP_BACKLOG);
-
+        received.set(0); // for debugging
         // --- 1) control handshake ---
         System.out.println("Waiting for TCP handshake on port " + port + "...");
         String folder;
@@ -111,6 +111,7 @@ public class FileReceiver {
         println("saveing to " + saveDir.getAbsolutePath());
         // --- 3) accept data connections forever ---
         System.out.println("Handshake complete. Waiting for file/chunk connections...");
+        callback.onStart(fileSize); // for debugging
         while (true) {
             Socket client = server.accept();
             executor.submit(() -> handleClient(client, callback));
@@ -124,7 +125,6 @@ public class FileReceiver {
 
             if (!isChunk) {
                 long total = dis.readLong();
-                cb.onStart(fileName, total);
                 
                 File outFile = new File(saveDir, fileName);
                 try (FileOutputStream fos = new FileOutputStream(outFile)) {
@@ -133,17 +133,13 @@ public class FileReceiver {
                     while (received.get() < total && (r = dis.read(buf)) != -1) {
                         fos.write(buf, 0, r);
                         long cumul = received.addAndGet(r);             // ← update atomically
-                        cb.onProgress(fileName, cumul);
+                        cb.onProgress(cumul);
                     }
                 }
-                cb.onComplete(fileName);
 
             } else {
-                int    idx    = dis.readInt();
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
-                String tag    = fileName + "[chunk " + idx + "]";
-                cb.onStart(tag, length);
 
                 File outFile = new File(saveDir, fileName);
                 try (RandomAccessFile raf = new RandomAccessFile(outFile, "rw");
@@ -155,13 +151,12 @@ public class FileReceiver {
                         ByteBuffer bb = ByteBuffer.wrap(buf, 0, r);
                         ch.write(bb, offset + received.get());
                         long cumul = received.addAndGet(r);             // ← update atomically
-                        cb.onProgress(tag, cumul);
+                        cb.onProgress(cumul);
                     }
                 }
-                cb.onComplete(tag);
             }
         } catch (Exception e) {
-            cb.onError("receiver", e);
+            cb.onError(e);
         }
     }
 }

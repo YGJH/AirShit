@@ -291,39 +291,23 @@ public class Main { // 定義 Main 類別
             try {
                 AtomicLong totalExpected = new AtomicLong(0);
                 AtomicLong totalReceived = new AtomicLong(0);
-                ConcurrentHashMap<String,Long> lastSeen = new ConcurrentHashMap<>();
 
-                fileReceiver.start(new TransferCallback() {
+                fileReceiver.start(new TransferCallback() { // 開始檔案接收
                     @Override
-                    public void onStart(String fileName, long fileTotal) {
-                        // add this file’s full size into the grand total
-                        totalExpected.addAndGet(fileTotal);
+                    public void onStart(long totalBytes) { // 檔案傳送開始時的回調方法
+                        println("開始接收檔案，總大小: " + totalBytes + " bytes"); // 輸出檔案大小
+                        totalExpected.set(totalBytes); // 設定預期的檔案大小
                     }
 
                     @Override
-                    public void onProgress(String fileName, long fileBytes) {
-                        // compute how many new bytes arrived since last report
-                        long prev = lastSeen.getOrDefault(fileName, 0L);
-                        long delta = fileBytes - prev;
-                        lastSeen.put(fileName, fileBytes);
-
-                        // add into the global received counter
-                        long cumul = totalReceived.addAndGet(delta);
-                        int pct = (int)(cumul * 100L / totalExpected.get());
-                        SendFileGUI.receiveFileProgress(pct);
+                    public void onProgress(long bytesTransferred) { // 檔案傳送進度的回調方法
+                        totalReceived.addAndGet(bytesTransferred); // 更新已接收的檔案大小
+                        println("已接收: " + totalReceived.get() + " / " + totalExpected.get() + " bytes"); // 輸出已接收的檔案大小
                     }
 
                     @Override
-                    public void onComplete(String fileName) {
-                        // if you like, you can detect completion of all files here:
-                        if (totalReceived.get() == totalExpected.get()) {
-                            SendFileGUI.receiveFileProgress(100);
-                        }
-                    }
-
-                    @Override
-                    public void onError(String fileName, Exception e) {
-                        e.printStackTrace();
+                    public void onError(Exception e) { // 檔案傳送錯誤的回調方法
+                        e.printStackTrace(); // 列印錯誤資訊
                     }
                 });
             } catch (IOException e) {

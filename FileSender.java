@@ -35,7 +35,7 @@ public class FileSender {
         int  chunkCount = singleFile
                 ? (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE)
                 : 1;
-
+        sent.set(0); // for debugging
         // --- 1) TCP handshake ---
         StringBuilder sb = new StringBuilder(folderName);
         if (singleFile) {
@@ -64,6 +64,7 @@ public class FileSender {
                 return;
             }
         }
+        callback.onStart(fileSize); // for debugging
 
         // --- 2) schedule transfers ---
         if (singleFile) {
@@ -99,7 +100,7 @@ public class FileSender {
             sock.setSoTimeout(30_000);
             long total = file.length();
 
-            cb.onStart(file.getName(), total);
+            cb.onStart(total);
             dos.writeUTF(file.getName());
             dos.writeBoolean(false);
             dos.writeLong(total);
@@ -109,12 +110,11 @@ public class FileSender {
             while ((r = fis.read(buf)) != -1) {
                 dos.write(buf, 0, r);
                 long cumul = sent.addAndGet(r);
-                cb.onProgress(file.getName(), cumul);
+                cb.onProgress(cumul);
             }
             dos.flush();
-            cb.onComplete(file.getName());
         } catch (Exception e) {
-            cb.onError(file.getName(), e);
+            cb.onError(e);
         }
     }
 
@@ -128,7 +128,6 @@ public class FileSender {
             long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
             String tag    = file.getName() + "[chunk " + idx + "]";
 
-            cb.onStart(tag, length);
             dos.writeUTF(file.getName());
             dos.writeBoolean(true);
             dos.writeInt(idx);
@@ -143,12 +142,11 @@ public class FileSender {
                 if (r < 0) break;
                 dos.write(buf, 0, r);
                 long cumul = sent.addAndGet(r);
-                cb.onProgress(tag, cumul);
+                cb.onProgress(cumul);
             }
             dos.flush();
-            cb.onComplete(tag);
         } catch (Exception e) {
-            cb.onError(file.getName() + "[chunk " + idx + "]", e);
+            cb.onError( e);
         }
     }
 }
