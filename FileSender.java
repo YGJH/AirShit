@@ -37,7 +37,7 @@ public class FileSender {
         int  chunkCount = singleFile
                 ? (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE)
                 : 1;
-
+                totalSent.set(0);
         // --- 1) TCP handshake ---
         StringBuilder sb = new StringBuilder(folderName);
         if (singleFile) {

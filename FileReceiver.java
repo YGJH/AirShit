@@ -42,7 +42,7 @@ public class FileReceiver {
         long fileSize = 0;
         int  chunkCount = 1;
         while(true) {
-
+            totalReceived.set(0);
             try (Socket hsSock = server.accept();
                 DataInputStream dis = new DataInputStream(hsSock.getInputStream());
                 DataOutputStream dos = new DataOutputStream(hsSock.getOutputStream())) {
@@ -145,7 +145,6 @@ public class FileReceiver {
             }
     
             executor.shutdown();
-            server.close();
             System.out.println("All data in—receiver exiting.");
         }
     }
