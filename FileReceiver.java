@@ -6,9 +6,9 @@ import java.nio.*;
 import java.nio.channels.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.swing.*;
-import java.awt.*;
 import java.util.List;
 
 public class FileReceiver {
@@ -119,68 +119,44 @@ public class FileReceiver {
     private void handleClient(Socket sock, TransferCallback cb) {
         try (DataInputStream dis = new DataInputStream(new BufferedInputStream(sock.getInputStream()))) {
             String fileName = dis.readUTF();
-            boolean isChunk = dis.readBoolean();
+            boolean isChunk  = dis.readBoolean();
 
             if (!isChunk) {
                 long total = dis.readLong();
+                AtomicLong received = new AtomicLong(0);               // ← atomic counter
                 cb.onStart(fileName, total);
+                
                 File outFile = new File(saveDir, fileName);
-                try {
-                    // if the file exists already, try deleting so we can overwrite
-                    if (outFile.exists() && !outFile.delete()) {
-                        throw new IOException("Cannot overwrite existing: " + outFile);
+                try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                    byte[] buf = new byte[8192];
+                    int  r;
+                    while (received.get() < total && (r = dis.read(buf)) != -1) {
+                        fos.write(buf, 0, r);
+                        long cumul = received.addAndGet(r);             // ← update atomically
+                        cb.onProgress(fileName, cumul);
                     }
-                    // now open for write
-                    try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                        byte[] buf = new byte[8192];
-                        long rec = 0;
-                        int  r;
-                        while (rec < total && (r = dis.read(buf)) != -1) {
-                            fos.write(buf, 0, r);
-                            rec += r;
-                            cb.onProgress(fileName, rec);
-                        }
-                    }
-                    cb.onComplete(fileName);
-
-                } catch (FileNotFoundException fnfe) {
-                    // locked by another process
-                    SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(
-                            null,
-                            "Cannot write to \"" + outFile + "\".\n"
-                          + "It appears to be locked or in use by another program.",
-                            "Save Error",
-                            JOptionPane.ERROR_MESSAGE
-                        );
-                    });
-                    cb.onError(fileName, fnfe);
-
-                } catch (IOException ioe) {
-                    // any other I/O problem
-                    cb.onError(fileName, ioe);
                 }
+                cb.onComplete(fileName);
+
             } else {
                 int    idx    = dis.readInt();
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
                 String tag    = fileName + "[chunk " + idx + "]";
-
+                AtomicLong received = new AtomicLong(0);               // ← atomic counter
                 cb.onStart(tag, length);
+
                 File outFile = new File(saveDir, fileName);
                 try (RandomAccessFile raf = new RandomAccessFile(outFile, "rw");
                      FileChannel   ch  = raf.getChannel()) {
 
                     byte[] buf = new byte[8192];
-                    long rec = 0;
-                    while (rec < length) {
-                        int toRead = (int)Math.min(buf.length, length - rec);
-                        int r = dis.read(buf, 0, toRead);
-                        if (r < 0) break;
+                    int    r;
+                    while (received.get() < length && (r = dis.read(buf, 0, (int)Math.min(buf.length, length - received.get()))) > 0) {
                         ByteBuffer bb = ByteBuffer.wrap(buf, 0, r);
-                        ch.write(bb, offset + rec);
-                        rec += r;
-                        cb.onProgress(tag, rec);
+                        ch.write(bb, offset + received.get());
+                        long cumul = received.addAndGet(r);             // ← update atomically
+                        cb.onProgress(tag, cumul);
                     }
                 }
                 cb.onComplete(tag);

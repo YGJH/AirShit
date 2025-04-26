@@ -3,10 +3,11 @@ package AirShit;
 import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
-
+import java.util.concurrent.atomic.AtomicLong;
 public class FileSender {
     private static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
-
+    private static final Semaphore SEM = new Semaphore(4);
+    
     private final String targetHost;
     private final int    targetPort;
     private final ExecutorService executor;
@@ -69,7 +70,16 @@ public class FileSender {
             File f = files[0];
             for (int i = 0; i < chunkCount; i++) {
                 final int idx = i;
-                executor.submit(() -> sendChunk(f, idx, callback));
+                executor.submit(() -> {
+                    try {
+                        SEM.acquire();
+                        sendChunk(f, idx, callback);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        SEM.release();
+                    }
+                });
             }
         } else {
             for (File f : files) {
@@ -79,30 +89,28 @@ public class FileSender {
     }
 
     private void sendWholeFile(File file, TransferCallback cb) {
-        try (Socket sock = new Socket();
-            BufferedOutputStream bos = new BufferedOutputStream(sock.getOutputStream(),64*1024);
-            DataOutputStream dos = new DataOutputStream(bos);
-            FileInputStream fis = new FileInputStream(file)) {
-            
+        try (Socket sock = new Socket(targetHost, targetPort);
+             BufferedOutputStream bos = new BufferedOutputStream(sock.getOutputStream(),64*1024);
+             DataOutputStream dos = new DataOutputStream(bos);
+             FileInputStream fis = new FileInputStream(file)) {
+
             sock.setTcpNoDelay(true);
             sock.setSendBufferSize(64*1024);
             sock.setSoTimeout(30_000);
-            sock.connect(new InetSocketAddress(targetHost,targetPort));
-
             long total = file.length();
-            cb.onStart(file.getName(), total);
+            AtomicLong sent = new AtomicLong(0);
 
+            cb.onStart(file.getName(), total);
             dos.writeUTF(file.getName());
-            dos.writeBoolean(false);    // isChunk = false
+            dos.writeBoolean(false);
             dos.writeLong(total);
 
             byte[] buf = new byte[8192];
-            long sent = 0;
-            int  r;
+            int r;
             while ((r = fis.read(buf)) != -1) {
                 dos.write(buf, 0, r);
-                sent += r;
-                cb.onProgress(file.getName(), sent);
+                long cumul = sent.addAndGet(r);
+                cb.onProgress(file.getName(), cumul);
             }
             dos.flush();
             cb.onComplete(file.getName());
@@ -119,26 +127,25 @@ public class FileSender {
             long fileSize = raf.length();
             long offset   = (long)idx * MAX_CHUNK_SIZE;
             long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
+            String tag    = file.getName() + "[chunk " + idx + "]";
+            AtomicLong sent = new AtomicLong(0);
 
-            String tag = file.getName() + "[chunk " + idx + "]";
             cb.onStart(tag, length);
-
             dos.writeUTF(file.getName());
-            dos.writeBoolean(true);        // isChunk = true
+            dos.writeBoolean(true);
             dos.writeInt(idx);
             dos.writeLong(offset);
             dos.writeLong(length);
-
             raf.seek(offset);
+
             byte[] buf = new byte[8192];
-            long sent = 0;
-            while (sent < length) {
-                int toRead = (int)Math.min(buf.length, length - sent);
+            while (sent.get() < length) {
+                int toRead = (int)Math.min(buf.length, length - sent.get());
                 int r = raf.read(buf, 0, toRead);
                 if (r < 0) break;
                 dos.write(buf, 0, r);
-                sent += r;
-                cb.onProgress(tag, sent);
+                long cumul = sent.addAndGet(r);
+                cb.onProgress(tag, cumul);
             }
             dos.flush();
             cb.onComplete(tag);
