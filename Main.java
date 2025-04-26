@@ -2,11 +2,11 @@ package AirShit; // 定義套件 AirShit
 
 import java.io.*; // 引入輸入輸出相關類別
 import java.net.*; // 引入網路相關類別
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
@@ -92,28 +92,30 @@ public class Main { // 定義 Main 類別
 
     public static String getNonLoopbackIP() {
         try {
-            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!iface.isUp() || iface.isLoopback() || iface.isVirtual())
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) 
                     continue;
-                String d = iface.getDisplayName().toLowerCase();
-                String n = iface.getName().toLowerCase();
-                if (d.contains("hyper") || n.startsWith("vethernet"))
+                String name = ni.getDisplayName().toLowerCase();
+                // skip Hyper-V, WFP filter drivers, virtual adapters
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
-
-                for (InetAddress addr : Collections.list(iface.getInetAddresses())) {
-                    // Only return IPv4
-                    if (addr instanceof Inet4Address) {
+                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                    if (addr instanceof Inet4Address 
+                        && !addr.isLoopbackAddress() 
+                        && !addr.isLinkLocalAddress()) {
+                        System.out.println("Picked Wi‑Fi IP on “" + ni.getDisplayName() + "”: " 
+                                           + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
                 }
             }
-        } catch (SocketException e) {
+            
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        // fallback to localhost IPv4
+        // fallback
         return "127.0.0.1";
     }
-
     public static InetAddress getMulticastAddress() {
         try {
             return InetAddress.getByName("239.255.42.99"); // Valid multicast address
@@ -125,29 +127,29 @@ public class Main { // 定義 Main 類別
 
     private static NetworkInterface findCorrectNetworkInterface() {
         try {
-            InetAddress local = InetAddress.getByName(client.getIPAddr());
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) 
                     continue;
-                String d = ni.getDisplayName().toLowerCase(),
-                        n = ni.getName().toLowerCase();
-                if (d.contains("hyper") || n.startsWith("vethernet"))
+                String name = ni.getDisplayName().toLowerCase();
+                // skip Hyper-V, WFP filter drivers, virtual adapters
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
-
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr.equals(local))
+                    if (addr instanceof Inet4Address 
+                        && !addr.isLoopbackAddress() 
+                        && !addr.isLinkLocalAddress()) {
                         return ni;
+                    }
                 }
             }
-        } catch (Exception e) {
-            System.err.println("Error finding interface: " + e.getMessage());
+
+        } catch (SocketException e) {
+            e.printStackTrace();
         }
         return null;
     }
-
     public static void multicastHello() {
         try {
-            client.setIPAddr(getNonLoopbackIP()); // Set the IP address
             InetAddress group = getMulticastAddress();
             if (group == null)
                 return;
@@ -166,6 +168,7 @@ public class Main { // 定義 Main 類別
         }
     }
 
+
     public static void startMulticastListener() {
         new Thread(() -> {
             MulticastSocket socket = null;
@@ -176,23 +179,16 @@ public class Main { // 定義 Main 類別
 
                 // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
                 socket = new MulticastSocket(DISCOVERY_PORT);
-                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT); // Use DISCOVERY_PORT
+                socket.setTimeToLive(32);
 
                 // --- Improved Interface Selection ---
-                NetworkInterface netIf = findCorrectNetworkInterface();
-                if (netIf == null) {
-                    System.err.println("Could not find suitable network interface for multicast. Trying default.");
-                    socket.joinGroup(groupAddr, null);
-                } else {
-                    System.out.println("Joining multicast group on interface: " + netIf.getDisplayName() + " ["
-                            + netIf.getName() + "]"); // Log name too
-                    socket.joinGroup(groupAddr, netIf);
-                }
-                // --- End Improved Interface Selection ---
-
+                // NetworkInterface iface = findCorrectNetworkInterface();
+                // if (iface != null) {
+                //     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
+                // }
+    
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started on port: " + DISCOVERY_PORT);
-
+                System.out.println("Multicast listener started on port " + DISCOVERY_PORT);
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
