@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class FileSender {
     private static final int MAX_CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
     private static final Semaphore SEM = new Semaphore(4);
-    
+    private static AtomicLong sent = new AtomicLong(0); // for debugging
     private final String targetHost;
     private final int    targetPort;
     private final ExecutorService executor;
@@ -98,7 +98,6 @@ public class FileSender {
             sock.setSendBufferSize(64*1024);
             sock.setSoTimeout(30_000);
             long total = file.length();
-            AtomicLong sent = new AtomicLong(0);
 
             cb.onStart(file.getName(), total);
             dos.writeUTF(file.getName());
@@ -128,7 +127,6 @@ public class FileSender {
             long offset   = (long)idx * MAX_CHUNK_SIZE;
             long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
             String tag    = file.getName() + "[chunk " + idx + "]";
-            AtomicLong sent = new AtomicLong(0);
 
             cb.onStart(tag, length);
             dos.writeUTF(file.getName());

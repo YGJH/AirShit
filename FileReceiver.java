@@ -16,6 +16,7 @@ public class FileReceiver {
     private final int          port;
     private  File         saveDir;
     private final ExecutorService executor;
+    private static AtomicLong received = new AtomicLong(0); // for debugging
 
     /** @param targetPort  the single TCP port for both handshake & data */
     public FileReceiver(int targetPort) {
@@ -123,7 +124,6 @@ public class FileReceiver {
 
             if (!isChunk) {
                 long total = dis.readLong();
-                AtomicLong received = new AtomicLong(0);               // ← atomic counter
                 cb.onStart(fileName, total);
                 
                 File outFile = new File(saveDir, fileName);
@@ -143,7 +143,6 @@ public class FileReceiver {
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
                 String tag    = fileName + "[chunk " + idx + "]";
-                AtomicLong received = new AtomicLong(0);               // ← atomic counter
                 cb.onStart(tag, length);
 
                 File outFile = new File(saveDir, fileName);
