@@ -292,8 +292,6 @@ public class SendFileGUI extends JFrame {
                                .mapToLong(File::length)
                                .sum();
         AtomicLong overallSent = new AtomicLong(0);
-        AtomicInteger completedCount = new AtomicInteger(0);
-        ConcurrentMap<String, Long> lastProgress = new ConcurrentHashMap<>();
         println("Total size: " + formatFileSize(totalSize));
         // 2) build a TransferCallback that updates the progress bar
         TransferCallback callback = new TransferCallback() {

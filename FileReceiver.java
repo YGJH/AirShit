@@ -68,7 +68,7 @@ public class FileReceiver {
             }
             boolean singleFile = (names.size() == 1);
             // wait for accept/decline and show GUI dialog
-            boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + "?", "File Transfer", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
+            boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + " File Total Size: " + fileSize + "?", "File Transfer" , JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
             dos.writeUTF(accept ? "ACCEPT" : "DECLINE");
             dos.flush();
 
@@ -109,12 +109,22 @@ public class FileReceiver {
             }
         }
         println("saveing to " + saveDir.getAbsolutePath());
-        // --- 3) accept data connections forever ---
         System.out.println("Handshake complete. Waiting for file/chunk connections...");
-        callback.onStart(fileSize); // for debugging
-        while (true) {
+
+        // Tell the GUI about total bytes (for single‑file it’s fileSize; multi‑file you’d sum if you extend it)
+        callback.onStart(fileSize);
+
+        // --- 3) accept data connections until we hit the expected total ---
+        try {
+          while (received.get() < fileSize) {
             Socket client = server.accept();
-            executor.submit(() -> handleClient(client, callback));
+            // handle inline if you want deterministic byte counting:
+            handleClient(client, callback);
+          }
+        } finally {
+          // clean up
+          server.close();
+          println("All data received; receiver shutting down.");
         }
     }
 
