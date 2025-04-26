@@ -1,27 +1,30 @@
-// FileReceiver.java
 package AirShit;
 import java.io.*;
 import java.net.*;
 import java.nio.*;
 import java.nio.channels.*;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.swing.*;
-import java.util.List;
+import javax.swing.border.*;
+import java.awt.*;
+import java.awt.event.*;
+
 
 public class FileReceiver {
-    private static int TCP_BACKLOG = 50;
-    private final int          port;
-    private  File         saveDir;
-    private  long       totalSize;
+    private static final int TCP_BACKLOG = 50;
+    private final int port;
+    private File saveDir;
     private final ExecutorService executor;
-    private static AtomicLong received = new AtomicLong(0); // for debugging
-    private static boolean singleFile;
-    /** @param targetPort  the single TCP port for both handshake & data */
+    // ← one global counter for all threads:
+    private final AtomicLong totalReceived = new AtomicLong(0);
+
     public FileReceiver(int targetPort) {
-        this.port     = targetPort;
+        this.port    = targetPort;
         this.executor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r);
             t.setName("receiver-thread");
@@ -29,72 +32,74 @@ public class FileReceiver {
         });
     }
 
-    /**
-     * 1) Accept one TCP connection as control channel → handshake  
-     * 2) Pre-allocate if needed  
-     * 3) Loop accepting further TCP connections, handing each to handleClient()
-     */
-    
-    public void println(String str) {
-        System.out.println(str);
-    }
-    
     public void start(TransferCallback callback) throws IOException {
         ServerSocket server = new ServerSocket(port, TCP_BACKLOG);
-        received.set(0); // for debugging
-        // --- 1) control handshake ---
+
+           // --- 1) control handshake ---
         System.out.println("Waiting for TCP handshake on port " + port + "...");
         String folder;
         List<String> names;
         long fileSize = 0;
         int  chunkCount = 1;
-
         try (Socket hsSock = server.accept();
-             DataInputStream dis = new DataInputStream(hsSock.getInputStream());
-             DataOutputStream dos = new DataOutputStream(hsSock.getOutputStream())) {
-
+            DataInputStream dis = new DataInputStream(hsSock.getInputStream());
+            DataOutputStream dos = new DataOutputStream(hsSock.getOutputStream())) {
+                
             String msg = dis.readUTF();
             String[] parts = msg.split("\\|");
-            // incoming parts[0] may be a full path—keep only the last name element
-            folder = new File(parts[0]).getName();
-            
+            folder = parts[0];
             if (parts.length == 4) {
                 // single‐file chunked
                 names      = Collections.singletonList(parts[1]);
                 fileSize   = Long.parseLong(parts[2]);
                 chunkCount = Integer.parseInt(parts[3]);
-                totalSize  = fileSize;
             } else {
                 // multi‐file
                 names = Arrays.asList(parts).subList(1, parts.length);
             }
-            singleFile = (names.size() == 1);
-            // wait for accept/decline and show GUI dialog
-            boolean accept = JOptionPane.showConfirmDialog(null, "Accept transfer of " + names + " File Total Size: " + fileSize + "?", "File Transfer" , JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
-            dos.writeUTF(accept ? "ACCEPT" : "DECLINE");
-            dos.flush();
+            boolean singleFile = names.size() == 1;
 
+            // ask user for permission to receive files:
+            JOptionPane pane = new JOptionPane(
+                    "Accept file transfer from " + hsSock.getInetAddress() + "?\n" +
+                    "Files: " + names + "\n" +
+                    "Total size: " + (fileSize / 1024) + " KB",
+                    JOptionPane.QUESTION_MESSAGE,
+                    JOptionPane.YES_NO_OPTION,
+                    null, null, null);
+            JDialog dialog = pane.createDialog("File Transfer Request");
 
-
-            if (accept) {
-                // let user pick a base directory
-                String basePath = FolderSelector
-                    .selectFolderAndListFiles(null)
-                    .stream().findFirst().map(f -> f.getParent()).orElse(null);
-                if (basePath == null) {
-                    println("No folder selected. Transfer declined.");
-                    accept = false;
+            dialog.setVisible(true);
+            Object selectedValue = pane.getValue();
+            boolean accept = selectedValue != null && selectedValue.equals(JOptionPane.YES_OPTION);
+            
+            if(accept) {
+                // ask user for save directory:
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                chooser.setDialogTitle("Select Save Directory");
+                chooser.setApproveButtonText("Select");
+                chooser.setAcceptAllFileFilterUsed(false);
+                chooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+                chooser.setSelectedFile(new File(folder));
+                chooser.setVisible(true);
+                int result = chooser.showOpenDialog(null);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    saveDir = chooser.getSelectedFile();
                 } else {
-                    if (singleFile) {
-                        // single file → save directly to the base folder
-                        saveDir = new File(basePath);
-                    } else {
-                        // multi-file → create a subfolder named after 'folder'
-                        saveDir = new File(basePath, folder);
-                    }
+                    System.out.println("No directory selected. Transfer declined.");
+                    server.close();
+                    return;
                 }
             }
-            // show dialog to select folder
+            if(singleFile) {
+                // don't create directory if single file:
+                saveDir = new File(saveDir, names.get(0)).getParentFile();
+            } else {
+                if (!saveDir.exists()) {
+                    saveDir.mkdirs();
+                }
+            }
 
             if (!accept) {
                 System.out.println("Transfer declined.");
@@ -110,53 +115,43 @@ public class FileReceiver {
                 raf.setLength(fileSize);
             }
         }
-        println("saveing to " + saveDir.getAbsolutePath());
+
+        // --- 3) accept data connections forever ---
         System.out.println("Handshake complete. Waiting for file/chunk connections...");
-
-        // Tell the GUI about total bytes (for single‑file it’s fileSize; multi‑file you’d sum if you extend it)
-        callback.onStart(fileSize);
-
-        // --- 3) accept data connections until we hit the expected total ---
-        try {
-            if(singleFile) {
-                // single file → wait for one connection only
-                processSingleFileChunks(server, chunkCount, callback);
-            } else {
-                while (received.get() < fileSize) {
-                  Socket client = server.accept();
-                  // handle inline if you want deterministic byte counting:
-                  handleClient(client, callback);
-                }
-            }
-        } finally {
-          // clean up
-          server.close();
-          println("All data received; receiver shutting down.");
+        while (true) {
+            Socket client = server.accept();
+            executor.submit(() -> handleClient(client, callback));
         }
     }
 
     private void handleClient(Socket sock, TransferCallback cb) {
         try (DataInputStream dis = new DataInputStream(new BufferedInputStream(sock.getInputStream()))) {
             String fileName = dis.readUTF();
-            boolean isChunk  = dis.readBoolean();
+            boolean isChunk = dis.readBoolean();
 
             if (!isChunk) {
                 long total = dis.readLong();
-                println(total + " bytes to receive.");
-                File outFile = new File(saveDir, fileName);
-                try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                    byte[] buf = new byte[8192];
-                    int  r;
-                    while (received.get() < total && (r = dis.read(buf)) != -1) {
-                        fos.write(buf, 0, r);
-                        long cumul = received.addAndGet(r);             // ← update atomically
-                        cb.onProgress(cumul);
-                    }
+                cb.onStart(total);
+
+                byte[] buffer = new byte[8192];
+                int    r;
+                while ((r = dis.read(buffer)) != -1) {
+                    // write to file...
+                    // -----------------------------------
+                    // **global** progress update:
+                    long overall = totalReceived.addAndGet(r);
+                    cb.onProgress(overall);
+                    if (overall >= total) break;
                 }
 
             } else {
+                // chunk header
+                int    idx    = dis.readInt();
                 long   offset = dis.readLong();
                 long   length = dis.readLong();
+                String tag    = fileName + "[chunk " + idx + "]";
+
+                cb.onStart(length);
 
                 File outFile = new File(saveDir, fileName);
                 try (RandomAccessFile raf = new RandomAccessFile(outFile, "rw");
@@ -164,49 +159,19 @@ public class FileReceiver {
 
                     byte[] buf = new byte[8192];
                     int    r;
-                    while (received.get() < length && (r = dis.read(buf, 0, (int)Math.min(buf.length, length - received.get()))) > 0) {
+                    long   written = 0;
+                    while ((r = dis.read(buf)) != -1 && written < length) {
                         ByteBuffer bb = ByteBuffer.wrap(buf, 0, r);
-                        ch.write(bb, offset + received.get());
-                        long cumul = received.addAndGet(r);             // ← update atomically
-                        cb.onProgress(cumul);
+                        ch.write(bb, offset + written);
+                        written += r;
+                        // **global** progress update:
+                        long overall = totalReceived.addAndGet(r);
+                        cb.onProgress(overall);
                     }
                 }
             }
         } catch (Exception e) {
             cb.onError(e);
-        }
-    }
-
-    /**
-     * For a single‐file chunked transfer, accept and handle each chunk
-     * in its own thread, then wait until all chunks have been written.
-     *
-     * @param server     the ServerSocket already bound to the transfer port
-     * @param chunkCount number of chunks expected for this single file
-     * @param cb         callback to drive GUI progress
-     */
-    private void processSingleFileChunks(ServerSocket server, int chunkCount, TransferCallback cb) throws IOException {
-        CountDownLatch latch = new CountDownLatch(chunkCount);
-
-        for (int i = 0; i < chunkCount; i++) {
-            executor.submit(() -> {
-                try {
-                    // accept one chunk‐connection and write it
-                    Socket client = server.accept();
-                    handleClient(client, cb);
-                } catch (Exception e) {
-                    cb.onError(e);
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-
-        // wait until all chunk tasks have completed
-        try {
-            latch.await();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
         }
     }
 }

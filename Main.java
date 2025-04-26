@@ -291,26 +291,24 @@ public class Main { // 定義 Main 類別
             try {
                 AtomicLong totalExpected = new AtomicLong(0);
                 AtomicLong totalReceived = new AtomicLong(0);
+                ConcurrentHashMap<String,Long> lastSeen = new ConcurrentHashMap<>();
 
-                fileReceiver.start(new TransferCallback() {
+                fileReceiver.start(new TransferCallback() { // 開始檔案接收
                     @Override
-                    public void onStart(long totalBytes) {
-                        totalExpected.set(totalBytes);
-                        // reset the bar to 0%
-                        SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
+                    public void onStart(long totalBytes) { // 檔案傳送開始時的回調方法
+                        println("開始接收檔案，總大小: " + totalBytes + " bytes"); // 輸出檔案大小
+                        totalExpected.set(totalBytes); // 設定預期的檔案大小
                     }
 
                     @Override
-                    public void onProgress(long bytesTransferred) {
-                        long cumul = totalReceived.addAndGet(bytesTransferred);
-                        int pct = (int)(cumul * 100L / totalExpected.get());
-                        // update the bar
-                        SendFileGUI.receiveFileProgress(pct);
+                    public void onProgress(long bytesTransferred) { // 檔案傳送進度的回調方法
+                        totalReceived.addAndGet(bytesTransferred); // 更新已接收的檔案大小
+                        println("已接收: " + totalReceived.get() + " / " + totalExpected.get() + " bytes"); // 輸出已接收的檔案大小
                     }
 
                     @Override
-                    public void onError(Exception e) {
-                        e.printStackTrace();
+                    public void onError(Exception e) { // 檔案傳送錯誤的回調方法
+                        e.printStackTrace(); // 列印錯誤資訊
                     }
                 });
             } catch (IOException e) {
