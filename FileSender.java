@@ -83,7 +83,7 @@ public class FileSender {
                 Thread.sleep(100); // 等待 Receiver 準備好接收檔案
                 String response = dis.readUTF();
                 while(response != "ACK") {
-                    println(response);
+                    println("response"+response);
                     println("Receiver 尚未準備好接收檔案，請稍後再試。");
                     Thread.sleep(100); // 等待 Receiver 準備好接收檔案
                     response = dis.readUTF();

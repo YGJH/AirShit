@@ -215,7 +215,7 @@ public class SendFileGUI extends JFrame {
         // 1) remove any clients that have disappeared
         for (int i = listModel.getSize() - 1; i >= 0; i--) {
             Client c = listModel.getElementAt(i);
-            if (!clients.containsKey(c.getUserName())) {
+            if (check(c, clients.get(c.getUserName())) == false) {
                 listModel.remove(i);
             }
         }
@@ -228,7 +228,7 @@ public class SendFileGUI extends JFrame {
                 for (int i = 0; i < listModel.getSize(); i++) {
                     Client client = listModel.getElementAt(i);
                     if (check(c, client)) {
-                        alreadyInList = true;
+                        alreadyInList = true;                        
                         break;
                     }
                 }
