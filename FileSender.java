@@ -81,9 +81,12 @@ public class FileSender {
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
                 Thread.sleep(100); // 等待 Receiver 準備好接收檔案
-                while(dis.readUTF().equals("ACK") == false) {
+                String response = dis.readUTF();
+                while(response != "ACK") {
+                    println(response);
                     println("Receiver 尚未準備好接收檔案，請稍後再試。");
                     Thread.sleep(100); // 等待 Receiver 準備好接收檔案
+                    response = dis.readUTF();
                 }   
                 // then stream the bytes…
                 long fileLength = f.length();
