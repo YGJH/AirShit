@@ -47,7 +47,7 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
 
         // auto‐refresh every 50ms
-        refreshTimer = new Timer(50, e -> refreshClientList());
+        refreshTimer = new Timer(500, e -> refreshClientList());
         refreshTimer.start();
 
         setVisible(true);
