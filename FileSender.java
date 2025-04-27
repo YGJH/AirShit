@@ -5,9 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.naming.ldap.SortKey;
-import javax.xml.crypto.Data;
-
 /**
  * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
  */
@@ -48,33 +45,33 @@ public class FileSender {
 
         // 連線到 Receiver
         try (Socket socket = new Socket(host, port);
-             DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+             DataInputStream dis = new DataInputStream(socket.getInputStream())) {
             // 傳送 handshake 訊息
             dos.writeUTF(sb.toString());
+            println("傳送 handshake 訊息： " + sb.toString());
+            // 等待 Receiver 確認接收檔案
+            String response = dis.readUTF();
+            if (response.equals("ACK")) {
+                println("Receiver 確認接收檔案。");
+            } else {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                return;
+            }
+
         } catch (IOException e) {
             System.err.println("無法連線到 Receiver：");
             e.printStackTrace();
             return;
         }
 
-        // wait for receiver to accept the file
-        Socket socket = new Socket(host, port);
-        int cnt = 0;
-        while(receiveACK(socket) && cnt < 30) {
-            Thread.sleep(10); // 等待 Receiver 準備好
-            cnt++;
-        }
-        if(cnt >= 30) {
-            System.err.println("Receiver 無法接收檔案，請稍後再試。");
-            return;
-        }
-        // notify receiver to start receiving the file
         callback.onStart(totalSize);
         this.cb = callback;
         for(File f : files) {
             println("開始傳送檔案：" + f.getName() + "，大小：" + f.length() + " bytes");
             SendingFile = f;
             // notify receiver to start receiving the file
+            Socket socket = new Socket(host, port);
             try {
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                 // 傳送檔案名稱與大小

@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 
-import AirShit.TransferCallback;
 
 import java.awt.Component;
 
@@ -119,7 +118,7 @@ public class FileReceiver {
             }
             // send accept message to sender
             sendACK(socket);
-
+            println("已接受檔案傳送。");
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(fileSize);            // 開始接收檔案
