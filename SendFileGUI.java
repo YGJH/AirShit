@@ -203,59 +203,27 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
     }
     private boolean check(Client c1, Client c2) {
-        return c1.getUserName().equals(c2.getUserName()) &&
-               c1.getIPAddr().equals(c2.getIPAddr()) &&
-               c1.getOS().equals(c2.getOS());
+        return c1.getUserName() == c2.getUserName() &&
+               c1.getIPAddr() == c2.getIPAddr() &&
+               c1.getTCPPort() == c2.getTCPPort();
     }
     private void refreshClientList() {
         // snapshot current selection so we can restore it after updating
         Client previousSelection = clientList.getSelectedValue();
 
         Hashtable<String, Client> clients = Main.getClientList();
-
-        // 1) remove any clients that have disappeared
-        for (int i = listModel.getSize() - 1; i >= 0; i--) {
+        for(int i = listModel.size()-1; i>=0; i--) {
             Client c = listModel.getElementAt(i);
-            if (!clients.containsKey(c.getUserName())) {
-                // check if the client is still in the list
-                boolean stillInList = false;
-                for (Client client : clients.values()) {
-                    if (check(c, client)) {
-                        stillInList = true;
-                        break;
-                    }
-                }
-                if (!stillInList) {
-                    // remove the client from the list model
-                    listModel.removeElementAt(i);
-                }
-            }   
+            if(check(c , clients.get(c.getUserName())) == false) {
+                listModel.remove(i);
+            }
         }
-
-        // 2) add any new clients
         for (Client c : clients.values()) {
-            boolean found = false;
-            for (int i = 0; i < listModel.getSize(); i++) {
-                Client existingClient = listModel.getElementAt(i);
-                if (check(c, existingClient)) {
-                    found = true;
-                    break;
-                }
+            if (!listModel.contains(c)) {
+                listModel.addElement(c);
             }
-            if (!found) {
-                // check if the client is already in the list model
-                for (int i = 0; i < listModel.getSize(); i++) {
-                    Client existingClient = listModel.getElementAt(i);
-                    if (check(c, existingClient)) {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-
         }
 
-        // 3) restore the previous selection if still present
         if (previousSelection != null && listModel.contains(previousSelection)) {
             clientList.setSelectedValue(previousSelection, true);
         }
