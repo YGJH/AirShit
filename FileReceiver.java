@@ -150,7 +150,7 @@ public class FileReceiver {
                 AtomicLong thisFileReceived = new AtomicLong(0);
                 RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
                 List<Thread> handlers = new ArrayList<>();
-
+                println("開始接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
                 while (thisFileReceived.get() < tempfileSize) {
                     Thread handler = new Thread(() -> {
                         try (

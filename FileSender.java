@@ -91,6 +91,7 @@ public class FileSender {
                     try {
                         String ack = dis.readUTF();
                         if (!ack.equals("ACK")) {
+                            println("收到非 ACK 訊息： " + ack);
                             break;
                         }
                     } catch (EOFException e) {
@@ -169,10 +170,10 @@ public class FileSender {
                 byte[] buffer = new byte[8192];
                 int read, remaining = length;
                 while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                    println("已傳送 " + read + " bytes");
                     dos.write(buffer, 0, read);
                     totalSent.addAndGet(read);
                     remaining -= read;
-                    println("已傳送 " + read + " bytes");
                     cb.onProgress(totalSent.get());
                 }
                 System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
