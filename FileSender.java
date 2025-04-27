@@ -76,7 +76,7 @@ public class FileSender {
             try (Socket ctrl = new Socket(host, port);
                  DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream());
                  DataInputStream dis = new DataInputStream(ctrl.getInputStream())) {
-
+                println("傳送檔案名稱與大小： " + f.getName() + "|" + f.length());
                 // 先傳送檔案名稱與大小
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
@@ -87,7 +87,7 @@ public class FileSender {
                     println("Receiver 尚未準備好接收檔案，請稍後再試。");
                     Thread.sleep(100); // 等待 Receiver 準備好接收檔案
                     response = dis.readUTF();
-                }   
+                }
                 // then stream the bytes…
                 long fileLength = f.length();
                 long baseChunkSize = Math.min(5*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小

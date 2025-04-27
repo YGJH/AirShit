@@ -199,6 +199,7 @@ public class SendFileGUI extends JFrame {
 
     private void ForcerefreshClientList() {
         Main.multicastHello();
+        listModel.clear();
         refreshClientList();
     }
     private boolean check(Client c1, Client c2) {
@@ -215,29 +216,43 @@ public class SendFileGUI extends JFrame {
         // 1) remove any clients that have disappeared
         for (int i = listModel.getSize() - 1; i >= 0; i--) {
             Client c = listModel.getElementAt(i);
-            if (check(c, clients.get(c.getUserName())) == false) {
-                listModel.remove(i);
-            }
+            if (!clients.containsKey(c.getUserName())) {
+                // check if the client is still in the list
+                boolean stillInList = false;
+                for (Client client : clients.values()) {
+                    if (check(c, client)) {
+                        stillInList = true;
+                        break;
+                    }
+                }
+                if (!stillInList) {
+                    // remove the client from the list model
+                    listModel.removeElementAt(i);
+                }
+            }   
         }
 
         // 2) add any new clients
         for (Client c : clients.values()) {
-            if (!listModel.contains(c)) {
-                // check if the client is already in the list
-                boolean alreadyInList = false;
+            boolean found = false;
+            for (int i = 0; i < listModel.getSize(); i++) {
+                Client existingClient = listModel.getElementAt(i);
+                if (check(c, existingClient)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                // check if the client is already in the list model
                 for (int i = 0; i < listModel.getSize(); i++) {
-                    Client client = listModel.getElementAt(i);
-                    if (check(c, client)) {
-                        alreadyInList = true;                        
+                    Client existingClient = listModel.getElementAt(i);
+                    if (check(c, existingClient)) {
+                        found = true;
                         break;
                     }
                 }
-                if (!alreadyInList) {
-                    // add the new client to the list model
-                    listModel.addElement(c);
-                }
-
             }
+
         }
 
         // 3) restore the previous selection if still present
