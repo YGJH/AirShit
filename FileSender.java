@@ -74,25 +74,28 @@ public class FileSender {
             String fileName = file.getName();
             String fileSize = String.valueOf(file.length());
             Socket socket = new Socket(host, port);
-            try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                // send file name and size
-                dos.writeUTF(fileName+"\\|"+fileSize);
+            try (Socket socket2 = new Socket(host, port);
+                DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
+                DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
+        
+                // 1) send the file‑name|size header
+                dos.writeUTF(fileName + "|" + fileSize);
                 dos.flush();
-            } catch (IOException e) {}
-
-            // wait for ACK
-            try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+        
+                // 2) wait for ACK on the same socket
                 String response = dis.readUTF();
-                if (response.equals("ACK")) {
-                    println("Receiver 確認接收檔案： " + fileName);
-                } else {
-                    System.err.println("Receiver 無法接收檔案： " + fileName);
+                if (!"ACK".equals(response)) {
+                    System.err.println("Receiver 無法接收檔案：" + fileName);
                     return;
                 }
-            } catch (IOException e) {
-                System.err.println("無法連線到 Receiver：");
-                e.printStackTrace();
-                return;
+            
+                // 3) now kick off your SendFile/ChunkSender against socket2
+                SendFile sendFile = new SendFile(
+                    host, port, file.getAbsolutePath(), threadCount, callback);
+                sendFile.start();
+       
+            } catch (IOException | InterruptedException e) {
+                callback.onError(e);
             }
             // send file
             SendFile sendFile = new SendFile(host, port, file.getAbsolutePath(), threadCount , new TransferCallback() {
