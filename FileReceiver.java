@@ -38,8 +38,8 @@ public class FileReceiver {
             int fileCount = 0;
             long fileSize = 0;
             StringBuilder sb = new StringBuilder();
+            Socket socket = serverSocket.accept();
             try {
-                Socket socket = serverSocket.accept();
                 DataInputStream dis = new DataInputStream(socket.getInputStream());
                 String handshake = dis.readUTF();
                 String[] parts = handshake.split("\\|");
@@ -78,8 +78,21 @@ public class FileReceiver {
             // ask user to accept the file
             int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？" + " Sender: " + senderUserName + " 即將傳送的檔案: " + sb + " FolderName: " + folderName + " Total Size: " + fileSize , "檔案傳送", JOptionPane.YES_NO_OPTION);
             if (response != JOptionPane.YES_OPTION) {
+                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                    dos.writeUTF("REJECT");
+                } catch (IOException e) {
+                    System.err.println("無法與 Sender 通訊：");
+                    e.printStackTrace();
+                }
                 System.out.println("使用者拒絕接收檔案。");
                 continue;
+            } else {
+                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                    dos.writeUTF("ACCEPT");
+                } catch (IOException e) {
+                    System.err.println("無法與 Sender 通訊：");
+                    e.printStackTrace();
+                }
             }
 
             // get output file path
