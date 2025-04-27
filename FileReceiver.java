@@ -86,13 +86,7 @@ public class FileReceiver {
                 }
                 System.out.println("使用者拒絕接收檔案。");
                 continue;
-            } else {
-                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                    dos.writeUTF("ACCEPT");
-                } catch (IOException e) {
-                    System.err.println("無法與 Sender 通訊：");
-                    e.printStackTrace();
-                }
+           
             }
 
             // get output file path
@@ -117,7 +111,16 @@ public class FileReceiver {
                     outputFile.createNewFile();
                 }
             }
-        
+            // send accept message to sender
+            try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                dos.writeUTF("ACCEPT");
+                dos.writeUTF("ACCEPT");
+                dos.writeUTF("ACCEPT");
+            } catch (IOException e) {
+                System.err.println("無法與 Sender 通訊：");
+                e.printStackTrace();
+            }
+
 
             AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(fileSize);            // 開始接收檔案
