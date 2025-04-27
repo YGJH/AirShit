@@ -86,23 +86,4 @@ public class FolderSelector {
         }
     }
 
-    // public static void main(String[] args) {
-    //     // 因為是 Swing GUI，要在 Event Dispatch Thread 中執行
-    //     SwingUtilities.invokeLater(() -> 
-    //         // 這裡傳入 null 作為 parentComponent，對話框會置中螢幕
-    //         List<File> fileList = selectFolderAndListFiles(null);
-
-    //         if (fileList.isEmpty()) {
-    //             System.out.println("沒有選擇資料夾，或該資料夾中沒有任何檔案。");
-    //         } else {
-    //             System.out.println("您選擇的資料夾中包含以下檔案／子資料夾：");
-    //             for (File f : fileList) {
-    //                 // 印出絕對路徑，也可以用 f.getName() 只印出檔名
-    //                 System.out.println(" - " + f.getAbsolutePath());
-    //             }
-    //         }
-    //         // 結束程式
-    //         System.exit(0);
-    //     });
-    // }
 }

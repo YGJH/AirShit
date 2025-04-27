@@ -13,6 +13,7 @@ import javax.xml.crypto.Data;
  */
 public class FileSender {
     private File SendingFile;
+    private TransferCallback cb;
     private  String host;
     private  int port;
     // get Hardware Concurrent
@@ -26,10 +27,11 @@ public class FileSender {
     public void println (String str) {
         System.out.println(str);
     }
-    public void sendFiles(File[] files , String SenderUserName , String folderName , TransferCallback cb) throws IOException, InterruptedException {
+    public void sendFiles(File[] files , String SenderUserName , String folderName , TransferCallback callback) throws IOException, InterruptedException {
 
         // handshake
         StringBuilder sb = new StringBuilder();
+        long totalSize = 0;
         boolean isSingleFile = files.length == 1;
         if(isSingleFile) {
             sb.append("isSingle|");
@@ -37,7 +39,6 @@ public class FileSender {
         } else {
             sb.append("isMulti|");
             sb.append(SenderUserName + "|" + folderName);
-            long totalSize = 0;
             for (File f : files) {
                 totalSize += f.length();
                 sb.append("|").append(f.getName());
@@ -72,6 +73,8 @@ public class FileSender {
         }
 
         // 開始傳送檔案
+        callback.onStart(totalSize);
+        this.cb = callback;
         for(File f : files) {
             println("開始傳送檔案：" + f.getName() + "，大小：" + f.length() + " bytes");
             SendingFile = f;
@@ -169,6 +172,8 @@ public class FileSender {
                     dos.write(buffer, 0, read);
                     totalSent.addAndGet(read);
                     remaining -= read;
+                    println("已傳送 " + read + " bytes");
+                    cb.onProgress(totalSent.get());
                 }
                 System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
             } catch (IOException e) {

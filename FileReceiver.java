@@ -36,6 +36,8 @@ public class FileReceiver {
             String fileName = null;
             String folderName = null;
             int fileCount = 0;
+            long fileSize = 0;
+            StringBuilder sb = new StringBuilder();
             try {
                 Socket socket = serverSocket.accept();
                 DataInputStream dis = new DataInputStream(socket.getInputStream());
@@ -45,7 +47,6 @@ public class FileReceiver {
                     System.err.println("無效的 handshake 訊息： " + handshake);
                     continue;
                 }
-                long fileSize = 0;
                 // isSingle|SenderUserName|file.getName()|file.length();
                 // isMulti|SenderUserName|folderName|file.getName()|file.length();
                 println("接收到 handshake 訊息： " + handshake);
@@ -54,12 +55,17 @@ public class FileReceiver {
                     senderUserName = parts[1];
                     fileName = parts[2];
                     fileSize = Long.parseLong(parts[3]);
+                    sb.append(fileName);
                     println("單檔傳送：SenderUserName=" + senderUserName + ", fileName=" + fileName + ", fileSize="
                             + fileSize);
                 } else if (parts[0].equals("isMulti")) {
                     senderUserName = parts[1];
                     folderName = parts[2];
                     fileCount = parts.length - 4;
+                    fileSize = Long.parseLong(parts[parts.length - 1]);
+                    for(int i = 3; i < parts.length - 1; i++) {
+                        sb.append(parts[i]).append("|");
+                    }
                     println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
                 } else {
                     System.err.println("無效的 handshake 類型： " + parts[0]);
@@ -70,7 +76,7 @@ public class FileReceiver {
                 e.printStackTrace();
             }
             // ask user to accept the file
-            int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？", "檔案傳送", JOptionPane.YES_NO_OPTION);
+            int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？" + " Sender: " + senderUserName + " 即將傳送的檔案: " + sb + " FolderName: " + folderName + " Total Size: " + fileSize , "檔案傳送", JOptionPane.YES_NO_OPTION);
             if (response != JOptionPane.YES_OPTION) {
                 System.out.println("使用者拒絕接收檔案。");
                 continue;
@@ -87,12 +93,15 @@ public class FileReceiver {
                 File folder = new File(outputFilePath + folderName);
                 if (!folder.exists()) {
                     folder.mkdirs(); // Create the directory if it doesn't exist
+                    println("已建立資料夾：" + folderName);
                 }
             }
-            //
+        
 
             AtomicLong totalReceived = new AtomicLong(0);
+            cb.onStart(fileSize);            // 開始接收檔案
             for (int i = 0; i < fileCount; i++) {
+
                 // wait for receiver to accept the file
                 Socket socket = serverSocket.accept();
                 DataInputStream dis = new DataInputStream(socket.getInputStream());
@@ -122,6 +131,7 @@ public class FileReceiver {
                                 raf.write(buffer, 0, read);
                                 thisFileReceived.addAndGet(read);
                                 remaining -= read;
+                                cb.onProgress(thisFileReceived.get());
                             }
                             System.out.printf(
                                     "接收分段:offset=%d, length=%d | 總共已接收：%d bytes%n",
