@@ -241,13 +241,14 @@ public class SendFileGUI extends JFrame {
         // listModel.clear();
 
         Hashtable<String, Client> clientList = Main.getClientPorts();
-
-        for (Client client : Main.getClientPorts().values()) {
-            if (!listModel.contains(client)) {
-                listModel.addElement(client);
+        // iterate backwards to safely remove entries
+        for (int i = listModel.getSize() - 1; i >= 0; i--) {
+            Client c = listModel.getElementAt(i);
+            if (!clientList.containsKey(c.getUserName())) {
+                listModel.removeElementAt(i);
             }
         }
-        
+
         updateSendButtonState();
     }
     

@@ -118,7 +118,7 @@ public class FileReceiver {
             }
             // send accept message to sender
             try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                dos.writeUTF("ACCEPT");
+                dos.writeUTF("ACK");
             } catch (IOException e) {
                 System.err.println("無法與 Sender 通訊：");
                 e.printStackTrace();
