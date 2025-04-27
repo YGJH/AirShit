@@ -90,10 +90,19 @@ public class FileReceiver {
             }
 
             if (!isSingle) {
+                println("outputFilePath: " + outputFilePath + folderName);
                 File folder = new File(outputFilePath + folderName);
                 if (!folder.exists()) {
                     folder.mkdirs(); // Create the directory if it doesn't exist
                     println("已建立資料夾：" + folderName);
+                }
+            } else {
+
+                File outputFile = new File(outputFilePath + fileName);
+                println("接收單檔：" + outputFile.getAbsolutePath());
+
+                if (!outputFile.exists()) {
+                    outputFile.createNewFile();
                 }
             }
         
