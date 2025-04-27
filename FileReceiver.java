@@ -117,7 +117,13 @@ public class FileReceiver {
                 }
             }
             // send accept message to sender
-            sendACK(socket);
+            try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                dos.writeUTF("ACCEPT");
+            } catch (IOException e) {
+                System.err.println("無法與 Sender 通訊：");
+                e.printStackTrace();
+            }
+
             println("已接受檔案傳送。");
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);

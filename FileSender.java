@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import javax.xml.crypto.Data;
+
 /**
  * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
  */
@@ -74,25 +76,24 @@ public class FileSender {
             Socket socket = new Socket(host, port);
             try {
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                DataInputStream dis = new DataInputStream(socket.getInputStream());
                 // 傳送檔案名稱與大小
                 dos.writeUTF(f.getName()+"|"+f.length());
+                println("傳送檔案名稱與大小： " + f.getName() + "，大小：" + f.length() + " bytes");
+                // 等待 Receiver 確認接收檔案
+                String response = dis.readUTF();
+                if (response.equals("ACK")) {
+                    println("Receiver 確認接收檔案。");
+                } else {
+                    System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                    return;
+                }
+                // 關閉 socket
             } catch (IOException e) {
                 System.err.println("無法連線到 Receiver：");
                 e.printStackTrace();
                 return;
             }
-            // 等待 Receiver 確認接收檔案
-            while(true) {
-                if(receiveACK(socket)) {
-                    println("Receiver 接受，開始傳送檔案。");
-                    break;
-                } else {
-                    System.err.println("Receiver 無法接收檔案，請稍後再試。");
-                    return;
-                }
-            }
-
-
             long fileLength = f.length();
             long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
             int i = 0;
