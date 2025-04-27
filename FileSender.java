@@ -81,12 +81,12 @@ public class FileSender {
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
                 Thread.sleep(100); // 等待 Receiver 準備好接收檔案
-                if(dis.readUTF().equals("ACK")) {
-                    println("Receiver 準備好接收檔案：" + f.getName());
-                } else {
-                    System.err.println("Receiver 無法接收檔案：" + f.getName());
-                    return;
-                }
+                // if(dis.readUTF().equals("ACK")) {
+                //     println("Receiver 準備好接收檔案：" + f.getName());
+                // } else {
+                //     System.err.println("Receiver 無法接收檔案：" + f.getName());
+                //     return;
+                // }
                 // then stream the bytes…
                 long fileLength = f.length();
                 long baseChunkSize = Math.min(5*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
