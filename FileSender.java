@@ -86,11 +86,14 @@ public class FileSender {
             }
             // 等待 Receiver 確認接收檔案
             while(true) {
-                // 等待 Receiver 確認接收檔案
-                if(receiveAccept(socket)) {
+                DataInputStream dos = new DataInputStream(socket.getInputStream());
+                String response = dos.readUTF();
+                println(response);
+                if (response.equals("Accept")) {
                     println("Receiver 接受，開始傳送檔案。");
                     break;
-                } else {
+                } else if(response.equals("REJECT")) {
+                    // Receiver 拒絕接收檔案，結束傳送
                     System.err.println("Receiver 拒絕接收檔案，請稍後再試。");
                     return;
                 }

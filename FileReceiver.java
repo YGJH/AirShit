@@ -80,6 +80,7 @@ public class FileReceiver {
             if (response != JOptionPane.YES_OPTION) {
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                     dos.writeUTF("REJECT");
+                    continue;
                 } catch (IOException e) {
                     System.err.println("無法與 Sender 通訊：");
                     e.printStackTrace();
@@ -99,6 +100,8 @@ public class FileReceiver {
                     System.err.println("無法與 Sender 通訊：");
                     e.printStackTrace();
                 }
+                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                dos.writeUTF("REJECT");
                 System.out.println("使用者拒絕接收檔案。");
                 continue;
             }
@@ -113,18 +116,20 @@ public class FileReceiver {
             } else {
                 File outputFile = new File(outputFilePath);
                 println("接收單檔：" + outputFile.getAbsolutePath());
-
                 if (!outputFile.exists()) {
                     outputFile.createNewFile();
                 }
             }
             // send accept message to sender
-            try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+            try {
+                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                 dos.writeUTF("ACCEPT");
                 dos.writeUTF("ACCEPT");
                 dos.writeUTF("ACCEPT");
             } catch (IOException e) {
                 System.err.println("無法與 Sender 通訊：");
+                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                dos.writeUTF("REJECT");
                 e.printStackTrace();
             }
 
