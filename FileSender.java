@@ -84,19 +84,8 @@ public class FileSender {
                 int cnt = 0;
                 while (!receiveACK(socket) && cnt < 300) {
                     cnt++;
+                    println("等待 Receiver 確認接收檔案，已重試 " + cnt + " 次。");
                     Thread.sleep(20);
-                }
-                // 把多餘的 ACK 都讀掉
-                while (true) {
-                    try {
-                        String ack = dis.readUTF();
-                        if (!ack.equals("ACK")) {
-                            println("收到非 ACK 訊息： " + ack);
-                            break;
-                        }
-                    } catch (EOFException e) {
-                        break;
-                    }
                 }
                 // 關閉 socket
                 socket.close();

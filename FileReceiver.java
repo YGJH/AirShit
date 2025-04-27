@@ -143,8 +143,6 @@ public class FileReceiver {
                 }
                 // send ACK to sender
                 dos.write("ACK".getBytes());
-                dos.write("ACK".getBytes());
-                dos.write("ACK".getBytes());
                 // notify sender to start sending the file                
 
                 AtomicLong thisFileReceived = new AtomicLong(0);
@@ -171,7 +169,21 @@ public class FileReceiver {
                             }
                         } catch (IOException e) {
                             System.err.println("Handler 發生錯誤：");
-                            e.printStackTrace();
+                            outputFile.delete(); // delete the file if error occurs
+                            try {
+                                chunkSocket.close();
+                            } catch (IOException ex) {
+                                System.err.println("無法關閉 Socket：");
+                                ex.printStackTrace();
+                            }
+                            try {
+                                raf.close();
+                            } catch (IOException ex) {
+                                System.err.println("無法關閉 RandomAccessFile：");
+                                ex.printStackTrace();
+                            }
+
+                            break;
                         }
                     }, "chunk-handler-" + i);
 
@@ -185,6 +197,7 @@ public class FileReceiver {
                         h.join();
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
+
                     }
                 }
 
