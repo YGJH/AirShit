@@ -366,7 +366,7 @@ public class Main { // 定義 Main 類別
             Client c = e.getValue();
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(2000);
+                ds.setSoTimeout(200);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送 Hello 訊息
                 byte[] buf = new byte[64];

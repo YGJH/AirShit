@@ -80,6 +80,7 @@ public class FileSender {
                 // 先傳送檔案名稱與大小
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
+                Thread.sleep(10); // 等待 Receiver 準備好接收檔案
                 if(dis.readUTF().equals("ACK")) {
                     println("Receiver 準備好接收檔案：" + f.getName());
                 } else {

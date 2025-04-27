@@ -16,7 +16,7 @@ import java.awt.Component;
  */
 public class FileReceiver {
 
-    public static int port;
+    public int port;
     FileReceiver(int port) {
         this.port = port;
     }
@@ -24,7 +24,7 @@ public class FileReceiver {
         System.out.println(str);
     }
 
-    public static void start(TransferCallback cb) throws IOException { // 此port 是你本地的port
+    public void start(TransferCallback cb) throws IOException { // 此port 是你本地的port
 
         // handshake
         while (true) {
