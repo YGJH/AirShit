@@ -38,7 +38,7 @@ public class Main { // 定義 Main 類別
 
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
 
-    public static Hashtable<String, Client> getClientPorts() { // 定義取得客戶端端口的方法
+    public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
     }
 
@@ -196,7 +196,7 @@ public class Main { // 定義 Main 類別
                     clientList.put(tempClient.getUserName(), tempClient);
                     System.out.println(
                             "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
-                    
+
                     // Respond directly to the sender (unicast)
                     for (int i = 0; i < 3; i++) { // Send hello message 3 times
                         responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came

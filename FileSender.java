@@ -83,8 +83,7 @@ public class FileSender {
                 // 等待 Receiver 確認接收檔案
                 int cnt = 0;
                 String response = dis.readUTF();
-                while (response.equals("ACK") && cnt < 300) {
-                    println("Receiver 確認接收檔案。");
+                while (response.equals("ACK") == false && cnt < 300) {
                     cnt++;
                     Thread.sleep(100); 
                     response = dis.readUTF();
