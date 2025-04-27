@@ -169,6 +169,8 @@ public class FileReceiver {
                                 thisFileReceived.addAndGet(read);
                                 cb.onProgress(thisFileReceived.get());
                                 remaining -= read;
+                                println("已接收 " + read + " bytes，offset=" + offset + ", length=" + length);
+                                println("目前進度：" + thisFileReceived.get() + " bytes / " + tempfileSize + " bytes");
                             }
                         } catch (IOException e) {
                             // System.err.println("Handler 發生錯誤：");
