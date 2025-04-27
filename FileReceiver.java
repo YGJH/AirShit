@@ -124,8 +124,6 @@ public class FileReceiver {
             try {
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                 dos.writeUTF("ACCEPT");
-                dos.writeUTF("ACCEPT");
-                dos.writeUTF("ACCEPT");
             } catch (IOException e) {
                 System.err.println("無法與 Sender 通訊：");
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
