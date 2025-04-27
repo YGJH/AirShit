@@ -1,4 +1,5 @@
 package AirShit;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -17,9 +18,11 @@ import java.awt.Component;
 public class FileReceiver {
 
     public int port;
+
     FileReceiver(int port) {
         this.port = port;
     }
+
     public static void println(String str) {
         System.out.println(str);
     }
@@ -111,12 +114,6 @@ public class FileReceiver {
                     folder.mkdirs(); // Create the directory if it doesn't exist
                     println("已建立資料夾：" + folderName);
                 }
-            } else {
-                File outputFile = new File(outputFilePath);
-                println("接收單檔：" + outputFile.getAbsolutePath());
-                if (!outputFile.exists()) {
-                    outputFile.createNewFile();
-                }
             }
             // send accept message to sender
             try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
@@ -126,60 +123,53 @@ public class FileReceiver {
                 System.err.println("無法與 Sender 通訊：");
                 e.printStackTrace();
             }
-
+            final String outPutPath = outputFilePath;
             println("已接受檔案傳送。");
+            cb.onStart(totalSize);
+
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(totalSize); // 開始接收檔案
             for(int i = 0 ; i < fileCount; i++) {
-                Socket socket2 = serverSocket.accept();
-                String fileName = null;
-                long fileSize = 0;
-                try (DataInputStream dis = new DataInputStream(socket2.getInputStream())) {
+                try {
+                    Socket socket2 = serverSocket.accept(); 
+                    DataInputStream dis = new DataInputStream(socket2.getInputStream());
                     String[] parts = dis.readUTF().split("\\|");
-                    fileName = parts[0];
-                    fileSize = Long.parseLong(parts[1]);
+                    final String fileName = parts[0];
+                    long fileSize = Long.parseLong(parts[1]);
                     println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                     // notify sender to start sending the file
-                    try (DataOutputStream dos = new DataOutputStream(socket2.getOutputStream())) {
+                    DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
+                    try {
                         dos.writeUTF("ACK");
                         dos.flush();
-                    } catch (IOException e) {
-                        System.err.println("無法與 Sender 通訊：");
-                        e.printStackTrace();
-                    }
-                } catch (IOException e) {}
-                
-                
-                Socket client = serverSocket.accept();
-                new Thread(() -> {
-                    try (DataInputStream dis = new DataInputStream(
-                        new BufferedInputStream(client.getInputStream()))) {
-                                                        
-                            cb.onStart(totalSize);
-                            
-                            File outFile = new File(outputFilePath, fileName);
-                            try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                                byte[] buffer = new byte[8192];
-                                long received = 0;
-                                int read;
-                                while (received < totalSize && (read = dis.read(buffer)) != -1) {
-                                    fos.write(buffer, 0, read);
-                                    received += read;
-                                    cb.onProgress(received);
-                                }
-                                fos.flush();
-                            }
-                        } catch (Exception e) {
-                            // couldn't get fileName here if error happened early
-                        }
-                    }, "receiver-thread").start();
-                }
-                
-            }
-    }
+                    } catch (IOException e) {}
 
-    
+                    Socket client = serverSocket.accept();
+                    new Thread(() -> {
+                        try (DataInputStream d = new DataInputStream(
+                            new BufferedInputStream(client.getInputStream()))) {
+                                File outFile = new File(outPutPath , fileName);
+                                try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                                    byte[] buffer = new byte[8192];
+                                    long received = 0;
+                                    int read;
+                                    while (received < fileSize && (read = d.read(buffer)) != -1) {
+                                        fos.write(buffer, 0, read);
+                                        received += read;
+                                        cb.onProgress(received);
+                                    }
+                                    fos.flush();
+                                }
+                            } catch (Exception e) {
+                                // couldn't get fileName here if error happened early
+                            }
+                        }, "receiver-thread").start();
+                }
+                catch (IOException e) {}
+            }
+        }     
+    }
 
     private static void sendACK(Socket socket) throws IOException {
         try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
