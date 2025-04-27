@@ -183,7 +183,6 @@ public class FileReceiver {
                                 // ex.printStackTrace();
                             }
 
-                            break;
                         }
                     }, "chunk-handler-" + i);
 

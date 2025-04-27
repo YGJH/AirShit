@@ -74,13 +74,11 @@ public class FileSender {
             SendingFile = f;
             // notify receiver to start receiving the file
             try (Socket ctrl = new Socket(host, port);
-                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream());
-                 DataInputStream dis = new DataInputStream(ctrl.getInputStream())) {
-
+                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream())) {
+                // 先傳送檔案名稱與大小
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
-                if (!"ACK".equals(dis.readUTF())) return;
-
+                receiveACK(ctrl);
                 // then stream the bytes…
                 long fileLength = f.length();
                 long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
