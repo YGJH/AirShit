@@ -81,92 +81,33 @@ public class FileSender {
             } catch (IOException e) {}
 
             // wait for ACK
-            if (!receiveACK(socket)) {
+            if (!Main.receiveACK(socket)) {
                 System.err.println("Receiver 無法接收檔案，請稍後再試。");
                 return;
             }
-        
 
-            new Thread(() -> {
-                String name = file.getName();
-                try (Socket sock = new Socket(host, port);
-                     DataOutputStream dos = new DataOutputStream(
-                         new BufferedOutputStream(sock.getOutputStream())
-                     );
-                     FileInputStream fis = new FileInputStream(file)) {
+            // send file
+            SendFile sendFile = new SendFile(host, port, file.getAbsolutePath(), threadCount , new TransferCallback() {
+                @Override
+                public void onStart(long totalSize) {
+                    // do nothing
+                }
 
-                    long total = file.length();
-
-                    // send metadata
-                    dos.writeUTF(name);
-                    dos.writeLong(total);
-                    dos.flush();
-                    // send file content
-                    byte[] buffer = new byte[8192];
-                    long sent = 0;
-                    int read;
-                    while ((read = fis.read(buffer)) != -1) {
-                        dos.write(buffer, 0, read);
-                        sent += read;
-                        callback.onProgress(sent);
-                    }
-                    dos.flush();
-                } catch (Exception e) {}
-            }, "sender-" + file.getName()).start();
-        }
-    }
-
-
-
-    private boolean receiveACK(Socket socket) throws IOException {
-        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
-            String response = dis.readUTF();
-            return response.equals("ACK");
-        } catch (IOException e) {
-            System.err.println("無法與 Receiver 通訊：");
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private class ChunkSender implements Runnable {
-        private final long offset;
-        private final int length;
-
-        public ChunkSender(long offset, int length) {
-            this.offset = offset;
-            this.length = length;
-        }
-
-        @Override
-        public void run() {
-            try (
-                Socket socket = new Socket(host, port);
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                RandomAccessFile raf = new RandomAccessFile(SendingFile, "r")
-            ) {
-                // 先傳 offset 與 chunk 大小（header）
-                dos.writeLong(offset);
-                dos.writeInt(length);
-
-                // 移動到 offset 並依序讀取、傳送
-                raf.seek(offset);
-                byte[] buffer = new byte[8192];
-                int read, remaining = length;
-                while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
-                    println("已傳送 " + read + " bytes");
-                    dos.write(buffer, 0, read);
-                    totalSent.addAndGet(read);
-                    remaining -= read;
+                @Override
+                public void onProgress(long bytesTransferred) {
+                    totalSent.addAndGet(bytesTransferred);
                     cb.onProgress(totalSent.get());
                 }
-                System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
-            } catch (IOException e) {
-                System.err.println("ChunkSender 發生錯誤：");
-                e.printStackTrace();
-            }
+                @Override
+                public void onError(Exception e) {
+                    cb.onError(e);
+                }
+            });
+        
+            sendFile.start();
         }
     }
+
 
 
 }

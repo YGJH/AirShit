@@ -144,29 +144,21 @@ public class FileReceiver {
                         dos.writeUTF("ACK");
                         dos.flush();
                     } catch (IOException e) {}
-
-                    Socket client = serverSocket.accept();
-                    new Thread(() -> {
-                        try (DataInputStream d = new DataInputStream(
-                            new BufferedInputStream(client.getInputStream()))) {
-                                File outFile = new File(outPutPath , fileName);
-                                try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                                    byte[] buffer = new byte[8192];
-                                    long received = 0;
-                                    int read;
-                                    while (received < fileSize && (read = d.read(buffer)) != -1) {
-                                        fos.write(buffer, 0, read);
-                                        received += read;
-                                        cb.onProgress(received);
-                                    }
-                                    fos.flush();
-                                }
-                            } catch (Exception e) {
-                                // couldn't get fileName here if error happened early
-                            }
-                        }, "receiver-thread").start();
+                    // 接收檔案
                 }
-                catch (IOException e) {}
+                catch (IOException e) {
+                }
+                // 接收檔案
+                Receiver receiver = new Receiver();
+                try {
+
+                    receiver.start(port, outPutPath + "\\" + fileNames, cb);
+                } catch (IOException e) {
+                    System.err.println("無法接收檔案：");
+                    e.printStackTrace();
+                }
+
+
             }
         }     
     }

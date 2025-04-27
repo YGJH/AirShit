@@ -343,7 +343,7 @@ public class Main { // 定義 Main 類別
     public static boolean receiveACK(Socket socket) {
         try {
             InputStream is = socket.getInputStream();
-            byte[] buffer = new byte[105];
+            byte[] buffer = new byte[1005];
             int bytesRead = is.read(buffer);
             if (bytesRead == -1) {
                 // Stream closed or nothing read, handle accordingly
