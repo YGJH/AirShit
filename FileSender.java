@@ -1,169 +1,177 @@
-// FileSender.java
-package AirShit;
 import java.io.*;
-import java.net.*;
-import java.util.concurrent.*;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import javax.naming.ldap.SortKey;
+import javax.xml.crypto.Data;
+
+/**
+ * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
+ */
 public class FileSender {
-    private static final int MAX_CHUNK_SIZE = 800 * 1024 * 1024; // 800 MB
+    private  String host;
+    private  int port;
+    private  File file;
+    // get Hardware Concurrent
+    private final int threadCount = Math.max(Runtime.getRuntime().availableProcessors() - 2, 1);
+    private  AtomicLong totalSent = new AtomicLong(0);
 
-    private final String targetHost;
-    private final int    targetPort;
-    private final ExecutorService executor;
-    // ← one global counter for all threads:
-    private final AtomicLong totalSent = new AtomicLong(0);
-
-    /** targetClient = "host:port", e.g. "192.168.1.50:9001" */
-    public FileSender(String targetClient) {
-        String[] parts = targetClient.split(":");
-        this.targetHost = parts[0];
-        this.targetPort = Integer.parseInt(parts[1]);
-        this.executor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r);
-            t.setName("sender-thread");
-            return t;
-        });
+    public FileSender(String host, int port) { // 此port 是對方的port跟host
+        this.host = host;
+        this.port = port;
     }
 
-    /**
-     * 1) TCP handshake on targetPort  
-     * 2) If accepted, schedule one task per file—or one per chunk if single file.
-     */
-    public void sendFiles(File[] files, String folderName, TransferCallback callback)
-            throws IOException {
-        boolean singleFile = (files.length == 1);
-        long fileSize = singleFile ? files[0].length() : 0;
-        int  chunkCount = singleFile
-                ? (int)((fileSize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE)
-                : 1;
-                totalSent.set(0);
-        // --- 1) TCP handshake ---
-        StringBuilder sb = new StringBuilder(folderName);
-        if (singleFile) {
-            sb.append("|")
-              .append(files[0].getName())
-              .append("|")
-              .append(fileSize)
-              .append("|")
-              .append(chunkCount);
+    public void start(File[] files , String SenderUserName , String folderName) throws IOException, InterruptedException {
+
+        // handshake
+        StringBuilder sb = new StringBuilder();
+        boolean isSingleFile = files.length == 1;
+        if(isSingleFile) {
+            sb.append("isSingle|");
+            sb.append(SenderUserName).append("|").append(file.getName()).append("|").append(file.length());
         } else {
-            for (File f : files) sb.append("|").append(f.getName());
-        }
- 
-        try (Socket hs = new Socket(targetHost, targetPort)) {
-            DataOutputStream dos = new DataOutputStream(hs.getOutputStream());
-            DataInputStream dis  = new DataInputStream(hs.getInputStream());
-
-            dos.writeUTF(sb.toString());
-            dos.flush();
-            System.out.println("Sent handshake: " + sb.toString());
-            String resp = dis.readUTF();
-            System.out.println("Receiver response: " + resp);
-            if (!"ACCEPT".equals(resp)) {
-                System.out.println("Receiver declined transfer.");
-                return;
-            }
-            System.out.println("Receiver accepted transfer.");
-
-        }
-
-        // --- 2) schedule transfers ---
-        if (singleFile) {
-            File f = files[0];
-            for (int i = 0; i < chunkCount; i++) {
-                final int idx = i;
-                executor.submit(() -> sendChunk(f, idx, callback));
-            }
-        } else {
+            sb.append("isMulti|");
+            sb.append(SenderUserName + "|" + folderName);
+            long totalSize = 0;
             for (File f : files) {
-                executor.submit(() -> sendWholeFile(f, callback));
+                totalSize += f.length();
+                sb.append("|").append(f.getName());
             }
+            sb.append("|").append(totalSize);
         }
 
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
+        // 連線到 Receiver
+        try (Socket socket = new Socket(host, port);
+             DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+            // 傳送 handshake 訊息
+            dos.writeUTF(sb.toString());
+        } catch (IOException e) {
+            System.err.println("無法連線到 Receiver：");
+            e.printStackTrace();
+            return;
+        }
+
+        // wait for receiver to accept the file
+        Socket socket = new Socket(host, port);
+        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            // 等待 Receiver 確認接收檔案
+            String response = dis.readUTF();
+            if (!response.equals("ACCEPT")) {
+                System.err.println("Receiver 拒絕接收檔案：");
+                return;
             }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-        } finally {
-            executor.shutdown();
+        } catch (IOException e) {
+            System.err.println("無法與 Receiver 通訊：");
+            e.printStackTrace();
+            return;
+        }
+
+        // 開始傳送檔案
+        for(File f : files) {
+            // notify receiver to start receiving the file
             try {
-                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
+                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                // 傳送檔案名稱與大小
+                dos.writeUTF(f.getName()+"|"+f.length());
+            } catch (IOException e) {
+                System.err.println("無法連線到 Receiver：");
+                e.printStackTrace();
+                return;
+            }
+            int cnt = 0;
+            // 等待 Receiver 確認接收檔案
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+            while(receiveACK(socket) && cnt < 30) {
+                // 等待 Receiver 確認接收檔案
+                String response = dis.readUTF();
+                if (!response.equals("ACCEPT")) {
+                    System.err.println("Receiver 拒絕接收檔案：");
+                    return;
                 }
-            } catch (InterruptedException e) {
-                executor.shutdownNow();
+                Thread.sleep(10); // 等待 Receiver 準備好
+                cnt++;
             }
-        }
-    }
-
-    private void sendWholeFile(File file, TransferCallback cb) {
-        try (Socket sock = new Socket(targetHost, targetPort);
-             DataOutputStream dos = new DataOutputStream(sock.getOutputStream());
-             FileInputStream  fis = new FileInputStream(file)) {
-
-            long total = file.length();
-            cb.onStart(total);
-
-            dos.writeUTF(file.getName());
-            dos.writeBoolean(false);    // isChunk = false
-            dos.writeLong(total);
-
-            byte[] buf = new byte[8192];
-            int  r;
-            while ((r = fis.read(buf)) != -1) {
-                dos.write(buf, 0, r);
-                // update single, global counter:
-                long overall = totalSent.addAndGet(r);
-                cb.onProgress(overall);
-            }
-            dos.flush();
-        } catch (Exception e) {
-            cb.onError(e);
-        }
-    }
-
-    private void sendChunk(File file, int idx, TransferCallback cb) {
-        try (Socket sock = new Socket(targetHost, targetPort);
-             DataOutputStream dos = new DataOutputStream(sock.getOutputStream());
-             RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-
-            long fileSize = raf.length();
-            long offset   = (long)idx * MAX_CHUNK_SIZE;
-            long length   = Math.min(MAX_CHUNK_SIZE, fileSize - offset);
-
-            if(length <= 0) {
-                System.out.println("Chunk " + idx + " is empty or out of bounds.");
+            if(cnt >= 30) {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
                 return;
             }
 
-            cb.onStart(length);
-
-            dos.writeUTF(file.getName());
-            dos.writeBoolean(true);        // isChunk = true
-            dos.writeInt(idx);
-            dos.writeLong(offset);
-            dos.writeLong(length);
-
-            raf.seek(offset);
-            byte[] buf = new byte[819200]; // 800 KB
-            long sent = 0;
-            while (sent < length) {
-                int toRead = (int)Math.min(buf.length, length - sent);
-                int r = raf.read(buf, 0, toRead);
-                if (r < 0) break;
-                dos.write(buf, 0, r);
-                sent += r;
-                // update single, global counter:
-                long overall = totalSent.addAndGet(r);
-                cb.onProgress(overall);
+            long fileLength = f.length();
+            long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
+            int i = 0;
+            while(fileLength > 0) {
+                List<Thread> workers = new ArrayList<>();
+                for (; i < threadCount; i++) {
+                    long offset = i * baseChunkSize;
+                    // 最後一塊撥給剩下的所有 byte
+                    long chunkSize = (i == threadCount - 1)
+                        ? Math.min(fileLength - offset, baseChunkSize)
+                        : baseChunkSize;
+        
+                    Thread t = new Thread(new ChunkSender(offset, (int) chunkSize));
+                    t.start();
+                    workers.add(t);
+                }
+        
+                // 等待所有執行緒結束
+                for (Thread t : workers) {
+                    t.join();
+                }
+                fileLength -= baseChunkSize * threadCount;
             }
-            dos.flush();
-        } catch (Exception e) {
-            cb.onError( e);
+            System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
         }
     }
+
+    private boolean receiveACK(Socket socket) throws IOException {
+        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            String response = dis.readUTF();
+            return response.equals("ACK");
+        } catch (IOException e) {
+            System.err.println("無法與 Receiver 通訊：");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private class ChunkSender implements Runnable {
+        private final long offset;
+        private final int length;
+
+        public ChunkSender(long offset, int length) {
+            this.offset = offset;
+            this.length = length;
+        }
+
+        @Override
+        public void run() {
+            try (
+                Socket socket = new Socket(host, port);
+                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                RandomAccessFile raf = new RandomAccessFile(file, "r")
+            ) {
+                // 先傳 offset 與 chunk 大小（header）
+                dos.writeLong(offset);
+                dos.writeInt(length);
+
+                // 移動到 offset 並依序讀取、傳送
+                raf.seek(offset);
+                byte[] buffer = new byte[8192];
+                int read, remaining = length;
+                while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                    dos.write(buffer, 0, read);
+                    totalSent.addAndGet(read);
+                    remaining -= read;
+                }
+                System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
+            } catch (IOException e) {
+                System.err.println("ChunkSender 發生錯誤：");
+                e.printStackTrace();
+            }
+        }
+    }
+
+
 }

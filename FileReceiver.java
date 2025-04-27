@@ -1,201 +1,162 @@
 package AirShit;
 import java.io.*;
-import java.net.*;
-import java.nio.*;
-import java.nio.channels.*;
-import java.util.Arrays;
-import java.util.Collections;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 
-import javax.swing.*;
-import javax.swing.border.*;
-import java.awt.*;
-import java.awt.event.*;
+import AirShit.TransferCallback;
 
+import java.awt.Component;
 
+/**
+ * Receiver: 在指定埠口接收多個執行緒送過來的檔案分段，並寫入同一個檔案中。
+ */
 public class FileReceiver {
-    private static final int TCP_BACKLOG = 50;
-    private final int port;
-    private File saveDir;
-    private final ExecutorService executor;
-    // ← one global counter for all threads:
-    private final AtomicLong totalReceived = new AtomicLong(0);
 
-    public FileReceiver(int targetPort) {
-        this.port    = targetPort;
-        this.executor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r);
-            t.setName("receiver-thread");
-            return t;
-        });
+    public static int port;
+    FileReceiver(int port) {
+        this.port = port;
+    }
+    public static void println(String str) {
+        System.out.println(str);
     }
 
-    public void start(TransferCallback callback) throws IOException {
-        ServerSocket server = new ServerSocket(port, TCP_BACKLOG);
+    public static void start(TransferCallback cb) throws IOException { // 此port 是你本地的port
 
-           // --- 1) control handshake ---
-        System.out.println("Waiting for TCP handshake on port " + port + "...");
-        String folder;
-        List<String> names;
-        long fileSize = 0;
-        int  chunkCount = 1;
-        while(true) {
-            totalReceived.set(0);
-            try (Socket hsSock = server.accept();
-                DataInputStream dis = new DataInputStream(hsSock.getInputStream());
-                DataOutputStream dos = new DataOutputStream(hsSock.getOutputStream())) {
-                    
-                String msg = dis.readUTF();
-                String[] parts = msg.split("\\|");
-                folder = parts[0];
-                if (parts.length == 4) {
-                    // single‐file chunked
-                    names      = Collections.singletonList(parts[1]);
-                    fileSize   = Long.parseLong(parts[2]);
-                    chunkCount = Integer.parseInt(parts[3]);
-                } else {
-                    // multi‐file
-                    names = Arrays.asList(parts).subList(1, parts.length);
+        // handshake
+        while (true) {
+            // listen for handshake
+            ServerSocket serverSocket = new ServerSocket(port);
+            boolean isSingle = false;
+            String senderUserName = null;
+            String fileName = null;
+            String folderName = null;
+            int fileCount = 0;
+            try {
+                Socket socket = serverSocket.accept();
+                DataInputStream dis = new DataInputStream(socket.getInputStream());
+                String handshake = dis.readUTF();
+                String[] parts = handshake.split("\\|");
+                if (parts.length < 3) {
+                    System.err.println("無效的 handshake 訊息： " + handshake);
+                    continue;
                 }
-                boolean singleFile = names.size() == 1;
-    
-                // ask user for permission to receive files:
-                JOptionPane pane = new JOptionPane(
-                        "Accept file transfer from " + hsSock.getInetAddress() + "?\n" +
-                        "Files: " + names + "\n" +
-                        "Total size: " + (fileSize / 1024) + " KB",
-                        JOptionPane.QUESTION_MESSAGE,
-                        JOptionPane.YES_NO_OPTION,
-                        null, null, null);
-                JDialog dialog = pane.createDialog("File Transfer Request");
-    
-                dialog.setVisible(true);
-                Object selectedValue = pane.getValue();
-                boolean accept = selectedValue != null && selectedValue.equals(JOptionPane.YES_OPTION);
-                
-                if(accept) {
-                    // ask user for save directory:
-                    JFileChooser chooser = new JFileChooser();
-                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                    chooser.setDialogTitle("Select Save Directory");
-                    chooser.setApproveButtonText("Select");
-                    chooser.setAcceptAllFileFilterUsed(false);
-                    chooser.setCurrentDirectory(new File(System.getProperty("user.home")));
-                    chooser.setSelectedFile(new File(folder));
-                    chooser.setVisible(true);
-                    int result = chooser.showOpenDialog(null);
-                    if (result == JFileChooser.APPROVE_OPTION) {
-                        saveDir = chooser.getSelectedFile();
-                    } else {
-                        System.out.println("No directory selected. Transfer declined.");
-                        server.close();
-                        return;
+                long fileSize = 0;
+                // isSingle|SenderUserName|file.getName()|file.length();
+                // isMulti|SenderUserName|folderName|file.getName()|file.length();
+                println("接收到 handshake 訊息： " + handshake);
+                if (parts[0].equals("isSingle")) {
+                    isSingle = true;
+                    senderUserName = parts[1];
+                    fileName = parts[2];
+                    fileSize = Long.parseLong(parts[3]);
+                    println("單檔傳送：SenderUserName=" + senderUserName + ", fileName=" + fileName + ", fileSize="
+                            + fileSize);
+                } else if (parts[0].equals("isMulti")) {
+                    senderUserName = parts[1];
+                    folderName = parts[2];
+                    fileCount = parts.length - 4;
+                    println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
+                } else {
+                    System.err.println("無效的 handshake 類型： " + parts[0]);
+                    continue;
+                }
+            } catch (IOException e) {
+                System.err.println("無法連線到 Sender：");
+                e.printStackTrace();
+            }
+            // ask user to accept the file
+            int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？", "檔案傳送", JOptionPane.YES_NO_OPTION);
+            if (response != JOptionPane.YES_OPTION) {
+                System.out.println("使用者拒絕接收檔案。");
+                continue;
+            }
+
+            // get output file path
+            String outputFilePath = FolderSelector.selectFolder();
+            if (outputFilePath == null) {
+                System.out.println("使用者取消選擇檔案。");
+                continue;
+            }
+
+            if (!isSingle) {
+                File folder = new File(outputFilePath + folderName);
+                if (!folder.exists()) {
+                    folder.mkdirs(); // Create the directory if it doesn't exist
+                }
+            }
+            //
+
+            AtomicLong totalReceived = new AtomicLong(0);
+            for (int i = 0; i < fileCount; i++) {
+                // wait for receiver to accept the file
+                Socket socket = serverSocket.accept();
+                DataInputStream dis = new DataInputStream(socket.getInputStream());
+                String res = dis.readUTF();
+                File outputFile = new File(res.split("\\|")[0]);
+                int tempfileSize = Integer.parseInt(res.split("\\|")[1]);
+                sendACK(socket);
+                AtomicLong thisFileReceived = new AtomicLong(0);
+                // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
+                RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
+                List<Thread> handlers = new ArrayList<>();
+                // atomicLong 變數用來計算總共接收的 bytes
+                // handlers 用來儲存所有的 handler 執行緒
+                while (thisFileReceived.get() < tempfileSize) {
+                    Thread handler = new Thread(() -> {
+                        try (
+                            DataInputStream chunkDis = new DataInputStream(socket.getInputStream())) {
+
+                            long offset = chunkDis.readLong();
+                            int length = chunkDis.readInt();
+
+                            raf.seek(offset);
+                            byte[] buffer = new byte[8192];
+                            int read, remaining = length;
+                            while (remaining > 0
+                                    && (read = chunkDis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                                raf.write(buffer, 0, read);
+                                thisFileReceived.addAndGet(read);
+                                remaining -= read;
+                            }
+                            System.out.printf(
+                                    "接收分段:offset=%d, length=%d | 總共已接收：%d bytes%n",
+                                    offset, length, thisFileReceived.get());
+                        } catch (IOException e) {
+                            System.err.println("Handler 發生錯誤：");
+                            e.printStackTrace();
+                        }
+                    });
+                    handler.start();
+                    handlers.add(handler);
+                }
+                for (Thread handler : handlers) {
+                    try {
+                        handler.join();
+                    } catch (InterruptedException ie) {
+                        ie.printStackTrace();
                     }
-                    // send response to sender:
-                    dos.writeUTF("ACCEPT");
-                    dos.flush();
-                    System.out.println("Receiver accepted transfer.");
-                } else {
-    
-                    dos.writeUTF("DECLINE");
-                    dos.flush();
-                    System.out.println("Receiver declined transfer.");
                 }
-                if(singleFile) {
-                    // don't create directory if single file:
-                    saveDir = new File(saveDir, names.get(0)).getParentFile();
-                } else {
-                    if (!saveDir.exists()) {
-                        saveDir.mkdirs();
-                    }
-                }
-    
-                if (!accept) {
-                    System.out.println("Transfer declined.");
-                    server.close();
-                    return;
-                }
+                totalReceived.addAndGet(tempfileSize);
             }
-    
-            // --- 2) pre-allocate single‐file if chunked ---
-            if (names.size() == 1 && chunkCount > 1) {
-                File out = new File(saveDir, names.get(0));
-                try (RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-                    raf.setLength(fileSize);
-                }
-            }
-    
-            // --- 3) accept data connections forever ---
-            System.out.println("Handshake complete. Waiting for file/chunk connections...");
-            // after pre‐allocating for a chunked single file
-            AtomicLong expected = new AtomicLong(fileSize);
-            System.out.println("Waiting for chunks…");
-    
-            // loop until we've received all bytes
-            while (totalReceived.get() < expected.get()) {
-              try {
-                Socket client = server.accept();
-                executor.submit(() -> handleClient(client, callback));
-              } catch (SocketException se) {
-                // server was closed or network died
-                break;
-              }
-            }
-    
-            executor.shutdown();
-            System.out.println("All data in—receiver exiting.");
+
+            // （可加上條件退出並 handler.join()）
         }
     }
 
-    private void handleClient(Socket sock, TransferCallback cb) {
-        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(sock.getInputStream()))) {
-            String fileName = dis.readUTF();
-            boolean isChunk = dis.readBoolean();
+    
 
-            if (!isChunk) {
-                long total = dis.readLong();
-                cb.onStart(total);
-
-                byte[] buffer = new byte[8192];
-                int    r;
-                while ((r = dis.read(buffer)) != -1) {
-                    // write to file...
-                    // -----------------------------------
-                    // **global** progress update:
-                    long overall = totalReceived.addAndGet(r);
-                    cb.onProgress(overall);
-                    if (overall >= total) break;
-                }
-
-            } else {
-                // chunk header
-                int    idx    = dis.readInt();
-                long   offset = dis.readLong();
-                long   length = dis.readLong();
-
-                cb.onStart(length);
-
-                File outFile = new File(saveDir, fileName);
-                try (RandomAccessFile raf = new RandomAccessFile(outFile, "rw");
-                     FileChannel   ch  = raf.getChannel()) {
-
-                    byte[] buf = new byte[8192];
-                    int    r;
-                    long   written = 0;
-                    while ((r = dis.read(buf)) != -1 && written < length) {
-                        ByteBuffer bb = ByteBuffer.wrap(buf, 0, r);
-                        ch.write(bb, offset + written);
-                        written += r;
-                        // **global** progress update:
-                        long overall = totalReceived.addAndGet(r);
-                        cb.onProgress(overall);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            cb.onError(e);
+    private static void sendACK(Socket socket) throws IOException {
+        try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+            dos.writeUTF("ACK");
+        } catch (IOException e) {
+            System.err.println("無法與 Sender 通訊：");
+            e.printStackTrace();
         }
     }
+
 }
