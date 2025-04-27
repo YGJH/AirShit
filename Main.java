@@ -122,7 +122,7 @@ public class Main { // 定義 Main 類別
             socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
             
             socket.setOption(StandardSocketOptions.IP_MULTICAST_LOOP, false);
-            println(sendData.length + " bytes sent to multicast group " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+            // println(sendData.length + " bytes sent to multicast group " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
@@ -158,7 +158,7 @@ public class Main { // 定義 Main 類別
                     socket.receive(packet);
 
                     String message = new String(packet.getData(), 0, packet.getLength());
-                    System.out.println(message);
+                    // System.out.println(message);
 
                     // Check if the message is a heartbeat
                     if ((message).startsWith("HEARTBEAT-")) {
@@ -322,7 +322,7 @@ public class Main { // 定義 Main 類別
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(5000 + (random.nextInt() % 3000)); // 每 5 秒檢查一次
+                    Thread.sleep(50); // 每 5 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
