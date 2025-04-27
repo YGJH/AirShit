@@ -10,6 +10,8 @@ import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.xml.crypto.Data;
 
+import AirShit.Receiver;
+
 import java.awt.Component;
 
 /**
@@ -139,20 +141,21 @@ public class FileReceiver {
                     long fileSize = Long.parseLong(parts[1]);
                     println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                     // notify sender to start sending the file
-                    DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
-                    try {
+                    try (DataOutputStream dos = new DataOutputStream(socket2.getOutputStream())) {
                         dos.writeUTF("ACK");
                         dos.flush();
-                    } catch (IOException e) {}
-                    // 接收檔案
+                    } catch (IOException e) {
+                        System.err.println("無法與 Sender 通訊：");
+                        e.printStackTrace();
+                    }
+
                 }
                 catch (IOException e) {
                 }
                 // 接收檔案
-                Receiver receiver = new Receiver();
+                
                 try {
-
-                    receiver.start(port, outPutPath + "\\" + fileNames, cb);
+                    Receiver.start(port, outPutPath + "\\" + fileNames, cb);
                 } catch (IOException e) {
                     System.err.println("無法接收檔案：");
                     e.printStackTrace();
@@ -161,15 +164,6 @@ public class FileReceiver {
 
             }
         }     
-    }
-
-    private static void sendACK(Socket socket) throws IOException {
-        try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-            dos.writeUTF("ACK");
-        } catch (IOException e) {
-            System.err.println("無法與 Sender 通訊：");
-            e.printStackTrace();
-        }
     }
 
 }

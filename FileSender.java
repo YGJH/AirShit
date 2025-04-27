@@ -81,11 +81,19 @@ public class FileSender {
             } catch (IOException e) {}
 
             // wait for ACK
-            if (!Main.receiveACK(socket)) {
-                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+            try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+                String response = dis.readUTF();
+                if (response.equals("ACK")) {
+                    println("Receiver 確認接收檔案： " + fileName);
+                } else {
+                    System.err.println("Receiver 無法接收檔案： " + fileName);
+                    return;
+                }
+            } catch (IOException e) {
+                System.err.println("無法連線到 Receiver：");
+                e.printStackTrace();
                 return;
             }
-
             // send file
             SendFile sendFile = new SendFile(host, port, file.getAbsolutePath(), threadCount , new TransferCallback() {
                 @Override
