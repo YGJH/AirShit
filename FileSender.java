@@ -69,55 +69,50 @@ public class FileSender {
 
         callback.onStart(totalSize);
         this.cb = callback;
-        for(File f : files) {
-            println("開始傳送檔案：" + f.getName() + "，大小：" + f.length() + " bytes");
-            SendingFile = f;
-            // notify receiver to start receiving the file
-            try (Socket ctrl = new Socket(host, port);
-                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream());
-                 DataInputStream dis = new DataInputStream(ctrl.getInputStream())) {
-                println("傳送檔案名稱與大小： " + f.getName() + "|" + f.length());
-                // 先傳送檔案名稱與大小
-                dos.writeUTF(f.getName() + "|" + f.length());
+        for (File file : files) {
+            // notify user
+            String fileName = file.getName();
+            String fileSize = String.valueOf(file.length());
+            Socket socket = new Socket(host, port);
+            try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                // send file name and size
+                dos.writeUTF(fileName+"\\|"+fileSize);
                 dos.flush();
-                Thread.sleep(100); // 等待 Receiver 準備好接收檔案
-                String response = dis.readUTF();
-                while(response != "ACK") {
-                    println("response"+response);
-                    println("Receiver 尚未準備好接收檔案，請稍後再試。");
-                    Thread.sleep(100); // 等待 Receiver 準備好接收檔案
-                    response = dis.readUTF();
-                }
-                // then stream the bytes…
-                long fileLength = f.length();
-                long baseChunkSize = Math.min(5*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
-                int i = 0;
-                while(fileLength > 0) {
-                    List<Thread> workers = new ArrayList<>();
-                    for (; i < threadCount; i++) {
-                        long offset = i * baseChunkSize;
-                        // 最後一塊撥給剩下的所有 byte
-                        long chunkSize = (i == threadCount - 1)
-                            ? Math.min(fileLength - offset, baseChunkSize)
-                            : baseChunkSize;
-            
-                        Thread t = new Thread(new ChunkSender(offset, (int) chunkSize));
-                        t.start();
-                        workers.add(t);
-                    }
-            
-                    // 等待所有執行緒結束
-                    for (Thread t : workers) {
-                        t.join();
-                    }
-                    fileLength -= baseChunkSize * threadCount;
-                }
-                System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
-            } catch (IOException e) {
-                System.err.println("無法連線到 Receiver：");
-                e.printStackTrace();
+            } catch (IOException e) {}
+
+            // wait for ACK
+            if (!receiveACK(socket)) {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
                 return;
             }
+        
+
+            new Thread(() -> {
+                String name = file.getName();
+                try (Socket sock = new Socket(host, port);
+                     DataOutputStream dos = new DataOutputStream(
+                         new BufferedOutputStream(sock.getOutputStream())
+                     );
+                     FileInputStream fis = new FileInputStream(file)) {
+
+                    long total = file.length();
+
+                    // send metadata
+                    dos.writeUTF(name);
+                    dos.writeLong(total);
+                    dos.flush();
+                    // send file content
+                    byte[] buffer = new byte[8192];
+                    long sent = 0;
+                    int read;
+                    while ((read = fis.read(buffer)) != -1) {
+                        dos.write(buffer, 0, read);
+                        sent += read;
+                        callback.onProgress(sent);
+                    }
+                    dos.flush();
+                } catch (Exception e) {}
+            }, "sender-" + file.getName()).start();
         }
     }
 

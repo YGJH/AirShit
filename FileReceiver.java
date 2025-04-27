@@ -32,10 +32,10 @@ public class FileReceiver {
             ServerSocket serverSocket = new ServerSocket(port);
             boolean isSingle = false;
             String senderUserName = null;
-            String fileName = null;
+            String fileNames = null;
             String folderName = null;
             int fileCount = 0;
-            long fileSize = 0;
+            long totalSize = 0;
             StringBuilder sb = new StringBuilder();
             Socket socket = serverSocket.accept();
             try {
@@ -52,16 +52,16 @@ public class FileReceiver {
                 if (parts[0].equals("isSingle")) {
                     isSingle = true;
                     senderUserName = parts[1];
-                    fileName = parts[2];
-                    fileSize = Long.parseLong(parts[3]);
-                    sb.append(fileName);
-                    println("單檔傳送：SenderUserName=" + senderUserName + ", fileName=" + fileName + ", fileSize="
-                            + fileSize);
+                    fileNames = parts[2];
+                    totalSize = Long.parseLong(parts[3]);
+                    sb.append(fileNames);
+                    println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
+                            + totalSize);
                 } else if (parts[0].equals("isMulti")) {
                     senderUserName = parts[1];
                     folderName = parts[2];
                     fileCount = parts.length - 4;
-                    fileSize = Long.parseLong(parts[parts.length - 1]);
+                    totalSize = Long.parseLong(parts[parts.length - 1]);
                     for(int i = 3; i < parts.length - 1; i++) {
                         sb.append(parts[i]).append("\n");
                     }
@@ -75,7 +75,7 @@ public class FileReceiver {
                 e.printStackTrace();
             }
             // ask user to accept the file
-            int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？" + " Sender: " + senderUserName + " 即將傳送的檔案: " + sb + " FolderName: " + folderName + " Total Size: " + fileSize , "檔案傳送", JOptionPane.YES_NO_OPTION);
+            int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？" + " Sender: " + senderUserName + " 即將傳送的檔案: " + sb + " FolderName: " + folderName + " Total Size: " + totalSize , "檔案傳送", JOptionPane.YES_NO_OPTION);
             if (response != JOptionPane.YES_OPTION) {
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                     dos.writeUTF("REJECT");
@@ -121,6 +121,7 @@ public class FileReceiver {
             // send accept message to sender
             try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                 dos.writeUTF("ACK");
+                dos.flush();
             } catch (IOException e) {
                 System.err.println("無法與 Sender 通訊：");
                 e.printStackTrace();
@@ -129,89 +130,53 @@ public class FileReceiver {
             println("已接受檔案傳送。");
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
-            cb.onStart(fileSize); // 開始接收檔案
-            for (int i = 0; i < fileCount; i++) {
-                // accept a new socket for this chunk
-                Socket chunkSocket = serverSocket.accept();               // ← make a new local var
-                DataInputStream dis = new DataInputStream(chunkSocket.getInputStream());
-                DataOutputStream dos = new DataOutputStream(chunkSocket.getOutputStream());
-                String res = dis.readUTF();
-                String[] p = res.split("\\|");
-                File outputFile = new File(outputFilePath, p[0]);
-                int tempfileSize = Integer.parseInt(p[1]);
-                println("接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
-                if (!outputFile.exists()) {
-                    outputFile.createNewFile();
-                }
-                // send ACK to sender
-                dos.write("ACK".getBytes());
-                dos.flush();
-                // notify sender to start sending the file                
-
-                AtomicLong thisFileReceived = new AtomicLong(0);
-                RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
-                List<Thread> handlers = new ArrayList<>();
-                println("開始接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
-                while (thisFileReceived.get() < tempfileSize) {
-                    Thread handler = new Thread(() -> {
-                        try (
-                            DataInputStream chunkDis = new DataInputStream(chunkSocket.getInputStream())
-                        ) {
-                            long offset = chunkDis.readLong();
-                            int length = chunkDis.readInt();
-                            raf.seek(offset);
-
-                            byte[] buffer = new byte[8192];
-                            int read, remaining = length;
-                            while (remaining > 0
-                                && (read = chunkDis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
-                                raf.write(buffer, 0, read);
-                                thisFileReceived.addAndGet(read);
-                                cb.onProgress(thisFileReceived.get());
-                                remaining -= read;
-                                println("已接收 " + read + " bytes，offset=" + offset + ", length=" + length);
-                                println("目前進度：" + thisFileReceived.get() + " bytes / " + tempfileSize + " bytes");
-                            }
-                        } catch (IOException e) {
-                            // System.err.println("Handler 發生錯誤：");
-                            outputFile.delete(); // delete the file if error occurs
-                            try {
-                                chunkSocket.close();
-                            } catch (IOException ex) {
-                                // System.err.println("無法關閉 Socket：");
-                                // ex.printStackTrace();
-                            }
-                            try {
-                                raf.close();
-                            } catch (IOException ex) {
-                                // System.err.println("無法關閉 RandomAccessFile：");
-                                // ex.printStackTrace();
-                            }
-                            outputFile.delete(); // delete the file if error occurs
-
-                        }
-                    }, "chunk-handler-" + i);
-
-                    handler.start();
-                    handlers.add(handler);
-                }
-
-                // wait for all chunk‐handlers to finish
-                for (Thread h:handlers) {
-                    try {
-                        h.join();
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-
+            cb.onStart(totalSize); // 開始接收檔案
+            for(int i = 0 ; i < fileCount; i++) {
+                Socket socket2 = serverSocket.accept();
+                String fileName = null;
+                long fileSize = 0;
+                try (DataInputStream dis = new DataInputStream(socket2.getInputStream())) {
+                    String[] parts = dis.readUTF().split("\\|");
+                    fileName = parts[0];
+                    fileSize = Long.parseLong(parts[1]);
+                    println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
+                    // notify sender to start sending the file
+                    try (DataOutputStream dos = new DataOutputStream(socket2.getOutputStream())) {
+                        dos.writeUTF("ACK");
+                        dos.flush();
+                    } catch (IOException e) {
+                        System.err.println("無法與 Sender 通訊：");
+                        e.printStackTrace();
                     }
+                } catch (IOException e) {}
+                
+                
+                Socket client = serverSocket.accept();
+                new Thread(() -> {
+                    try (DataInputStream dis = new DataInputStream(
+                        new BufferedInputStream(client.getInputStream()))) {
+                                                        
+                            cb.onStart(totalSize);
+                            
+                            File outFile = new File(outputFilePath, fileName);
+                            try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                                byte[] buffer = new byte[8192];
+                                long received = 0;
+                                int read;
+                                while (received < totalSize && (read = dis.read(buffer)) != -1) {
+                                    fos.write(buffer, 0, read);
+                                    received += read;
+                                    cb.onProgress(received);
+                                }
+                                fos.flush();
+                            }
+                        } catch (Exception e) {
+                            // couldn't get fileName here if error happened early
+                        }
+                    }, "receiver-thread").start();
                 }
-
-                raf.close();
-                totalReceived.addAndGet(tempfileSize);
+                
             }
-
-            // （可加上條件退出並 handler.join()）
-        }
     }
 
     
