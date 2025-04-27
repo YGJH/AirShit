@@ -246,6 +246,8 @@ public class SendFileGUI extends JFrame {
             Client c = listModel.getElementAt(i);
             if (!clientList.containsKey(c.getUserName())) {
                 listModel.removeElementAt(i);
+            } else {
+                listModel.set(i, clientList.get(c.getUserName()));
             }
         }
 
