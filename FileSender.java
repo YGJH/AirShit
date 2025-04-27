@@ -81,7 +81,7 @@ public class FileSender {
                 receiveACK(ctrl);
                 // then stream the bytes…
                 long fileLength = f.length();
-                long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
+                long baseChunkSize = Math.min(5*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
                 int i = 0;
                 while(fileLength > 0) {
                     List<Thread> workers = new ArrayList<>();
