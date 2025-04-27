@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
-
+import javax.xml.crypto.Data;
 
 import java.awt.Component;
 
@@ -127,17 +127,24 @@ public class FileReceiver {
             println("已接受檔案傳送。");
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
-            cb.onStart(fileSize);            // 開始接收檔案
+            cb.onStart(fileSize); // 開始接收檔案
             for (int i = 0; i < fileCount; i++) {
                 // accept a new socket for this chunk
                 Socket chunkSocket = serverSocket.accept();               // ← make a new local var
                 DataInputStream dis = new DataInputStream(chunkSocket.getInputStream());
+                DataOutputStream dos = new DataOutputStream(chunkSocket.getOutputStream());
                 String res = dis.readUTF();
                 String[] p = res.split("\\|");
                 File outputFile = new File(outputFilePath, p[0]);
                 int tempfileSize = Integer.parseInt(p[1]);
-                sendACK(chunkSocket);
-
+                println("接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
+                if (!outputFile.exists()) {
+                    outputFile.createNewFile();
+                }
+                // send ACK to sender
+                dos.write("ACK".getBytes());
+                // notify sender to start sending the file                
+                
                 AtomicLong thisFileReceived = new AtomicLong(0);
                 RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
                 List<Thread> handlers = new ArrayList<>();

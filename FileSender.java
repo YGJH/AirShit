@@ -81,14 +81,16 @@ public class FileSender {
                 dos.writeUTF(f.getName()+"|"+f.length());
                 println("傳送檔案名稱與大小： " + f.getName() + "，大小：" + f.length() + " bytes");
                 // 等待 Receiver 確認接收檔案
-                String response = dis.readUTF();
                 int cnt = 0;
+                String response = dis.readUTF();
                 while (response.equals("ACK") && cnt < 300) {
                     println("Receiver 確認接收檔案。");
                     cnt++;
                     Thread.sleep(100); 
+                    response = dis.readUTF();
                 }
                 // 關閉 socket
+                socket.close();
             } catch (IOException e) {
                 System.err.println("無法連線到 Receiver：");
                 e.printStackTrace();
