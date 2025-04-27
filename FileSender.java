@@ -84,23 +84,19 @@ public class FileSender {
                 e.printStackTrace();
                 return;
             }
-            cnt = 0;
             // 等待 Receiver 確認接收檔案
-            DataInputStream dis = new DataInputStream(socket.getInputStream());
-            while(receiveACK(socket) && cnt < 30) {
+            while(true) {
                 // 等待 Receiver 確認接收檔案
-                String response = dis.readUTF();
-                if (!response.equals("ACCEPT")) {
-                    System.err.println("Receiver 拒絕接收檔案：");
+                if(receiveAccept(socket)) {
+                    println("Receiver 接受，開始傳送檔案。");
+                    break;
+                } else {
+                    System.err.println("Receiver 拒絕接收檔案，請稍後再試。");
                     return;
                 }
                 Thread.sleep(10); // 等待 Receiver 準備好
-                cnt++;
             }
-            if(cnt >= 30) {
-                System.err.println("Receiver 無法接收檔案，請稍後再試。");
-                return;
-            }
+
 
             long fileLength = f.length();
             long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小

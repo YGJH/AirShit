@@ -93,6 +93,13 @@ public class FileReceiver {
             String outputFilePath = FolderSelector.selectFolder();
             if (outputFilePath == null) {
                 System.out.println("使用者取消選擇檔案。");
+                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                    dos.writeUTF("REJECT");
+                } catch (IOException e) {
+                    System.err.println("無法與 Sender 通訊：");
+                    e.printStackTrace();
+                }
+                System.out.println("使用者拒絕接收檔案。");
                 continue;
             }
             if (!isSingle) {
