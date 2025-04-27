@@ -93,16 +93,13 @@ public class FileReceiver {
             // get output file path
             String outputFilePath = FolderSelector.selectFolder();
             if (outputFilePath == null) {
-                System.out.println("使用者取消選擇檔案。");
+                System.out.println("使用者取消選擇資料夾。");
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                     dos.writeUTF("REJECT");
                 } catch (IOException e) {
                     System.err.println("無法與 Sender 通訊：");
                     e.printStackTrace();
                 }
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                dos.writeUTF("REJECT");
-                System.out.println("使用者拒絕接收檔案。");
                 continue;
             }
             if (!isSingle) {
@@ -121,17 +118,9 @@ public class FileReceiver {
                 }
             }
             // send accept message to sender
-            try {
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                dos.writeUTF("ACCEPT");
-            } catch (IOException e) {
-                System.err.println("無法與 Sender 通訊：");
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                dos.writeUTF("REJECT");
-                e.printStackTrace();
-            }
+            sendACK(socket);
 
-
+            // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(fileSize);            // 開始接收檔案
             for (int i = 0; i < fileCount; i++) {
