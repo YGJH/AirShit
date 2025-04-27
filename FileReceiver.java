@@ -153,7 +153,7 @@ public class FileReceiver {
                 catch (IOException e) {
                 }
                 // 接收檔案
-                
+                serverSocket.close();
                 try {
                     Receiver.start(port, outPutPath + "\\" + fileNames, cb);
                 } catch (IOException e) {
