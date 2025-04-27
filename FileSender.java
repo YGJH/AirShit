@@ -74,13 +74,17 @@ public class FileSender {
             SendingFile = f;
             // notify receiver to start receiving the file
             try (Socket ctrl = new Socket(host, port);
-                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream())) {
+                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream());
+                 DataInputStream dis = new DataInputStream(ctrl.getInputStream())) {
+
                 // 先傳送檔案名稱與大小
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
-                while(receiveACK(ctrl) == false) {
-                    // println("Receiver 尚未準備好，請稍後再試。");
-                    Thread.sleep(10); // 等待 1 秒後重試
+                if(dis.readUTF().equals("ACK")) {
+                    println("Receiver 準備好接收檔案：" + f.getName());
+                } else {
+                    System.err.println("Receiver 無法接收檔案：" + f.getName());
+                    return;
                 }
                 // then stream the bytes…
                 long fileLength = f.length();
