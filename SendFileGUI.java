@@ -321,11 +321,11 @@ public class SendFileGUI extends JFrame {
         // 3) invoke the sender
         new Thread(() -> {
             FileSender sender = new FileSender(
-                selectedClient.getIPAddr() + ":"
-                + selectedClient.getTCPPort()
+                selectedClient.getIPAddr(),
+                selectedClient.getTCPPort()
             );
             try {
-                sender.sendFiles(selectedFiles, FolderSelector.getFolderName(), callback);
+                sender.sendFiles(selectedFiles, Main.getClient().getUserName(), FolderSelector.getFolderName(), callback);
             } catch (Exception e) {
                 e.printStackTrace();
             }

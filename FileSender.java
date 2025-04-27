@@ -1,3 +1,4 @@
+package AirShit;
 import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -11,9 +12,9 @@ import javax.xml.crypto.Data;
  * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
  */
 public class FileSender {
+    private File SendingFile;
     private  String host;
     private  int port;
-    private  File file;
     // get Hardware Concurrent
     private final int threadCount = Math.max(Runtime.getRuntime().availableProcessors() - 2, 1);
     private  AtomicLong totalSent = new AtomicLong(0);
@@ -22,15 +23,17 @@ public class FileSender {
         this.host = host;
         this.port = port;
     }
-
-    public void start(File[] files , String SenderUserName , String folderName) throws IOException, InterruptedException {
+    public void println (String str) {
+        System.out.println(str);
+    }
+    public void sendFiles(File[] files , String SenderUserName , String folderName , TransferCallback cb) throws IOException, InterruptedException {
 
         // handshake
         StringBuilder sb = new StringBuilder();
         boolean isSingleFile = files.length == 1;
         if(isSingleFile) {
             sb.append("isSingle|");
-            sb.append(SenderUserName).append("|").append(file.getName()).append("|").append(file.length());
+            sb.append(SenderUserName).append("|").append(files[0].getName()).append("|").append(files[0].length());
         } else {
             sb.append("isMulti|");
             sb.append(SenderUserName + "|" + folderName);
@@ -70,6 +73,8 @@ public class FileSender {
 
         // 開始傳送檔案
         for(File f : files) {
+            println("開始傳送檔案：" + f.getName() + "，大小：" + f.length() + " bytes");
+            SendingFile = f;
             // notify receiver to start receiving the file
             try {
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
@@ -150,7 +155,7 @@ public class FileSender {
             try (
                 Socket socket = new Socket(host, port);
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                RandomAccessFile raf = new RandomAccessFile(file, "r")
+                RandomAccessFile raf = new RandomAccessFile(SendingFile, "r")
             ) {
                 // 先傳 offset 與 chunk 大小（header）
                 dos.writeLong(offset);
