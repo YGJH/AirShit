@@ -202,31 +202,34 @@ public class SendFileGUI extends JFrame {
         listModel.clear();
         refreshClientList();
     }
-    private boolean check(Client c1, Client c2) {
-        return c1.getUserName() == c2.getUserName() &&
-               c1.getIPAddr() == c2.getIPAddr() &&
-               c1.getTCPPort() == c2.getTCPPort();
-    }
     private void refreshClientList() {
-        // snapshot current selection so we can restore it after updating
-        Client previousSelection = clientList.getSelectedValue();
 
         Hashtable<String, Client> clients = Main.getClientList();
         for(int i = listModel.size()-1; i>=0; i--) {
             Client c = listModel.getElementAt(i);
-            if(check(c , clients.get(c.getUserName())) == false) {
+            // check if the client is still in the list
+            if(clients.get(c.getUserName()) == null) {
+                listModel.remove(i);
+            } else if(!Client.check(c, clients.get(c.getUserName()))) {
                 listModel.remove(i);
             }
         }
         for (Client c : clients.values()) {
-            if (!listModel.contains(c)) {
+            boolean found = false;
+            for(int i = 0; i < listModel.size(); i++) {
+                Client c2 = listModel.getElementAt(i);
+                if (Client.check(c, c2)) {
+                    found = true;
+                    // System.out.println("already in listModel " + c.getUserName());
+                }
+            }
+            if(!found) {
                 listModel.addElement(c);
             }
         }
 
-        if (previousSelection != null && listModel.contains(previousSelection)) {
-            clientList.setSelectedValue(previousSelection, true);
-        }
+        // restore previous selection if it still exists
+        // if no selection, disable send button
 
         updateSendButtonState();
     }
