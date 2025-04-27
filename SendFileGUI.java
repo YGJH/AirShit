@@ -198,8 +198,8 @@ public class SendFileGUI extends JFrame {
     }
 
     private void ForcerefreshClientList() {
-        Main.multicastHello();
         listModel.clear();
+        Main.multicastHello();
         refreshClientList();
     }
     private void refreshClientList() {
