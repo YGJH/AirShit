@@ -90,7 +90,7 @@ public class FileReceiver {
             }
 
             if (!isSingle) {
-                println("outputFilePath: " + outputFilePath + folderName);
+                println("outputFilePath: " + outputFilePath + "\\" + folderName);
                 File folder = new File(outputFilePath + folderName);
                 if (!folder.exists()) {
                     folder.mkdirs(); // Create the directory if it doesn't exist
