@@ -127,81 +127,42 @@ public class FileReceiver {
             println("已接受檔案傳送。");
             // notify sender to start sending the file
             AtomicLong totalReceived = new AtomicLong(0);
-            cb.onStart(fileSize); // 開始接收檔案
-            for (int i = 0; i < fileCount; i++) {
-                // accept a new socket for this chunk
-                Socket chunkSocket = serverSocket.accept();               // ← make a new local var
-                DataInputStream dis = new DataInputStream(chunkSocket.getInputStream());
-                DataOutputStream dos = new DataOutputStream(chunkSocket.getOutputStream());
-                String res = dis.readUTF();
-                String[] p = res.split("\\|");
-                File outputFile = new File(outputFilePath, p[0]);
-                int tempfileSize = Integer.parseInt(p[1]);
-                println("接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
-                if (!outputFile.exists()) {
-                    outputFile.createNewFile();
+            File outFile = new File(outputFilePath, fileName);
+            try (RandomAccessFile raf = new RandomAccessFile(outFile, "rw")) {
+
+              for (int chunk = 0; chunk < fileCount; chunk++) {
+                Socket chunkSock = serverSocket.accept();
+                try (
+                  DataInputStream dis = new DataInputStream(chunkSock.getInputStream());
+                  DataOutputStream dos = new DataOutputStream(chunkSock.getOutputStream())
+                ) {
+                  // 1) read the “fileName|tempSize” header
+                  String[] hdr = dis.readUTF().split("\\|");
+                  int expectedChunkSize = Integer.parseInt(hdr[1]);
+
+                  // 2) ACK back so sender begins
+                  dos.writeUTF("ACK");
+                  dos.flush();
+
+                  // 3) read offset & length
+                  long offset = dis.readLong();
+                  int length = dis.readInt();
+
+                  // 4) stream the data into the RandomAccessFile
+                  raf.seek(offset);
+                  byte[] buf = new byte[8192];
+                  int read, remaining = length;
+                  while (remaining > 0 && (read = dis.read(buf, 0, Math.min(buf.length, remaining))) > 0) {
+                    raf.write(buf, 0, read);
+                    long cumul = totalReceived.addAndGet(read);
+                    cb.onProgress(cumul);
+                    remaining -= read;
+                  }
+                } catch (IOException ioe) {
+                  cb.onError(ioe);
+                  // optionally break or continue depending on your error strategy
                 }
-                // send ACK to sender
-                dos.write("ACK".getBytes());
-                // notify sender to start sending the file                
-
-                AtomicLong thisFileReceived = new AtomicLong(0);
-                RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
-                List<Thread> handlers = new ArrayList<>();
-                println("開始接收檔案：" + outputFile.getAbsolutePath() + "，大小：" + tempfileSize + " bytes");
-                while (thisFileReceived.get() < tempfileSize) {
-                    Thread handler = new Thread(() -> {
-                        try (
-                            DataInputStream chunkDis = new DataInputStream(chunkSocket.getInputStream())
-                        ) {
-                            long offset = chunkDis.readLong();
-                            int length = chunkDis.readInt();
-                            raf.seek(offset);
-
-                            byte[] buffer = new byte[8192];
-                            int read, remaining = length;
-                            while (remaining > 0
-                                && (read = chunkDis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
-                                raf.write(buffer, 0, read);
-                                thisFileReceived.addAndGet(read);
-                                cb.onProgress(thisFileReceived.get());
-                                remaining -= read;
-                            }
-                        } catch (IOException e) {
-                            System.err.println("Handler 發生錯誤：");
-                            outputFile.delete(); // delete the file if error occurs
-                            try {
-                                chunkSocket.close();
-                            } catch (IOException ex) {
-                                System.err.println("無法關閉 Socket：");
-                                // ex.printStackTrace();
-                            }
-                            try {
-                                raf.close();
-                            } catch (IOException ex) {
-                                System.err.println("無法關閉 RandomAccessFile：");
-                                // ex.printStackTrace();
-                            }
-
-                        }
-                    }, "chunk-handler-" + i);
-
-                    handler.start();
-                    handlers.add(handler);
-                }
-
-                // wait for all chunk‐handlers to finish
-                for (Thread h:handlers) {
-                    try {
-                        h.join();
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-
-                    }
-                }
-
-                raf.close();
-                totalReceived.addAndGet(tempfileSize);
+              }
             }
 
             // （可加上條件退出並 handler.join()）

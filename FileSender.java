@@ -78,7 +78,10 @@ public class FileSender {
                 // 先傳送檔案名稱與大小
                 dos.writeUTF(f.getName() + "|" + f.length());
                 dos.flush();
-                receiveACK(ctrl);
+                while(receiveACK(ctrl) == false) {
+                    // println("Receiver 尚未準備好，請稍後再試。");
+                    Thread.sleep(10); // 等待 1 秒後重試
+                }
                 // then stream the bytes…
                 long fileLength = f.length();
                 long baseChunkSize = Math.min(5*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
