@@ -88,17 +88,16 @@ public class FileReceiver {
                 System.out.println("使用者取消選擇檔案。");
                 continue;
             }
-
             if (!isSingle) {
-                println("outputFilePath: " + outputFilePath + "\\" + folderName);
-                File folder = new File(outputFilePath + folderName);
+                outputFilePath = outputFilePath + "\\" + folderName;
+                println("outputFilePath: " + outputFilePath);
+                File folder = new File(outputFilePath);
                 if (!folder.exists()) {
                     folder.mkdirs(); // Create the directory if it doesn't exist
                     println("已建立資料夾：" + folderName);
                 }
             } else {
-
-                File outputFile = new File(outputFilePath + fileName);
+                File outputFile = new File(outputFilePath);
                 println("接收單檔：" + outputFile.getAbsolutePath());
 
                 if (!outputFile.exists()) {
@@ -115,8 +114,9 @@ public class FileReceiver {
                 Socket socket = serverSocket.accept();
                 DataInputStream dis = new DataInputStream(socket.getInputStream());
                 String res = dis.readUTF();
-                File outputFile = new File(res.split("\\|")[0]);
-                int tempfileSize = Integer.parseInt(res.split("\\|")[1]);
+                String[] p = res.split("\\|");
+                File outputFile = new File(outputFilePath + "\\" + p[0]);
+                int tempfileSize = Integer.parseInt(p[1]);
                 sendACK(socket);
                 AtomicLong thisFileReceived = new AtomicLong(0);
                 // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
