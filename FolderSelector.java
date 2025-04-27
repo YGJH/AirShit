@@ -73,12 +73,12 @@ public class FolderSelector {
         if (result == JFileChooser.APPROVE_OPTION) {
             File folder = chooser.getSelectedFile();
             folderName = folder.getAbsolutePath();
-            for(int i = folderName.length() - 1; i >= 0; i--) {
-                if(folderName.charAt(i) == '\\') {
-                    folderName = folderName.substring(0, i + 1);
-                    break;
-                }
-            }
+            // for(int i = folderName.length() - 1; i >= 0; i--) {
+            //     if(folderName.charAt(i) == '\\') {
+            //         folderName = folderName.substring(0, i + 1);
+            //         break;
+            //     }
+            // }
             return folderName;
         } else {
             // 使用者按了「取消」或關閉視窗
