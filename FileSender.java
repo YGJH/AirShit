@@ -59,21 +59,16 @@ public class FileSender {
 
         // wait for receiver to accept the file
         Socket socket = new Socket(host, port);
-        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
-            // 等待 Receiver 確認接收檔案
-            String response = dis.readUTF();
-            println(response);
-            if (!response.equals("ACCEPT")) {
-                System.err.println("Receiver 拒絕接收檔案：");
-                return;
-            }
-        } catch (IOException e) {
-            System.err.println("無法與 Receiver 通訊：");
-            e.printStackTrace();
+        int cnt = 0;
+        while(receiveAccept(socket) && cnt < 30) {
+            Thread.sleep(10); // 等待 Receiver 準備好
+            cnt++;
+        }
+        if(cnt >= 30) {
+            System.err.println("Receiver 無法接收檔案，請稍後再試。");
             return;
         }
-
-        // 開始傳送檔案
+        // notify receiver to start receiving the file
         callback.onStart(totalSize);
         this.cb = callback;
         for(File f : files) {
@@ -89,7 +84,7 @@ public class FileSender {
                 e.printStackTrace();
                 return;
             }
-            int cnt = 0;
+            cnt = 0;
             // 等待 Receiver 確認接收檔案
             DataInputStream dis = new DataInputStream(socket.getInputStream());
             while(receiveACK(socket) && cnt < 30) {
@@ -133,6 +128,20 @@ public class FileSender {
             System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
         }
     }
+
+    private boolean receiveAccept(Socket socket) throws IOException {
+        // 等待 Receiver 確認接收檔案
+        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            String response = dis.readUTF();
+            println("Receiver 接受，開始傳送檔案。");
+            return response.equals("ACCEPT");
+        } catch (IOException e) {
+            System.err.println("無法與 Receiver 通訊：");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
 
     private boolean receiveACK(Socket socket) throws IOException {
         try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
