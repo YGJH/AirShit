@@ -122,57 +122,57 @@ public class FileReceiver {
             AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(fileSize);            // 開始接收檔案
             for (int i = 0; i < fileCount; i++) {
-
-                // wait for receiver to accept the file
-                Socket socket = serverSocket.accept();
-                DataInputStream dis = new DataInputStream(socket.getInputStream());
+                // accept a new socket for this chunk
+                Socket chunkSocket = serverSocket.accept();               // ← make a new local var
+                DataInputStream dis = new DataInputStream(chunkSocket.getInputStream());
                 String res = dis.readUTF();
                 String[] p = res.split("\\|");
-                File outputFile = new File(outputFilePath + "\\" + p[0]);
+                File outputFile = new File(outputFilePath, p[0]);
                 int tempfileSize = Integer.parseInt(p[1]);
-                sendACK(socket);
+                sendACK(chunkSocket);
+
                 AtomicLong thisFileReceived = new AtomicLong(0);
-                // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
                 RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
                 List<Thread> handlers = new ArrayList<>();
-                // atomicLong 變數用來計算總共接收的 bytes
-                // handlers 用來儲存所有的 handler 執行緒
+
                 while (thisFileReceived.get() < tempfileSize) {
                     Thread handler = new Thread(() -> {
                         try (
-                            DataInputStream chunkDis = new DataInputStream(socket.getInputStream())) {
-
+                            DataInputStream chunkDis = new DataInputStream(chunkSocket.getInputStream())
+                        ) {
                             long offset = chunkDis.readLong();
                             int length = chunkDis.readInt();
-
                             raf.seek(offset);
+
                             byte[] buffer = new byte[8192];
                             int read, remaining = length;
                             while (remaining > 0
-                                    && (read = chunkDis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                                && (read = chunkDis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
                                 raf.write(buffer, 0, read);
                                 thisFileReceived.addAndGet(read);
-                                remaining -= read;
                                 cb.onProgress(thisFileReceived.get());
+                                remaining -= read;
                             }
-                            System.out.printf(
-                                    "接收分段:offset=%d, length=%d | 總共已接收：%d bytes%n",
-                                    offset, length, thisFileReceived.get());
                         } catch (IOException e) {
                             System.err.println("Handler 發生錯誤：");
                             e.printStackTrace();
                         }
-                    });
+                    }, "chunk-handler-" + i);
+
                     handler.start();
                     handlers.add(handler);
                 }
-                for (Thread handler : handlers) {
+
+                // wait for all chunk‐handlers to finish
+                for (Thread h:handlers) {
                     try {
-                        handler.join();
+                        h.join();
                     } catch (InterruptedException ie) {
-                        ie.printStackTrace();
+                        Thread.currentThread().interrupt();
                     }
                 }
+
+                raf.close();
                 totalReceived.addAndGet(tempfileSize);
             }
 

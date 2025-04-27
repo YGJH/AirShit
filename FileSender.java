@@ -62,6 +62,7 @@ public class FileSender {
         try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
             // 等待 Receiver 確認接收檔案
             String response = dis.readUTF();
+            println(response);
             if (!response.equals("ACCEPT")) {
                 System.err.println("Receiver 拒絕接收檔案：");
                 return;
