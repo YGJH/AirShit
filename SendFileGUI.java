@@ -48,8 +48,8 @@ public class SendFileGUI extends JFrame {
         setupUI();
         refreshClientList();
         
-        // Setup auto-refresh timer (every 5 seconds)
-        refreshTimer = new Timer(5000, e -> refreshClientList());
+        // Setup auto-refresh timer (every 50 milliseconds)
+        refreshTimer = new Timer(50, e -> refreshClientList());
         refreshTimer.start();
     
         setVisible(true);
@@ -238,11 +238,14 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
     }
     private void refreshClientList() {
-        listModel.clear();
-        
-        for (Client C : Main.getClientPorts().values()) {
-            println(C.getUserName() + ":" + C.getUDPPort());
-            listModel.addElement(C);
+        // listModel.clear();
+
+        Hashtable<String, Client> clientList = Main.getClientPorts();
+
+        for (Client client : Main.getClientPorts().values()) {
+            if (!listModel.contains(client)) {
+                listModel.addElement(client);
+            }
         }
         
         updateSendButtonState();

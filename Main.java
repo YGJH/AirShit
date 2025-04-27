@@ -196,7 +196,7 @@ public class Main { // 定義 Main 類別
                     clientList.put(tempClient.getUserName(), tempClient);
                     System.out.println(
                             "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
-
+                    
                     // Respond directly to the sender (unicast)
                     for (int i = 0; i < 3; i++) { // Send hello message 3 times
                         responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came

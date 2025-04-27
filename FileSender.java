@@ -82,11 +82,11 @@ public class FileSender {
                 println("傳送檔案名稱與大小： " + f.getName() + "，大小：" + f.length() + " bytes");
                 // 等待 Receiver 確認接收檔案
                 String response = dis.readUTF();
-                if (response.equals("ACK")) {
+                int cnt = 0;
+                while (response.equals("ACK") && cnt < 300) {
                     println("Receiver 確認接收檔案。");
-                } else {
-                    System.err.println("Receiver 無法接收檔案，請稍後再試。");
-                    return;
+                    cnt++;
+                    Thread.sleep(100); 
                 }
                 // 關閉 socket
             } catch (IOException e) {
