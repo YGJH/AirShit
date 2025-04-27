@@ -8,6 +8,8 @@ import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SendFileGUI extends JFrame {
@@ -200,9 +202,44 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
     }
     private void refreshClientList() {
-        listModel.clear();
-        Main.getClientList().values()
-            .forEach(listModel::addElement);
+        // snapshot current selection so we can restore it after updating
+        Client previousSelection = clientList.getSelectedValue();
+
+        Hashtable<String, Client> clients = Main.getClientList();
+
+        // 1) remove any clients that have disappeared
+        for (int i = listModel.getSize() - 1; i >= 0; i--) {
+            Client c = listModel.getElementAt(i);
+            if (!clients.containsKey(c.getUserName())) {
+                listModel.remove(i);
+            }
+        }
+
+        // 2) add any new clients
+        for (Client c : clients.values()) {
+            if (!listModel.contains(c)) {
+                // check if the client is already in the list
+                boolean alreadyInList = false;
+                for (int i = 0; i < listModel.getSize(); i++) {
+                    Client client = listModel.getElementAt(i);
+                    if (client.getUserName().equals(c.getUserName())) {
+                        alreadyInList = true;
+                        break;
+                    }
+                }
+                if (!alreadyInList) {
+                    // add the new client to the list model
+                    listModel.addElement(c);
+                }
+
+            }
+        }
+
+        // 3) restore the previous selection if still present
+        if (previousSelection != null && listModel.contains(previousSelection)) {
+            clientList.setSelectedValue(previousSelection, true);
+        }
+
         updateSendButtonState();
     }
 

@@ -82,11 +82,20 @@ public class FileSender {
                 println("傳送檔案名稱與大小： " + f.getName() + "，大小：" + f.length() + " bytes");
                 // 等待 Receiver 確認接收檔案
                 int cnt = 0;
-                String response = dis.readUTF();
-                while (response.equals("ACK") == false && cnt < 300) {
+                while (!receiveACK(socket) && cnt < 300) {
                     cnt++;
-                    Thread.sleep(100); 
-                    response = dis.readUTF();
+                    Thread.sleep(20);
+                }
+                // 把多餘的 ACK 都讀掉
+                while (true) {
+                    try {
+                        String ack = dis.readUTF();
+                        if (!ack.equals("ACK")) {
+                            break;
+                        }
+                    } catch (EOFException e) {
+                        break;
+                    }
                 }
                 // 關閉 socket
                 socket.close();

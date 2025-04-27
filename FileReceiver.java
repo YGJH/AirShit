@@ -143,8 +143,10 @@ public class FileReceiver {
                 }
                 // send ACK to sender
                 dos.write("ACK".getBytes());
+                dos.write("ACK".getBytes());
+                dos.write("ACK".getBytes());
                 // notify sender to start sending the file                
-                
+
                 AtomicLong thisFileReceived = new AtomicLong(0);
                 RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
                 List<Thread> handlers = new ArrayList<>();
