@@ -174,13 +174,13 @@ public class FileReceiver {
                                 chunkSocket.close();
                             } catch (IOException ex) {
                                 System.err.println("無法關閉 Socket：");
-                                ex.printStackTrace();
+                                // ex.printStackTrace();
                             }
                             try {
                                 raf.close();
                             } catch (IOException ex) {
                                 System.err.println("無法關閉 RandomAccessFile：");
-                                ex.printStackTrace();
+                                // ex.printStackTrace();
                             }
 
                             break;

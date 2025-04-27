@@ -73,51 +73,44 @@ public class FileSender {
             println("開始傳送檔案：" + f.getName() + "，大小：" + f.length() + " bytes");
             SendingFile = f;
             // notify receiver to start receiving the file
-            Socket socket = new Socket(host, port);
-            try {
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                DataInputStream dis = new DataInputStream(socket.getInputStream());
-                // 傳送檔案名稱與大小
-                dos.writeUTF(f.getName()+"|"+f.length());
-                println("傳送檔案名稱與大小： " + f.getName() + "，大小：" + f.length() + " bytes");
-                // 等待 Receiver 確認接收檔案
-                int cnt = 0;
-                while (!receiveACK(socket) && cnt < 300) {
-                    cnt++;
-                    println("等待 Receiver 確認接收檔案，已重試 " + cnt + " 次。");
-                    Thread.sleep(20);
+            try (Socket ctrl = new Socket(host, port);
+                 DataOutputStream dos = new DataOutputStream(ctrl.getOutputStream());
+                 DataInputStream dis = new DataInputStream(ctrl.getInputStream())) {
+
+                dos.writeUTF(f.getName() + "|" + f.length());
+                dos.flush();
+                if (!"ACK".equals(dis.readUTF())) return;
+
+                // then stream the bytes…
+                long fileLength = f.length();
+                long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
+                int i = 0;
+                while(fileLength > 0) {
+                    List<Thread> workers = new ArrayList<>();
+                    for (; i < threadCount; i++) {
+                        long offset = i * baseChunkSize;
+                        // 最後一塊撥給剩下的所有 byte
+                        long chunkSize = (i == threadCount - 1)
+                            ? Math.min(fileLength - offset, baseChunkSize)
+                            : baseChunkSize;
+            
+                        Thread t = new Thread(new ChunkSender(offset, (int) chunkSize));
+                        t.start();
+                        workers.add(t);
+                    }
+            
+                    // 等待所有執行緒結束
+                    for (Thread t : workers) {
+                        t.join();
+                    }
+                    fileLength -= baseChunkSize * threadCount;
                 }
-                // 關閉 socket
-                socket.close();
+                System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
             } catch (IOException e) {
                 System.err.println("無法連線到 Receiver：");
                 e.printStackTrace();
                 return;
             }
-            long fileLength = f.length();
-            long baseChunkSize = Math.min(5*1024*1024*1024, fileLength) / threadCount;// 每個執行緒傳送的檔案大小
-            int i = 0;
-            while(fileLength > 0) {
-                List<Thread> workers = new ArrayList<>();
-                for (; i < threadCount; i++) {
-                    long offset = i * baseChunkSize;
-                    // 最後一塊撥給剩下的所有 byte
-                    long chunkSize = (i == threadCount - 1)
-                        ? Math.min(fileLength - offset, baseChunkSize)
-                        : baseChunkSize;
-        
-                    Thread t = new Thread(new ChunkSender(offset, (int) chunkSize));
-                    t.start();
-                    workers.add(t);
-                }
-        
-                // 等待所有執行緒結束
-                for (Thread t : workers) {
-                    t.join();
-                }
-                fileLength -= baseChunkSize * threadCount;
-            }
-            System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
         }
     }
 
