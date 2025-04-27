@@ -343,7 +343,7 @@ public class Main { // 定義 Main 類別
     public static boolean receiveACK(Socket socket) {
         try {
             InputStream is = socket.getInputStream();
-            byte[] buffer = new byte[10005];
+            byte[] buffer = new byte[105];
             int bytesRead = is.read(buffer);
             if (bytesRead == -1) {
                 // Stream closed or nothing read, handle accordingly
@@ -366,7 +366,7 @@ public class Main { // 定義 Main 類別
             Client c = e.getValue();
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(200);
+                ds.setSoTimeout(1000);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送 Hello 訊息
                 byte[] buf = new byte[64];
