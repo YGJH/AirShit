@@ -110,13 +110,14 @@ public class Main { // 定義 Main 類別
     }
 
     public static void multicastHello() {
-        try {
+        try (
+            MulticastSocket socket = new MulticastSocket();
+        ){
             InetAddress group = getMulticastAddress();
             if (group == null)
                 return;
 
             byte[] sendData = client.getHelloMessage().getBytes("UTF-8");
-            MulticastSocket socket = new MulticastSocket();
             socket.setTimeToLive(32);
             socket.setNetworkInterface(findCorrectNetworkInterface());
             socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
@@ -135,14 +136,14 @@ public class Main { // 定義 Main 類別
 
     public static void startMulticastListener() {
         Thread MultiCast = new Thread(() -> {
-            MulticastSocket socket = null;
-            try {
+            try (
+                MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);
+            ){
                 InetAddress group = getMulticastAddress();
                 if (group == null)
                     return;
 
                 // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
-                socket = new MulticastSocket(DISCOVERY_PORT);
                 socket.setTimeToLive(32);
 
                 // --- Improved Interface Selection ---
@@ -204,6 +205,7 @@ public class Main { // 定義 Main 類別
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+                socket.close();
             } finally {
                 if (socket != null && !socket.isClosed()) {
                     // Consider leaving the group if needed: socket.leaveGroup(...)
@@ -215,10 +217,11 @@ public class Main { // 定義 Main 類別
     }
 
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
-        try {
+        try (
+            DatagramSocket socket = new DatagramSocket();
+        ) {
 
             System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
-            DatagramSocket socket = new DatagramSocket();
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
@@ -226,12 +229,11 @@ public class Main { // 定義 Main 類別
                 DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
                 socket.send(sendPacket);
                 try {
-                    Thread.sleep(50);
+                    Thread.sleep(100);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
             }
-            socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -342,24 +344,6 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static boolean receiveACK(Socket socket) {
-        try {
-            InputStream is = socket.getInputStream();
-            byte[] buffer = new byte[1005];
-            int bytesRead = is.read(buffer);
-            if (bytesRead == -1) {
-                // Stream closed or nothing read, handle accordingly
-                return false;
-            }
-            String ack = new String(buffer, 0, bytesRead);
-            println("received ACK: " + ack); // 輸出接收到的 ACK 訊息
-            return "ACK".equals(ack);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
     public static void checkAlive() {
         byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8); // 取得 Hello 訊息
         ArrayList<String> dead = new ArrayList<>();
@@ -368,10 +352,10 @@ public class Main { // 定義 Main 類別
             Client c = e.getValue();
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(1000);
+                ds.setSoTimeout(2000);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送 Hello 訊息
-                byte[] buf = new byte[64];
+                byte[] buf = new byte[1024];
                 DatagramPacket resp = new DatagramPacket(buf, buf.length);
                 ds.receive(resp);
                 String reply = new String(resp.getData(), 0, resp.getLength(), StandardCharsets.UTF_8);

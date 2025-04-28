@@ -25,9 +25,9 @@ public class FileReceiver {
     public void start(TransferCallback cb) throws IOException { // 此port 是你本地的port
 
         // handshake
+        ServerSocket serverSocket = new ServerSocket(port);
         while (true) {
             // listen for handshake
-            ServerSocket serverSocket = new ServerSocket(port);
             boolean isSingle = false;
             String senderUserName = null;
             String fileNames = null;
