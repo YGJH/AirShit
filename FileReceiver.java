@@ -3,16 +3,8 @@ package AirShit;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-import javax.swing.JFileChooser;
+
 import javax.swing.JOptionPane;
-import javax.xml.crypto.Data;
-
-import AirShit.Receiver;
-
-import java.awt.Component;
 
 /**
  * Receiver: 在指定埠口接收多個執行緒送過來的檔案分段，並寫入同一個檔案中。
@@ -142,12 +134,14 @@ public class FileReceiver {
                     try (DataOutputStream dos = new DataOutputStream(socket2.getOutputStream())) {
                         dos.writeUTF("ACK");
                         dos.flush();
+                        Receiver.start(serverSocket, outPutPath + "\\" + fileNames , fileSize , cb);
+                        dos.writeUTF("OK");
+                        dos.flush();
                     } catch (IOException e) {
                         System.err.println("無法與 Sender 通訊：");
                         e.printStackTrace();
                     }
-                    Receiver.start(serverSocket, outPutPath + "\\" + fileNames, cb);
-                    
+
                 }
                 catch (IOException e) {}
                 // 接收檔案

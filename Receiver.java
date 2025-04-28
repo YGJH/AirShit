@@ -11,7 +11,7 @@ public class Receiver {
     public static void println(String a) {
         System.out.println(a);
     }
-    public static void start(ServerSocket serverSocket , String outputFile , TransferCallback cb) throws IOException {
+    public static void start(ServerSocket serverSocket , String outputFile , long fileSize , TransferCallback cb) throws IOException {
 
         println("開始接收: " + (outputFile).toString());
         // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
@@ -19,7 +19,7 @@ public class Receiver {
         AtomicLong totalReceived = new AtomicLong(0);
         List<Thread> handlers = new ArrayList<>();
 
-        while (true) {
+        while (totalReceived.get() < fileSize) {
             Socket socket = serverSocket.accept();
             Thread handler = new Thread(() -> {
                 try (

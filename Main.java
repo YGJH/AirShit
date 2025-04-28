@@ -115,7 +115,7 @@ public class Main { // 定義 Main 類別
             if (group == null)
                 return;
 
-            byte[] sendData = client.getHelloMessage().getBytes();
+            byte[] sendData = client.getHelloMessage().getBytes("UTF-8");
             MulticastSocket socket = new MulticastSocket();
             socket.setTimeToLive(32);
             socket.setNetworkInterface(findCorrectNetworkInterface());
@@ -198,15 +198,7 @@ public class Main { // 定義 Main 類別
                             "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
                     // Respond directly to the sender (unicast)
-                    for (int i = 0; i < 3; i++) { // Send hello message 3 times
-                        responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
-                                                                                // from
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
+                    responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
 
                     // --- End Process packet ---
                 }
@@ -228,7 +220,7 @@ public class Main { // 定義 Main 類別
             System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             DatagramSocket socket = new DatagramSocket();
             String helloMessage = client.getHelloMessage();
-            byte[] sendData = helloMessage.getBytes();
+            byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
             for (int i = 0; i < 3; i++) {
                 DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
@@ -248,7 +240,7 @@ public class Main { // 定義 Main 類別
     public static void sendACK(Socket socket) { // 定義傳送 ACK 訊息的方法
         try { // 嘗試傳送 ACK
             OutputStream os = socket.getOutputStream(); // 取得連線的輸出串流
-            os.write("ACK".getBytes()); // 傳送 ACK 訊息的位元組資料
+            os.write("ACK".getBytes("UTF-8")); // 傳送 ACK 訊息的位元組資料
             os.flush(); // 清空輸出串流
             System.out.println("ACK 已傳送到 " + socket.getInetAddress() + ":" + socket.getPort()); // 輸出 ACK 訊息傳送資訊
         } catch (IOException e) { // 捕捉 I/O 異常

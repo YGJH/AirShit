@@ -220,16 +220,12 @@ public class SendFileGUI extends JFrame {
                 Client c2 = listModel.getElementAt(i);
                 if (Client.check(c, c2)) {
                     found = true;
-                    // System.out.println("already in listModel " + c.getUserName());
                 }
             }
             if(!found) {
                 listModel.addElement(c);
             }
         }
-
-        // restore previous selection if it still exists
-        // if no selection, disable send button
 
         updateSendButtonState();
     }

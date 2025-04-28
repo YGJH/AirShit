@@ -1,23 +1,14 @@
 package AirShit;
 import java.io.*;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-
-import javax.xml.crypto.Data;
-
 /**
  * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
  */
 public class FileSender {
-    private File SendingFile;
-    private TransferCallback cb;
     private  String host;
     private  int port;
     // get Hardware Concurrent
     private final int threadCount = Math.max(Runtime.getRuntime().availableProcessors() - 2, 1);
-    private  AtomicLong totalSent = new AtomicLong(0);
 
     public FileSender(String host, int port) { // 此port 是對方的port跟host
         this.host = host;
@@ -68,7 +59,6 @@ public class FileSender {
         }
 
         callback.onStart(totalSize);
-        this.cb = callback;
 
         for (File file : files) {
             // notify user
@@ -95,6 +85,12 @@ public class FileSender {
                 SendFile sendFile = new SendFile(
                     host, port, file, threadCount, callback);
                 sendFile.start();
+
+                response = dis.readUTF();
+                while(!"OK".equals(response)) {
+                    Thread.sleep(10);
+                    response = dis.readUTF();
+                } 
        
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);
