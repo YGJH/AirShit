@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.swing.SwingUtilities;
 
 
 public class Receiver {
@@ -17,14 +16,15 @@ public class Receiver {
 
         println("開始接收: " + (outputFile).toString());
         // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
-        RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
         AtomicLong totalReceived = new AtomicLong(0);
         List<Thread> handlers = new ArrayList<>();
+        final File out = new File(outputFile);
 
         while (totalReceived.get() < fileSize) {
-            Socket socket = serverSocket.accept();
             Thread handler = new Thread(() -> {
                 try (
+                    Socket socket = serverSocket.accept();
+                    RandomAccessFile raf = new RandomAccessFile(out, "rw");
                     DataInputStream dis = new DataInputStream(socket.getInputStream())
                 ) {
                     // 讀取 offset 與 chunk 大小
@@ -45,6 +45,7 @@ public class Receiver {
                                       offset, length, totalReceived.get());
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
+                    out.delete();
                     e.printStackTrace();
                 }
             });
@@ -54,6 +55,7 @@ public class Receiver {
                 try {
                     t.join(); // 等待所有 handler 完成
                 } catch (InterruptedException e) {
+                    out.delete();
                     e.printStackTrace();
                 }
             }
