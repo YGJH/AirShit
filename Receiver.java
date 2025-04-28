@@ -8,11 +8,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 public class Receiver {
-    public static void start(int port , String outputFile , TransferCallback cb) throws IOException {
+    public static void println(String a) {
+        System.out.println(a);
+    }
+    public static void start(ServerSocket serverSocket , String outputFile , TransferCallback cb) throws IOException {
 
-        ServerSocket serverSocket = new ServerSocket(port);
-        System.out.println("Receiver 開始監聽埠口 " + port);
-
+        println("開始接收:");
         // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
         RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
         AtomicLong totalReceived = new AtomicLong(0);

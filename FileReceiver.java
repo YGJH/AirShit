@@ -150,17 +150,14 @@ public class FileReceiver {
                     }
 
                 }
-                catch (IOException e) {
-                }
+                catch (IOException e) {}
                 // 接收檔案
-                serverSocket.close();
                 try {
-                    Receiver.start(port, outPutPath + "\\" + fileNames, cb);
+                    Receiver.start(serverSocket, outPutPath + "\\" + fileNames, cb);
                 } catch (IOException e) {
                     System.err.println("無法接收檔案：");
                     e.printStackTrace();
                 }
-
 
             }
         }     

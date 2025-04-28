@@ -16,11 +16,11 @@ public class SendFile {
     private final int threadCount;
     private final AtomicLong totalSent = new AtomicLong(0);
     private final TransferCallback callback;
-    public SendFile(String host, int port, String filePath, int threadCount , TransferCallback callback) {
+    public SendFile(String host, int port, File file, int threadCount , TransferCallback callback) {
         this.callback = callback;
         this.host = host;
         this.port = port;
-        this.file = new File(filePath);
+        this.file = file;
         this.threadCount = threadCount;
     }
 

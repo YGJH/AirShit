@@ -73,7 +73,6 @@ public class FileSender {
             // notify user
             String fileName = file.getName();
             String fileSize = String.valueOf(file.length());
-            Socket socket = new Socket(host, port);
             try (Socket socket2 = new Socket(host, port);
                 DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
                 DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
@@ -91,14 +90,14 @@ public class FileSender {
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
                 SendFile sendFile = new SendFile(
-                    host, port, file.getAbsolutePath(), threadCount, callback);
+                    host, port, file, threadCount, callback);
                 sendFile.start();
        
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);
             }
             // send file
-            SendFile sendFile = new SendFile(host, port, file.getAbsolutePath(), threadCount , new TransferCallback() {
+            SendFile sendFile = new SendFile(host, port, file, threadCount , new TransferCallback() {
                 @Override
                 public void onStart(long totalSize) {
                     // do nothing
