@@ -37,7 +37,7 @@ public class Receiver {
                         raf.write(buffer, 0, read);
                         totalReceived.addAndGet(read);
                         remaining -= read;
-                        cb.onProgress(totalReceived.get());
+                        cb.onProgress(read);
                     }
                     System.out.printf("接收分段：offset=%d, length=%d | 總共已接收：%d bytes%n",
                                       offset, length, totalReceived.get());

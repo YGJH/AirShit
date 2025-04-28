@@ -75,7 +75,7 @@ public class SendFile {
                     dos.write(buffer, 0, read);
                     totalSent.addAndGet(read);
                     remaining -= read;
-                    callback.onProgress(totalSent.get());
+                    callback.onProgress(read);
                 }
                 System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
             } catch (IOException e) {

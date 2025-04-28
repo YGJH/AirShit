@@ -283,7 +283,6 @@ public class Main { // 定義 Main 類別
             try {
                 AtomicLong totalExpected = new AtomicLong(0);
                 AtomicLong totalReceived = new AtomicLong(0);
-                ConcurrentHashMap<String,Long> lastSeen = new ConcurrentHashMap<>();
 
                 fileReceiver.start(new TransferCallback() { // 開始檔案接收
                     @Override
