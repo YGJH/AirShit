@@ -205,12 +205,6 @@ public class Main { // 定義 Main 類別
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                socket.close();
-            } finally {
-                if (socket != null && !socket.isClosed()) {
-                    // Consider leaving the group if needed: socket.leaveGroup(...)
-                    socket.close();
-                }
             }
         });
         MultiCast.start(); // 啟動多播監聽執行緒
