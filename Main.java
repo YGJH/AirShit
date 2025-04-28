@@ -164,15 +164,15 @@ public class Main { // 定義 Main 類別
                     // Check if the message is a heartbeat
                     if ((message).startsWith("HEARTBEAT-")) {
                         String[] parts = message.split("-"); // use dash as delimiter
+                        Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
+                                DISCOVERY_PORT, parts[4]);
                         if (clientList.containsKey(parts[1]) == false) {
-                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
-                                    DISCOVERY_PORT, parts[4]);
                             clientList.put(tempClient.getUserName(), tempClient);
                         }
                         byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
                         DatagramPacket reply = new DatagramPacket(
                                 resp, resp.length,
-                                packet.getAddress(), packet.getPort());
+                                packet.getAddress(), tempClient.getUDPPort());
                         socket.send(reply);
                         continue;
                     }
@@ -321,7 +321,7 @@ public class Main { // 定義 Main 類別
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
                     Thread.sleep(50); // 每 5 秒檢查一次
-                    checkAlive(); // 檢查客戶端存活狀態
+                    checkAliveTCP(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
                 }
@@ -338,33 +338,23 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static void checkAlive() {
-        byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8); // 取得 Hello 訊息
-        ArrayList<String> dead = new ArrayList<>();
+    private static void checkAliveTCP() {
+        List<String> toRemove = new ArrayList<>();
         for (Map.Entry<String, Client> e : clientList.entrySet()) {
             String name = e.getKey();
-            Client c = e.getValue();
-            boolean alive = false;
-            try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(2000);
-                InetAddress addr = InetAddress.getByName(c.getIPAddr());
-                ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送 Hello 訊息
-                byte[] buf = new byte[1024];
-                DatagramPacket resp = new DatagramPacket(buf, buf.length);
-                ds.receive(resp);
-                String reply = new String(resp.getData(), 0, resp.getLength(), StandardCharsets.UTF_8);
-                if ("ALIVE".equals(reply))
-                    alive = true;
-            } catch (IOException ignore) {
-                // timeout or error => not alive
-            }
-            if (!alive) {
-                dead.add(name);
+            Client c   = e.getValue();
+            try (Socket sock = new Socket()) {
+                sock.connect(
+                    new InetSocketAddress(c.getIPAddr(), c.getTCPPort()),
+                    2000  // 2 second timeout
+                );
+            } catch (IOException ex) {
+                toRemove.add(name);
             }
         }
-        for (String name : dead) {
+        for (String name : toRemove) {
             clientList.remove(name);
-            println("Removed dead client: " + name);
+            println("Removed dead client (TCP): " + name);
         }
     }
 }
