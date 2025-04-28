@@ -175,14 +175,12 @@ public class Main { // 定義 Main 類別
                         continue;
 
                     // Check if client is self OR already known (use IP as key if possible)
-                    if (tempClient.getIPAddr().equals(client.getIPAddr())
-                            || clientList.containsKey(tempClient.getUserName())) {
+                    if(tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getTCPPort() == client.getTCPPort()) {
                         continue;
                     }
-
                     // Use IP address as the key for consistency
-                    System.out.println(
-                            "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
+                    // System.out.println(
+                    //         "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
                     if(state == 0) {
                         clientList.put(tempClient.getUserName() , tempClient);
