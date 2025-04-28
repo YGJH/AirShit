@@ -134,7 +134,7 @@ public class FileReceiver {
                     try (DataOutputStream dos = new DataOutputStream(socket2.getOutputStream())) {
                         dos.writeUTF("ACK");
                         dos.flush();
-                        Receiver.start(serverSocket, outPutPath + "\\" + fileNames , fileSize , cb);
+                        Receiver.start(serverSocket, outPutPath + "\\" + fileName , fileSize , cb);
                         dos.writeUTF("OK");
                         dos.flush();
                     } catch (IOException e) {

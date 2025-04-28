@@ -71,7 +71,7 @@ public class SendFile {
                 raf.seek(offset);
                 byte[] buffer = new byte[8192];
                 int read, remaining = length;
-                while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
                     dos.write(buffer, 0, read);
                     totalSent.addAndGet(read);
                     remaining -= read;
