@@ -127,10 +127,8 @@ public class FileReceiver {
             }
             final String outPutPath = outputFilePath;
             println("已接受檔案傳送。");
-            cb.onStart(totalSize);
 
             // notify sender to start sending the file
-            AtomicLong totalReceived = new AtomicLong(0);
             cb.onStart(totalSize); // 開始接收檔案
             for(int i = 0 ; i < fileCount; i++) {
                 try {
@@ -148,16 +146,11 @@ public class FileReceiver {
                         System.err.println("無法與 Sender 通訊：");
                         e.printStackTrace();
                     }
-
+                    Receiver.start(serverSocket, outPutPath + "\\" + fileNames, cb);
+                    
                 }
                 catch (IOException e) {}
                 // 接收檔案
-                try {
-                    Receiver.start(serverSocket, outPutPath + "\\" + fileNames, cb);
-                } catch (IOException e) {
-                    System.err.println("無法接收檔案：");
-                    e.printStackTrace();
-                }
 
             }
         }     

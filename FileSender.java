@@ -69,6 +69,7 @@ public class FileSender {
 
         callback.onStart(totalSize);
         this.cb = callback;
+
         for (File file : files) {
             // notify user
             String fileName = file.getName();
@@ -86,6 +87,8 @@ public class FileSender {
                 if (!"ACK".equals(response)) {
                     System.err.println("Receiver 無法接收檔案：" + fileName);
                     return;
+                } else {
+                    println("receiver 已開始接收檔案");
                 }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
@@ -96,25 +99,6 @@ public class FileSender {
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);
             }
-            // send file
-            SendFile sendFile = new SendFile(host, port, file, threadCount , new TransferCallback() {
-                @Override
-                public void onStart(long totalSize) {
-                    // do nothing
-                }
-
-                @Override
-                public void onProgress(long bytesTransferred) {
-                    totalSent.addAndGet(bytesTransferred);
-                    cb.onProgress(totalSent.get());
-                }
-                @Override
-                public void onError(Exception e) {
-                    cb.onError(e);
-                }
-            });
-        
-            sendFile.start();
         }
     }
 

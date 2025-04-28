@@ -13,7 +13,7 @@ public class Receiver {
     }
     public static void start(ServerSocket serverSocket , String outputFile , TransferCallback cb) throws IOException {
 
-        println("開始接收:");
+        println("開始接收: " + (outputFile).toString());
         // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
         RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
         AtomicLong totalReceived = new AtomicLong(0);

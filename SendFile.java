@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-
 /**
  * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
  */
@@ -26,13 +25,13 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        long baseChunkSize = fileLength / threadCount;
-
+        long baseChunkSize = Math.min(fileLength, 5L*1024*1024*1024) / threadCount;
         List<Thread> workers = new ArrayList<>();
-        for (int i = 0; i < threadCount; i++) {
+        long workerCount = fileLength / baseChunkSize;
+        for (int i = 0; i < workerCount; i++) {
             long offset = i * baseChunkSize;
             // 最後一塊撥給剩下的所有 byte
-            long chunkSize = (i == threadCount - 1)
+            long chunkSize = (i == workerCount - 1)
                 ? fileLength - offset
                 : baseChunkSize;
 
