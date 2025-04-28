@@ -186,8 +186,9 @@ public class Main { // 定義 Main 類別
 
                     if(state == 0) {
                         clientList.put(tempClient.getUserName() , tempClient);
-
+                        state = 1;
                     } else {
+                        state = 0;
                         tempClientList.put(tempClient.getUserName() , tempClient);
                     }
                     // Respond directly to the sender (unicast)
@@ -333,17 +334,7 @@ public class Main { // 定義 Main 類別
         multicastHello();
         try{
             Thread.sleep(500+random.nextInt(500));
-            for(String userName : clientList.keySet()) {
-                Client tempClient = clientList.get(userName);
-                if(tempClientList.contains(tempClient) == false) {
-                    clientList.remove(userName);
-                }
-            }
-            for(String userName : tempClientList.keySet()) {
-                if(clientList.contains(userName) == false) {
-                    clientList.put(userName, client);
-                }
-            }
+            clientList = tempClientList;
         } catch (Exception e) {
 
         }
