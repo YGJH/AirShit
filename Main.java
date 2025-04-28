@@ -16,15 +16,16 @@ public class Main { // 定義 Main 類別
     static void println(String s) {
         System.out.println(s);
     }
-
+    private static short state = 0;
+    
     private static Client client; // 建立 Client 物件以儲存客戶端資訊
-
+    
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
     }
-
+    
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
-
+    
     static {
         String userName;
         try { // 嘗試取得本機主機名稱
@@ -33,11 +34,12 @@ public class Main { // 定義 Main 類別
             userName = System.getProperty("user" + UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
         client = new Client(getNonLoopbackIP(), userName, getFreeTCPPort(), DISCOVERY_PORT,
-                System.getProperty("os.name")); // 取得可用的 TCP 端口
+        System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
-
+    
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
-
+    private static Hashtable<String, Client> tempClientList = new Hashtable<>();
+    
     public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
     }
@@ -161,21 +163,6 @@ public class Main { // 定義 Main 類別
                     String message = new String(packet.getData(), 0, packet.getLength());
                     // System.out.println(message);
 
-                    // Check if the message is a heartbeat
-                    if ((message).startsWith("HEARTBEAT-")) {
-                        String[] parts = message.split("-"); // use dash as delimiter
-                        Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
-                                DISCOVERY_PORT, parts[4]);
-                        if (clientList.containsKey(parts[1]) == false) {
-                            clientList.put(tempClient.getUserName(), tempClient);
-                        }
-                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket reply = new DatagramPacket(
-                                resp, resp.length,
-                                packet.getAddress(), tempClient.getUDPPort());
-                        socket.send(reply);
-                        continue;
-                    }
 
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
@@ -194,10 +181,15 @@ public class Main { // 定義 Main 類別
                     }
 
                     // Use IP address as the key for consistency
-                    clientList.put(tempClient.getUserName(), tempClient);
                     System.out.println(
                             "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
+                    if(state == 0) {
+                        clientList.put(tempClient.getUserName() , tempClient);
+
+                    } else {
+                        tempClientList.put(tempClient.getUserName() , tempClient);
+                    }
                     // Respond directly to the sender (unicast)
                     responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
 
@@ -223,7 +215,7 @@ public class Main { // 定義 Main 類別
                 DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
                 socket.send(sendPacket);
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(100+random.nextInt(500));
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
@@ -320,7 +312,7 @@ public class Main { // 定義 Main 類別
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(50); // 每 5 秒檢查一次
+                    Thread.sleep(50); // 每 50 millisecond 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
@@ -337,32 +329,25 @@ public class Main { // 定義 Main 類別
             throw new RuntimeException("No free TCP port available", e); // 拋出執行例外表示未找到可用端口
         }
     }
-
-    private static void checkAlive() {
-        List<String> toRemove = new ArrayList<>();
-        for (Map.Entry<String, Client> e : clientList.entrySet()) {
-            String name = e.getKey();
-            Client c   = e.getValue();
-            if (!pingHost(c.getIPAddr(), 2000)) {
-                toRemove.add(name);
+    public static void checkAlive() {
+        multicastHello();
+        try{
+            Thread.sleep(500+random.nextInt(500));
+            for(String userName : clientList.keySet()) {
+                Client tempClient = clientList.get(userName);
+                if(tempClientList.contains(tempClient) == false) {
+                    clientList.remove(userName);
+                }
             }
+            for(String userName : tempClientList.keySet()) {
+                if(clientList.contains(userName) == false) {
+                    clientList.put(userName, client);
+                }
+            }
+        } catch (Exception e) {
+
         }
-        for (String name : toRemove) {
-            clientList.remove(name);
-            println("Removed dead client (ping): " + name);
-        }
+    
     }
 
-    private static boolean pingHost(String host, int timeoutMs) {
-        try {
-            // Windows ping: -n 1 (one echo), -w timeout in ms
-            Process p = new ProcessBuilder("ping", "-n", "1", "-w", String.valueOf(timeoutMs), host)
-                .redirectErrorStream(true)
-                .start();
-            return p.waitFor() == 0;
-        } catch (IOException | InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-    }
 }
