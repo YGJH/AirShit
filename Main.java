@@ -333,8 +333,25 @@ public class Main { // 定義 Main 類別
     public static void checkAlive() {
         multicastHello();
         try{
-            Thread.sleep(500+random.nextInt(500));
-            clientList = tempClientList;
+            Thread.sleep(500+random.nextInt(500)); // sleep for 500ms + random 0-500ms
+            for(String key : clientList.keySet()) { // 遍歷客戶端哈希表的鍵
+                Client client = clientList.get(key); // 取得客戶端資訊
+                if (client != null) { // 如果客戶端資訊不為空
+                    if(tempClientList.get(key) == null) { // 如果臨時客戶端列表中不存在該客戶端
+                        clientList.remove(key); // 從客戶端哈希表中移除該客戶端
+                        GUI.log("Client " + key + " is offline"); // 輸出客戶端離線資訊
+                    }
+                }
+            }
+            for(String key : tempClientList.keySet()) { // 遍歷臨時客戶端列表的鍵
+                Client client = tempClientList.get(key); // 取得客戶端資訊
+                if (client != null) { // 如果客戶端資訊不為空
+                    clientList.put(key, client); // 將該客戶端加入客戶端哈希表
+                    GUI.log("Client " + key + " is online"); // 輸出客戶端上線資訊
+                }
+            }
+            // 清空臨時客戶端列表
+            tempClientList.clear();
         } catch (Exception e) {
 
         }

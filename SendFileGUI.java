@@ -22,7 +22,7 @@ public class SendFileGUI extends JFrame {
     private JButton refreshButton;
     private File[] selectedFiles;
     private Timer refreshTimer;
-
+    private JScrollPane fiScrollPane;
     private static JLabel textOfReceive;
     public static JProgressBar receiveProgressBar;
 
@@ -101,11 +101,21 @@ public class SendFileGUI extends JFrame {
             "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
             new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
         ));
+        
         selectedFileLabel = new JLabel("No file selected");
         selectedFileLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+
+        // wrap the label in a scroll pane so long file lists can scroll
+        JScrollPane fileScrollPane = new JScrollPane(
+            selectedFileLabel,
+            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
+        );
+        fileScrollPane.setPreferredSize(new Dimension(250, 100));
+        filePanel.add(fileScrollPane, BorderLayout.CENTER);
+
         JButton browseButton = createStyledButton("Browse Files...", PRIMARY_COLOR);
         browseButton.addActionListener(e -> selectFile());
-        filePanel.add(selectedFileLabel, BorderLayout.CENTER);
         filePanel.add(browseButton,      BorderLayout.EAST);
 
         // send panel
@@ -119,6 +129,14 @@ public class SendFileGUI extends JFrame {
 
         sendProgressBar = new JProgressBar();
         sendProgressBar.setStringPainted(true);
+        // add a colored line border around the progress bar
+        sendProgressBar.setBorder(BorderFactory.createLineBorder(PRIMARY_COLOR));
+        // you could also use a titled border, e.g.:
+        sendProgressBar.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(PRIMARY_COLOR),
+            "Sending", TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Segoe UI", Font.PLAIN, 11), TEXT_COLOR
+        ));
         sendProgressBar.setVisible(false);
 
         sendPanel.add(sendButton,       BorderLayout.NORTH);
