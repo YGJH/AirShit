@@ -69,7 +69,7 @@ public class SendFile {
 
                 // 移動到 offset 並依序讀取、傳送
                 raf.seek(offset);
-                byte[] buffer = new byte[8192];
+                byte[] buffer = new byte[8 * 1024 * 1024]; // 8 MB
                 int read, remaining = length;
                 while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
                     dos.write(buffer, 0, read);

@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import javax.swing.SwingUtilities;
+
 
 public class Receiver {
     public static void println(String a) {
@@ -31,7 +33,7 @@ public class Receiver {
 
                     // 寫入資料
                     raf.seek(offset);
-                    byte[] buffer = new byte[8192];
+                    byte[] buffer = new byte[8 * 1024 * 1024];
                     int read, remaining = length;
                     while (remaining > 0 && (read = dis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
                         raf.write(buffer, 0, read);

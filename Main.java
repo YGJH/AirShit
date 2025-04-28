@@ -289,12 +289,17 @@ public class Main { // 定義 Main 類別
                     public void onStart(long totalBytes) { // 檔案傳送開始時的回調方法
                         println("開始接收檔案，總大小: " + totalBytes + " bytes"); // 輸出檔案大小
                         totalExpected.set(totalBytes); // 設定預期的檔案大小
+                        SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
+
                     }
 
                     @Override
                     public void onProgress(long bytesTransferred) { // 檔案傳送進度的回調方法
                         totalReceived.addAndGet(bytesTransferred); // 更新已接收的檔案大小
                         println("已接收: " + totalReceived.get() + " / " + totalExpected.get() + " bytes"); // 輸出已接收的檔案大小
+                        SwingUtilities.invokeLater(() ->
+                            SendFileGUI.receiveFileProgress((int)(totalReceived.get() / totalExpected.get()))
+                        );
                     }
 
                     @Override

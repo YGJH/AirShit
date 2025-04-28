@@ -5,6 +5,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 
 /**
  * Receiver: 在指定埠口接收多個執行緒送過來的檔案分段，並寫入同一個檔案中。
@@ -122,6 +123,8 @@ public class FileReceiver {
 
             // notify sender to start sending the file
             cb.onStart(totalSize); // 開始接收檔案
+            SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
+
             for(int i = 0 ; i < fileCount; i++) {
                 try {
                     Socket socket2 = serverSocket.accept(); 
