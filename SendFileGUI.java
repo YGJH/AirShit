@@ -24,7 +24,7 @@ public class SendFileGUI extends JFrame {
     private Timer refreshTimer;
 
     private static JLabel textOfReceive;
-    private static JProgressBar receiveProgressBar;
+    public static JProgressBar receiveProgressBar;
 
     private final Color BACKGROUND_COLOR = new Color(240, 240, 240);
     private final Color PRIMARY_COLOR    = new Color(41, 128, 185);
@@ -266,14 +266,14 @@ public class SendFileGUI extends JFrame {
         TransferCallback callback = new TransferCallback() {
             @Override
             public void onStart(long totalBytes) {
-                SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum((int)totalBytes));
+                SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
             }
             @Override
             public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
-                    sendProgressBar.setValue((int)cumul);
                     int pct = (int)(cumul*100/totalSize);
+                    sendProgressBar.setValue(pct);
                     if (pct % 10 == 0) {
                         log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
                     }
@@ -313,13 +313,13 @@ public class SendFileGUI extends JFrame {
         sendButton.setEnabled(ok);
     }
 
-    private void log(String msg) {
+    public void log(String msg) {
         String t = new SimpleDateFormat("HH:mm:ss").format(new Date());
         logArea.append("[" + t + "] " + msg + "\n");
         logArea.setCaretPosition(logArea.getDocument().getLength());
     }
 
-    private String formatFileSize(long size) {
+    public static String formatFileSize(long size) {
         String[] units = {"B","KB","MB","GB"};
         int idx = 0;
         double val = size;

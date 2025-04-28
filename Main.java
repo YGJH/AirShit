@@ -12,7 +12,7 @@ import java.awt.Font; // 引入 AWT Font類別
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
-
+    static SendFileGUI GUI;
     static void println(String s) {
         System.out.println(s);
     }
@@ -279,41 +279,47 @@ public class Main { // 定義 Main 類別
 
         sendStatus.set(SEND_STATUS.SEND_OK);
         FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
-        new Thread(() -> {
-            try {
-                AtomicLong totalExpected = new AtomicLong(0);
-                AtomicLong totalReceived = new AtomicLong(0);
+        
 
-                fileReceiver.start(new TransferCallback() { // 開始檔案接收
-                    @Override
-                    public void onStart(long totalBytes) { // 檔案傳送開始時的回調方法
-                        println("開始接收檔案，總大小: " + totalBytes + " bytes"); // 輸出檔案大小
-                        totalExpected.set(totalBytes); // 設定預期的檔案大小
-                        SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
-
-                    }
-
-                    @Override
-                    public void onProgress(long bytesTransferred) { // 檔案傳送進度的回調方法
-                        totalReceived.addAndGet(bytesTransferred); // 更新已接收的檔案大小
-                        println("已接收: " + totalReceived.get() + " / " + totalExpected.get() + " bytes"); // 輸出已接收的檔案大小
-                        SwingUtilities.invokeLater(() ->
-                            SendFileGUI.receiveFileProgress((int)(totalReceived.get() / totalExpected.get()))
-                        );
-                    }
-
-                    @Override
-                    public void onError(Exception e) { // 檔案傳送錯誤的回調方法
-                        e.printStackTrace(); // 列印錯誤資訊
+        SwingUtilities.invokeLater(() -> {
+            GUI = new SendFileGUI();
+        });
+        
+        TransferCallback cb = new TransferCallback() {
+            AtomicLong totalReceived = new AtomicLong(0);
+            long totalBar = 0;
+            @Override
+            public void onStart(long totalBytes) {
+                totalBar = totalBytes;
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)totalBytes));
+            }
+            @Override
+            public void onProgress(long bytesTransferred) {
+                long cumul = totalReceived.addAndGet(bytesTransferred);
+                SwingUtilities.invokeLater(() -> {
+                    int pct = (int)(cumul*100/totalBar);
+                    SendFileGUI.receiveProgressBar.setValue(pct);
+                    if (pct % 10 == 0) {
+                        GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
+            }
+            @Override
+            public void onError(Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    GUI.log("Error: " + e.getMessage());
+                    SendFileGUI.receiveProgressBar.setVisible(false);
+                });
+            }
+        };
+        new Thread(() -> {
+            try {
+                fileReceiver.start(cb);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }, "file-receiver-thread").start();
-        SwingUtilities.invokeLater(() -> {
-            new SendFileGUI();
-        });
         multicastHello(); // Then announce yourself
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
