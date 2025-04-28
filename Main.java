@@ -321,7 +321,7 @@ public class Main { // 定義 Main 類別
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
                     Thread.sleep(50); // 每 5 秒檢查一次
-                    checkAliveTCP(); // 檢查客戶端存活狀態
+                    checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
                 }
@@ -338,23 +338,31 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    private static void checkAliveTCP() {
+    private static void checkAlive() {
         List<String> toRemove = new ArrayList<>();
         for (Map.Entry<String, Client> e : clientList.entrySet()) {
             String name = e.getKey();
             Client c   = e.getValue();
-            try (Socket sock = new Socket()) {
-                sock.connect(
-                    new InetSocketAddress(c.getIPAddr(), c.getTCPPort()),
-                    2000  // 2 second timeout
-                );
-            } catch (IOException ex) {
+            if (!pingHost(c.getIPAddr(), 2000)) {
                 toRemove.add(name);
             }
         }
         for (String name : toRemove) {
             clientList.remove(name);
-            println("Removed dead client (TCP): " + name);
+            println("Removed dead client (ping): " + name);
+        }
+    }
+
+    private static boolean pingHost(String host, int timeoutMs) {
+        try {
+            // Windows ping: -n 1 (one echo), -w timeout in ms
+            Process p = new ProcessBuilder("ping", "-n", "1", "-w", String.valueOf(timeoutMs), host)
+                .redirectErrorStream(true)
+                .start();
+            return p.waitFor() == 0;
+        } catch (IOException | InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 }
