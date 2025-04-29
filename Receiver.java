@@ -12,55 +12,57 @@ public class Receiver {
     public static void println(String a) {
         System.out.println(a);
     }
-    public static boolean start(ServerSocket serverSocket , String outputFile , long fileSize , TransferCallback cb) throws IOException {
+    public static boolean start(ServerSocket serverSocket,
+                                String outputFile,
+                                long fileSize,
+                                TransferCallback cb) throws IOException {
 
-        println("開始接收: " + (outputFile).toString());
-        // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
         AtomicLong totalReceived = new AtomicLong(0);
         List<Thread> handlers = new ArrayList<>();
-        final File out = new File(outputFile);
+        File out = new File(outputFile);
 
-        while (totalReceived.get() < fileSize) {
+        // spawn one handler per chunk
+        int chunkCount = Runtime.getRuntime().availableProcessors(); 
+        for (int i = 0; i < chunkCount; i++) {
             Thread handler = new Thread(() -> {
                 try (
-                    Socket sock = serverSocket.accept();
-                    DataInputStream dis = new DataInputStream(sock.getInputStream());
-                    RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
+                  Socket sock = serverSocket.accept();
+                  DataInputStream dis = new DataInputStream(sock.getInputStream());
+                  RandomAccessFile raf = new RandomAccessFile(out, "rw")
                 ) {
-                    int segments = dis.readInt();
-                    for (int i = 0; i < segments; i++) {
-                      long offset = dis.readLong();
-                      int len    = dis.readInt();
-                      byte[] buf = new byte[8192];
-                      int r, rem = len;
-                      raf.seek(offset);
-                      while (rem > 0 && (r = dis.read(buf,0,Math.min(buf.length,rem)))>0) {
-                        raf.write(buf,0,r);
+                    // read exactly what ChunkSender writes:
+                    long offset = dis.readLong();
+                    int length  = dis.readInt();
+
+                    raf.seek(offset);
+                    byte[] buf = new byte[8*1024*1024];
+                    int  r, rem = length;
+                    while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
+                        raf.write(buf, 0, r);
+                        totalReceived.addAndGet(r);
                         rem -= r;
-                        if (cb!=null) cb.onProgress(r);
-                      }
+                        if (cb != null) cb.onProgress(r);
                     }
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
                     out.delete();
                     e.printStackTrace();
                 }
-            });
+            }, "chunk-handler-" + i);
+
             handler.start();
             handlers.add(handler);
         }
-        for(Thread t : handlers) {
+
+        // wait for all chunk‑handlers
+        for (Thread t : handlers) {
             try {
-                t.join(); // 等待所有 handler 完成
+                t.join();
             } catch (InterruptedException e) {
-                out.delete();
-                e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
         }
 
-        // 等待所有 handler 完成
-        return true; // 這裡可以根據實際情況返回成功或失敗的狀態
-
-        // （可加上條件退出並 handler.join()）
+        return totalReceived.get() >= fileSize;
     }
 }

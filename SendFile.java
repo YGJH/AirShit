@@ -66,6 +66,7 @@ public class SendFile {
                 // 先傳 offset 與 chunk 大小（header）
                 dos.writeLong(offset);
                 dos.writeInt(length);
+                dos.flush();
 
                 // 移動到 offset 並依序讀取、傳送
                 raf.seek(offset);
