@@ -8,7 +8,7 @@ public class FileSender {
     private  String host;
     private  int port;
     // get Hardware Concurrent
-    private final int threadCount = Math.max(Runtime.getRuntime().availableProcessors() - 2, 1);
+    private final int threadCount = Runtime.getRuntime().availableProcessors();
 
     public FileSender(String host, int port) { // 此port 是對方的port跟host
         this.host = host;
@@ -45,13 +45,13 @@ public class FileSender {
             dos.flush();
             println("傳送 handshake 訊息： " + sb.toString());
             // 等待 Receiver 確認接收檔案
-            // String response = dis.readUTF();
-            // if (response.equals("ACK")) {
-            //     println("Receiver 確認接收檔案。");
-            // } else {
-            //     System.err.println("Receiver 無法接收檔案，請稍後再試。");
-            //     return;
-            // }
+            String response = dis.readUTF();
+            if (response.equals("ACK")) {
+                println("Receiver 確認接收檔案。");
+            } else {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                return;
+            }
 
         } catch (IOException e) {
             System.err.println("無法連線到 Receiver：");
@@ -74,24 +74,24 @@ public class FileSender {
                 dos.flush();
         
                 // 2) wait for ACK on the same socket
-                // String response = dis.readUTF();
-                // if (!"ACK".equals(response)) {
-                //     System.err.println("Receiver 無法接收檔案：" + fileName);
-                //     return;
-                // } else {
-                //     println("receiver 已開始接收檔案");
-                // }
+                String response = dis.readUTF();
+                if (!"ACK".equals(response)) {
+                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    return;
+                } else {
+                    println("receiver 已開始接收檔案");
+                }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
                 SendFile sendFile = new SendFile(
                     host, port, file, threadCount, callback);
                 sendFile.start();
 
-                // String response = dis.readUTF();
-                // while(!"OK".equals(response)) {
-                //     Thread.sleep(10);
-                //     response = dis.readUTF();
-                // } 
+                response = dis.readUTF();
+                while(!"OK".equals(response)) {
+                    Thread.sleep(10);
+                    response = dis.readUTF();
+                } 
        
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);

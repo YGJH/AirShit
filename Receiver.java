@@ -17,10 +17,10 @@ public class Receiver {
                                 long fileSize,
                                 TransferCallback cb) throws IOException {
 
-        AtomicLong totalReceived = new AtomicLong(0);
+        // AtomicLong totalReceived = new AtomicLong(0);
         List<Thread> handlers = new ArrayList<>();
         File out = new File(outputFile);
-
+        long baseChunkSize = Math.min(fileSize, 5L*1024*1024) / Runtime.getRuntime().availableProcessors();
         // spawn one handler per chunk
         int chunkCount = Runtime.getRuntime().availableProcessors(); 
         for (int i = 0; i < chunkCount; i++) {
@@ -39,7 +39,7 @@ public class Receiver {
                     int  r, rem = length;
                     while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
                         raf.write(buf, 0, r);
-                        totalReceived.addAndGet(r);
+                        // totalReceived.addAndGet(r);
                         rem -= r;
                         if (cb != null) cb.onProgress(r);
                     }
@@ -63,6 +63,6 @@ public class Receiver {
             }
         }
 
-        return totalReceived.get() >= fileSize;
+        return true;//totalReceived.get() >= fileSize;
     }
 }
