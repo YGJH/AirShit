@@ -29,12 +29,12 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength    = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors();        ; // 5MB / 8
-        long workerCount   = Math.min(fileLength / baseChunkSize , Runtime.getRuntime().availableProcessors()); // 8
+        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024); // 5MB / 8
+        long workerCount   = fileLength / baseChunkSize ;
 
         // 建立固定大小 ThreadPool
         ExecutorService pool = Executors.newFixedThreadPool((int) workerCount);
-        System.out.printf("worker: %d, poolSize=%d%n", workerCount);
+        System.out.printf("worker: %d, poolSize=%ld%n", workerCount);
 
         // submit 每個 chunk 處理
         for (int i = 0; i < workerCount; i++) {
@@ -51,7 +51,7 @@ public class SendFile {
             pool.shutdownNow();
         }
 
-        System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", fileLength);
+        System.out.printf("檔案傳輸完成，總共傳送 %ld bytes%n", fileLength);
     }
 
     private class ChunkSender implements Runnable {

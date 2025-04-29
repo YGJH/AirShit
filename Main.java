@@ -163,7 +163,7 @@ public class Main { // 定義 Main 類別
                     socket.receive(packet);
 
                     String message = new String(packet.getData(), 0, packet.getLength());
-                    // System.out.println(message);
+                    System.out.println(message);
 
 
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
@@ -201,7 +201,7 @@ public class Main { // 定義 Main 類別
             DatagramSocket socket = new DatagramSocket();
         ) {
 
-            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
