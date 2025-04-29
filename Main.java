@@ -330,8 +330,9 @@ public class Main { // 定義 Main 類別
         try{
             Thread.sleep(5000+random.nextInt(5000)); // 隨機延遲 5 秒
             clientList.clear();
-            
             multicastHello();
+            Thread.sleep(500);
+            GUI.refreshClientList();
 
         } catch (Exception e) {
 

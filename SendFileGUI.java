@@ -220,7 +220,7 @@ public class SendFileGUI extends JFrame {
         Main.multicastHello();
         refreshClientList();
     }
-    private void refreshClientList() {
+    public void refreshClientList() {
 
         Hashtable<String, Client> clients = Main.getClientList();
         for(int i = listModel.size()-1; i>=0; i--) {

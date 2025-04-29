@@ -1,10 +1,13 @@
 package AirShit;
 
+import java.awt.Dimension;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 
 /**
@@ -70,9 +73,36 @@ public class FileReceiver {
                     continue;
                 }
                 // ask user to accept the file
-                int response = JOptionPane.showConfirmDialog(null, "是否接受檔案？" + " Sender: " + senderUserName
-                        + " 即將傳送的檔案: " + sb + " FolderName: " + folderName + " Total Size: " + totalSize, "檔案傳送",
-                        JOptionPane.YES_NO_OPTION);
+                // build a scrollable text area for the file list
+                StringBuilder listText = new StringBuilder();
+                if (isSingle) {
+                    listText.append(fileNames);
+                } else {
+                    for (int j = 3; j < parts.length - 1; j++) {
+                        listText.append(parts[j]).append("\n");
+                    }
+                }
+                String info = "Sender: " + senderUserName
+                        + "\nFolder: " + folderName
+                        + "\nTotal Size: " + totalSize + " bytes\n\nFiles:\n";
+                JTextArea ta = new JTextArea(info + listText.toString());
+                ta.setEditable(false);
+                ta.setLineWrap(true);
+                ta.setWrapStyleWord(true);
+
+                // wrap it in a scroll pane
+                JScrollPane pane = new JScrollPane(ta,
+                    JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+                pane.setPreferredSize(new Dimension(400, 200));
+
+                // show the confirm dialog with the scroll pane as the message component
+                int response = JOptionPane.showConfirmDialog(
+                    null,
+                    pane,
+                    "檔案傳送 — 接收確認",
+                    JOptionPane.YES_NO_OPTION
+                );
                 if (response != JOptionPane.YES_OPTION) {
                     try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                         dos.writeUTF("REJECT");
