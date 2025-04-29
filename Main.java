@@ -593,9 +593,8 @@ public class Main { // 定義 Main 類別
                     e.printStackTrace();
                 }
                 response = dis.readUTF();
-                while(!"OK".equals(response)) {
-                    Thread.sleep(100);
-                    response = dis.readUTF();
+                if("OK".equals(response)) {
+                    continue;
                 } 
                 
             } catch (IOException | InterruptedException e) {
