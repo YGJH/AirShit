@@ -309,7 +309,7 @@ public class Main { // 定義 Main 類別
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(500); // 每 50 millisecond 秒檢查一次
+                    Thread.sleep(5000); // 每 50 millisecond 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
@@ -327,28 +327,12 @@ public class Main { // 定義 Main 類別
         }
     }
     public static void checkAlive() {
-        multicastHello();
         try{
-            Thread.sleep(500+random.nextInt(500)); // sleep for 500ms + random 0-500ms
-            state ^= 1; // 切換狀態
-            for(String key : clientList.keySet()) { // 遍歷客戶端哈希表的鍵
-                Client client = clientList.get(key); // 取得客戶端資訊
-                if (client != null) { // 如果客戶端資訊不為空
-                    if(tempClientList.get(key) == null) { // 如果臨時客戶端列表中不存在該客戶端
-                        clientList.remove(key); // 從客戶端哈希表中移除該客戶端
-                        GUI.log("Client " + key + " is offline"); // 輸出客戶端離線資訊
-                    }
-                }
-            }
-            for(String key : tempClientList.keySet()) { // 遍歷臨時客戶端列表的鍵
-                Client client = tempClientList.get(key); // 取得客戶端資訊
-                if (client != null) { // 如果客戶端資訊不為空
-                    clientList.put(key, client); // 將該客戶端加入客戶端哈希表
-                    GUI.log("Client " + key + " is online"); // 輸出客戶端上線資訊
-                }
-            }
-            // 清空臨時客戶端列表
-            tempClientList.clear();
+            Thread.sleep(5000+random.nextInt(5000)); // 隨機延遲 5 秒
+            clientList.clear();
+            
+            multicastHello();
+
         } catch (Exception e) {
 
         }
