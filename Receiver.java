@@ -53,6 +53,7 @@ public class Receiver {
                         rem -= r;
                         if (cb != null) cb.onProgress(r);
                     }
+                    println("Chunk: " + offset + ", length: " + length + ", totalReceived: " + totalReceived.get());
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
                     out.delete();
