@@ -10,6 +10,8 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 
+import AirShit.Main.SEND_STATUS;
+
 /**
  * Receiver: 在指定埠口接收多個執行緒送過來的檔案分段，並寫入同一個檔案中。
  */
@@ -141,6 +143,8 @@ public class FileReceiver {
                     }
                 }
                 // send accept message to sender
+                cb.onStart(totalSize); // 開始接收檔案
+                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                     dos.writeUTF("ACK");
                     dos.flush();
@@ -150,10 +154,8 @@ public class FileReceiver {
                 }
                 final String outPutPath = outputFilePath;
                 println("已接受檔案傳送。");
-
+                
                 // notify sender to start sending the file
-                cb.onStart(totalSize); // 開始接收檔案
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
                 println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
                     try(Socket ctrlSock = serverSocket.accept();
@@ -170,11 +172,13 @@ public class FileReceiver {
                             while(Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb) == false) {
                                 // 等待所有 handler 完成
                                 try {
-                                    Thread.sleep(1000); // 等待 10 mill second 後重試
+                                    Thread.sleep(10); // 等待 10 mill second 後重試
                                 } catch (InterruptedException e) {
                                     e.printStackTrace();
                                 }
-                        }
+                            }
+                            dos.writeUTF("OK");
+                            dos.flush();
                         } catch (IOException e) {
                             System.err.println("無法與 Sender 通訊：");
                             socket.close();
@@ -191,6 +195,7 @@ public class FileReceiver {
                 System.err.println("無法連線到 Sender：");
                 e.printStackTrace();
             }
+            Main.sendStatus.set(SEND_STATUS.SEND_OK);
         }
     }
 

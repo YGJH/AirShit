@@ -2,6 +2,9 @@ package AirShit;
 
 import javax.swing.*;
 import javax.swing.border.*;
+
+import AirShit.Main.SEND_STATUS;
+
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -47,7 +50,7 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
 
         // auto‐refresh every 50ms
-        refreshTimer = new Timer(500, e -> refreshClientList());
+        refreshTimer = new Timer(5000, e -> refreshClientList());
         refreshTimer.start();
 
         setVisible(true);
@@ -124,7 +127,7 @@ public class SendFileGUI extends JFrame {
         sendButton = createStyledButton("Send File", ACCENT_COLOR);
         sendButton.setEnabled(false);
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        sendButton.setPreferredSize(new Dimension(200, 40));
+        sendButton.setPreferredSize(new Dimension(200, 30));
         sendButton.addActionListener(e -> sendFile());
 
         sendProgressBar = new JProgressBar();
@@ -135,7 +138,7 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setBorder(BorderFactory.createTitledBorder(
             BorderFactory.createLineBorder(PRIMARY_COLOR),
             "Sending", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.PLAIN, 11), TEXT_COLOR
+            new Font("Segoe UI", Font.PLAIN, 15), TEXT_COLOR
         ));
         sendProgressBar.setVisible(false);
 
@@ -219,6 +222,11 @@ public class SendFileGUI extends JFrame {
         Main.clearClientList();
         listModel.clear();
         Main.multicastHello();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         refreshClientList();
     }
     public void refreshClientList() {
@@ -314,6 +322,7 @@ public class SendFileGUI extends JFrame {
                 target.getTCPPort()
             );
             try {
+                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 sender.sendFiles(
                     selectedFiles,
                     Main.getClient().getUserName(),
@@ -323,6 +332,8 @@ public class SendFileGUI extends JFrame {
             } catch (Exception e) {
                 callback.onError(e);
             }
+            Main.sendStatus.set(SEND_STATUS.SEND_OK);
+
         }, "send-thread").start();
     }
 
