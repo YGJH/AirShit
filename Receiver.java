@@ -41,7 +41,6 @@ public class Receiver {
                     int  r, rem = length;
                     while (rem > 0 && (r = chunkIn.read(buf, 0, Math.min(buf.length, rem))) > 0 && rem > 0) {
                         raf.write(buf, 0, r);
-                        raf.flush();
                         totalReceived.addAndGet(r);
                         rem -= r;
                         cb.onProgress(r);
