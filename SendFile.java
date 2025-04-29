@@ -63,9 +63,8 @@ public class SendFile {
         @Override
         public void run() {
             try {
-                Socket socket = new Socket(host, port);
-                socket.connect(new InetSocketAddress(host, port), 5000);  // 等最久 5 秒
                 try (
+                    Socket socket = new Socket(host, port);
                     DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                     RandomAccessFile raf = new RandomAccessFile(file, "r")
                 ) {
