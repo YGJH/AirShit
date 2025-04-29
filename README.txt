@@ -23,7 +23,7 @@ GUI 端提供直觀的檔案選取、進度顯示與狀態日誌。
 
 ## 專案結構
 
-```text
+```plaintext
 AirShit/
 ├── .gitignore
 ├── README.txt
