@@ -20,9 +20,9 @@ public class Receiver {
         AtomicLong totalReceived = new AtomicLong(0);
         List<Thread> handlers = new ArrayList<>();
         File out = new File(outputFile);
-
+        long baseChunkSize = Math.min(fileSize, 5L*1024*1024) / 8; // 8MB chunk size
         // spawn one handler per chunk
-        int chunkCount = Runtime.getRuntime().availableProcessors(); 
+        int chunkCount = (int) fileSize / baseChunkSize; 
         for (int i = 0; i < chunkCount; i++) {
             Thread handler = new Thread(() -> {
                 try (
@@ -41,7 +41,7 @@ public class Receiver {
                         raf.write(buf, 0, r);
                         totalReceived.addAndGet(r);
                         rem -= r;
-                        if (cb != null) cb.onProgress(r);
+                        cb.onProgress(r);
                     }
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
