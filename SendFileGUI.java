@@ -283,11 +283,13 @@ public class SendFileGUI extends JFrame {
         long totalSize = Arrays.stream(selectedFiles)
                                .mapToLong(File::length)
                                .sum();
-        AtomicLong sentSoFar = new AtomicLong(0);
-
+                               
         TransferCallback callback = new TransferCallback() {
+            AtomicLong sentSoFar = new AtomicLong(0);
+            long totalbar = 0;
             @Override
             public void onStart(long totalBytes) {
+                totalbar = totalBytes;
                 SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
             }
             @Override
