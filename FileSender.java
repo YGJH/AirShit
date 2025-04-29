@@ -1,0 +1,103 @@
+package AirShit;
+import java.io.*;
+import java.net.Socket;
+/**
+ * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
+ */
+public class FileSender {
+    private  String host;
+    private  int port;
+    // get Hardware Concurrent
+
+    public FileSender(String host, int port) { // 此port 是對方的port跟host
+        this.host = host;
+        this.port = port;
+    }
+    public void println (String str) {
+        System.out.println(str);
+    }
+    public void sendFiles(File[] files , String SenderUserName , String folderName , TransferCallback callback) throws IOException, InterruptedException {
+
+        // handshake
+        StringBuilder sb = new StringBuilder();
+        long totalSize = 0;
+        boolean isSingleFile = files.length == 1;
+        if(isSingleFile) {
+            sb.append("isSingle|");
+            sb.append(SenderUserName).append("|").append(files[0].getName()).append("|").append(files[0].length());
+        } else {
+            sb.append("isMulti|");
+            sb.append(SenderUserName + "|" + folderName);
+            for (File f : files) {
+                totalSize += f.length();
+                sb.append("|").append(f.getName());
+            }
+            sb.append("|").append(totalSize);
+        }
+
+        // 連線到 Receiver
+        try (Socket socket = new Socket(host, port);
+             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+             DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            // 傳送 handshake 訊息
+            dos.writeUTF(sb.toString());
+            dos.flush();
+            println("傳送 handshake 訊息： " + sb.toString());
+            // 等待 Receiver 確認接收檔案
+            String response = dis.readUTF();
+            if (response.equals("ACK")) {
+                println("Receiver 確認接收檔案。");
+            } else {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                return;
+            }
+
+        } catch (IOException e) {
+            System.err.println("無法連線到 Receiver：");
+            e.printStackTrace();
+            return;
+        }
+
+        callback.onStart(totalSize);
+        int cnt = files.length;
+        for (File file : files) {
+            // notify user
+            String fileName = file.getName();
+            String fileSize = String.valueOf(file.length());
+            try (Socket socket2 = new Socket(host, port);
+                DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
+                DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
+        
+                // 1) send the file‑name|size header
+                dos.writeUTF(fileName + "|" + fileSize);
+                dos.flush();
+        
+                // 2) wait for ACK on the same socket
+                String response = dis.readUTF();
+                if (!"ACK".equals(response)) {
+                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    return;
+                } else {
+                    println("receiver 已開始接收檔案");
+                }
+            
+                // 3) now kick off your SendFile/ChunkSender against socket2
+                SendFile sendFile = new SendFile(
+                    host, port, file, callback);
+                sendFile.start();
+
+                response = dis.readUTF();
+                while(!"OK".equals(response)) {
+                    Thread.sleep(10);
+                    response = dis.readUTF();
+                } 
+                
+            } catch (IOException | InterruptedException e) {
+                callback.onError(e);
+            }
+        }
+    }
+
+
+
+}
