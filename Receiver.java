@@ -23,6 +23,7 @@ public class Receiver {
         long baseChunkSize = Math.min(fileSize, 5L*1024*1024) / 8; // 8MB chunk size
         // spawn one handler per chunk
         int chunkCount = (int) fileSize / baseChunkSize; 
+        println(chunkCount);
         for (int i = 0; i < chunkCount; i++) {
             Thread handler = new Thread(() -> {
                 try (
@@ -35,13 +36,14 @@ public class Receiver {
                     int length  = dis.readInt();
 
                     raf.seek(offset);
-                    byte[] buf = new byte[8*1024];
+                    byte[] buf = new byte[8*1024*1024];
                     int  r, rem = length;
                     while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0 && rem > 0) {
                         raf.write(buf, 0, r);
                         totalReceived.addAndGet(r);
                         rem -= r;
                         cb.onProgress(r);
+                        println("接收進度: " + totalReceived.get() + "/" + fileSize);
                     }
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");

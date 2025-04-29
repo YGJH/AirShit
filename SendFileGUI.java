@@ -50,7 +50,7 @@ public class SendFileGUI extends JFrame {
         refreshClientList();
 
         // auto‐refresh every 50ms
-        refreshTimer = new Timer(500, e -> refreshClientList());
+        refreshTimer = new Timer(5000, e -> refreshClientList());
         refreshTimer.start();
 
         setVisible(true);
@@ -127,7 +127,7 @@ public class SendFileGUI extends JFrame {
         sendButton = createStyledButton("Send File", ACCENT_COLOR);
         sendButton.setEnabled(false);
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        sendButton.setPreferredSize(new Dimension(200, 40));
+        sendButton.setPreferredSize(new Dimension(200, 20));
         sendButton.addActionListener(e -> sendFile());
 
         sendProgressBar = new JProgressBar();
@@ -138,7 +138,7 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setBorder(BorderFactory.createTitledBorder(
             BorderFactory.createLineBorder(PRIMARY_COLOR),
             "Sending", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.PLAIN,15), TEXT_COLOR
+            new Font("Segoe UI", Font.PLAIN, 15), TEXT_COLOR
         ));
         sendProgressBar.setVisible(false);
 
