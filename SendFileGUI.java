@@ -132,15 +132,10 @@ public class SendFileGUI extends JFrame {
 
         sendProgressBar = new JProgressBar();
         sendProgressBar.setStringPainted(true);
-        // add a colored line border around the progress bar
-        sendProgressBar.setBorder(BorderFactory.createLineBorder(PRIMARY_COLOR));
         // you could also use a titled border, e.g.:
-        sendProgressBar.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(PRIMARY_COLOR),
-            "Sending", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.PLAIN, 15), TEXT_COLOR
-        ));
         sendProgressBar.setVisible(false);
+
+
 
         sendPanel.add(sendButton,       BorderLayout.NORTH);
         sendPanel.add(sendProgressBar,  BorderLayout.SOUTH);
@@ -302,7 +297,7 @@ public class SendFileGUI extends JFrame {
                     int pct = (int)(cumul*100/totalSize);
                     sendProgressBar.setValue(pct);
                     if (pct % 10 == 0) {
-                        log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                        log("%%rProgress: " + pct + "% (" + formatFileSize(cumul) + ")");
                     }
                 });
             }

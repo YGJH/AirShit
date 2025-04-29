@@ -85,7 +85,7 @@ public class SendFile {
                     remaining -= read;
                     callback.onProgress(read);
                 }
-                System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
+                System.out.printf("%%r已傳送分段：offset=%d, length=%d%n", offset, length);
                 } catch (IOException e) {
                     System.err.println("ChunkSender 發生錯誤：");
                     e.printStackTrace();

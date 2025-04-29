@@ -4,6 +4,10 @@ import java.awt.Dimension;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
@@ -42,8 +46,7 @@ public class FileReceiver {
             StringBuilder sb = new StringBuilder();
             try (
                     Socket socket = serverSocket.accept();
-                    DataInputStream dis = new DataInputStream(socket.getInputStream());
-                ) {
+                    DataInputStream dis = new DataInputStream(socket.getInputStream());) {
                 String handshake = dis.readUTF();
                 String[] parts = handshake.split("\\|");
                 if (parts.length < 3) {
@@ -95,17 +98,16 @@ public class FileReceiver {
 
                 // wrap it in a scroll pane
                 JScrollPane pane = new JScrollPane(ta,
-                    JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                    JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+                        JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                        JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
                 pane.setPreferredSize(new Dimension(400, 200));
 
                 // show the confirm dialog with the scroll pane as the message component
                 int response = JOptionPane.showConfirmDialog(
-                    null,
-                    pane,
-                    "檔案傳送 — 接收確認",
-                    JOptionPane.YES_NO_OPTION
-                );
+                        null,
+                        pane,
+                        "檔案傳送 — 接收確認",
+                        JOptionPane.YES_NO_OPTION);
                 if (response != JOptionPane.YES_OPTION) {
                     try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                         dos.writeUTF("REJECT");
@@ -153,39 +155,57 @@ public class FileReceiver {
                     e.printStackTrace();
                 }
                 final String outPutPath = outputFilePath;
-                println("已接受檔案傳送。");
-                
+                // println("已接受檔案傳送。");
+
                 // notify sender to start sending the file
-                println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
+                // println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
-                    try(Socket ctrlSock = serverSocket.accept();
-                    DataInputStream  fileDis = new DataInputStream(ctrlSock.getInputStream()))
-                    {
+                    try (Socket ctrlSock = serverSocket.accept();
+                            DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
+                            DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
                         String[] pp = fileDis.readUTF().split("\\|");
                         final String fileName = pp[0];
                         long fileSize = Long.parseLong(pp[1]);
                         println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                         // notify sender to start sending the file
-                        try (DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
-                            dos.writeUTF("ACK");
-                            dos.flush();
-                            while(Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb) == false) {
-                                // 等待所有 handler 完成
-                                try {
-                                    Thread.sleep(10); // 等待 10 mill second 後重試
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                }
+                        dos.writeUTF("ACK");
+                        dos.flush();
+                        ExecutorService executor = Executors.newSingleThreadExecutor();
+                        // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
+                        Future<Boolean> future = executor.submit(() -> {
+                            try {
+                                return Receiver.start(
+                                    serverSocket,
+                                    outPutPath + "\\" + fileName,
+                                    fileSize,
+                                    cb);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                return false;
                             }
-                            dos.writeUTF("OK");
-                            dos.flush();
-                        } catch (IOException e) {
-                            System.err.println("無法與 Sender 通訊：");
-                            socket.close();
-                            dis.close();
-                            e.printStackTrace();
+                        });
+                        boolean success;
+                        try {
+                            success = future.get();
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt(); // 恢復中斷狀態
+                            success = false;
+                        } catch (ExecutionException ee) {
+                            ee.printStackTrace();
+                            success = false;
+                        } finally {
+                            executor.shutdown();
                         }
 
+                        if (success) {
+                            println("檔案傳輸完成，總共傳送 " + fileSize + " bytes");
+                            dos.writeUTF("OK");
+                            dos.flush();
+                        } else {
+                            System.err.println("檔案接收失敗：" + fileName);
+                            dos.writeUTF("ERROR");
+                            dos.flush();
+                        }
                     } catch (IOException e) {
                         socket.close();
                     }

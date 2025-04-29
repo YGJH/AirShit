@@ -8,7 +8,6 @@ public class FileSender {
     private  String host;
     private  int port;
     // get Hardware Concurrent
-    private final int threadCount = Runtime.getRuntime().availableProcessors();
 
     public FileSender(String host, int port) { // 此port 是對方的port跟host
         this.host = host;

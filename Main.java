@@ -163,7 +163,7 @@ public class Main { // 定義 Main 類別
                     socket.receive(packet);
 
                     String message = new String(packet.getData(), 0, packet.getLength());
-                    System.out.println(message);
+                    // System.out.println(message);
                     if ((message).startsWith("HEARTBEAT-")) {
                         String[] parts = message.split("-"); // use dash as delimiter
                         if (clientList.containsKey(parts[1]) == false) {
@@ -215,7 +215,7 @@ public class Main { // 定義 Main 類別
             DatagramSocket socket = new DatagramSocket();
         ) {
 
-            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
@@ -296,7 +296,7 @@ public class Main { // 定義 Main 類別
                     int pct = (int)(cumul*100/totalBar);
                     SendFileGUI.receiveProgressBar.setValue((int)pct);
                     if (pct % 10 == 0) {
-                        GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
+                        GUI.log("%%rProgress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
             }
