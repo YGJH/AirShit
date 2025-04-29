@@ -84,7 +84,7 @@ public class FileSender {
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
                 SendFile sendFile = new SendFile(
-                    host, port, file, threadCount, callback);
+                    host, port, file, callback);
                 sendFile.start();
 
                 if(cnt == 1) {

@@ -29,12 +29,12 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength    = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / threadCount;
-        long workerCount   = fileLength / baseChunkSize;
+        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors();        ; // 5MB / 8
+        long workerCount   = Math.min(fileLength / baseChunkSize , Runtime.getRuntime().availableProcessors()); // 8
 
         // 建立固定大小 ThreadPool
-        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
-        System.out.printf("worker: %d, poolSize=%d%n", workerCount, threadCount);
+        ExecutorService pool = Executors.newFixedThreadPool((int) workerCount);
+        System.out.printf("worker: %d, poolSize=%d%n", workerCount);
 
         // submit 每個 chunk 處理
         for (int i = 0; i < workerCount; i++) {
