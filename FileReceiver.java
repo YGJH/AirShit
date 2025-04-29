@@ -141,6 +141,7 @@ public class FileReceiver {
                     }
                 }
                 // send accept message to sender
+                cb.onStart(totalSize); // 開始接收檔案
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                     dos.writeUTF("ACK");
                     dos.flush();
@@ -152,8 +153,6 @@ public class FileReceiver {
                 println("已接受檔案傳送。");
 
                 // notify sender to start sending the file
-                cb.onStart(totalSize); // 開始接收檔案
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
                 println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
                     try(Socket ctrlSock = serverSocket.accept();
@@ -175,6 +174,8 @@ public class FileReceiver {
                                     e.printStackTrace();
                                 }
                             }
+                            dos.writeUTF("OK");
+                            dos.flush();
                         } catch (IOException e) {
                             System.err.println("無法與 Sender 通訊：");
                             socket.close();

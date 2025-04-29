@@ -275,14 +275,14 @@ public class Main { // 定義 Main 類別
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)totalBytes));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
             }
             @Override
             public void onProgress(long bytesTransferred) {
                 long cumul = totalReceived.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int)(cumul*100/totalBar);
-                    SendFileGUI.receiveProgressBar.setValue(pct);
+                    SendFileGUI.receiveProgressBar.setValue((int)pct);
                     if (pct % 10 == 0) {
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }

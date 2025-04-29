@@ -135,7 +135,7 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setBorder(BorderFactory.createTitledBorder(
             BorderFactory.createLineBorder(PRIMARY_COLOR),
             "Sending", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.PLAIN, 11), TEXT_COLOR
+            new Font("Segoe UI", Font.PLAIN,15), TEXT_COLOR
         ));
         sendProgressBar.setVisible(false);
 
