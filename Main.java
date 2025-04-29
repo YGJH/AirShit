@@ -597,7 +597,7 @@ public class Main { // 定義 Main 類別
                     continue;
                 } 
                 
-            } catch (IOException | InterruptedException e) {
+            } catch (Exception e) {
                 callback.onError(e);
             }
         }
