@@ -28,6 +28,7 @@ public class SendFile {
         long baseChunkSize = Math.min(fileLength, 5L*1024*1024) / threadCount;
         List<Thread> workers = new ArrayList<>();
         long workerCount = fileLength / baseChunkSize;
+        println(workerCount);
         for (int i = 0; i < workerCount; i++) {
             long offset = i * baseChunkSize;
             // 最後一塊撥給剩下的所有 byte

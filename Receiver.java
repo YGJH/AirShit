@@ -22,7 +22,7 @@ public class Receiver {
         File out = new File(outputFile);
         long baseChunkSize = Math.min(fileSize, 5L*1024*1024) / 8; // 8MB chunk size
         // spawn one handler per chunk
-        int chunkCount = (int) fileSize / baseChunkSize; 
+        long chunkCount =  fileSize / baseChunkSize; 
         println(chunkCount);
         for (int i = 0; i < chunkCount; i++) {
             Thread handler = new Thread(() -> {
