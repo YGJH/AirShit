@@ -41,7 +41,6 @@ public class Main { // 定義 Main 類別
     }
     
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
-    private static Hashtable<String, Client> tempClientList = new Hashtable<>();
     
     public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
@@ -52,7 +51,7 @@ public class Main { // 定義 Main 類別
         SEND_WAITING // 正在等待傳送
     }
 
-    private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
+    public static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
 
     public static String getNonLoopbackIP() {
         try {
@@ -260,7 +259,6 @@ public class Main { // 定義 Main 類別
                 + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
 
-        sendStatus.set(SEND_STATUS.SEND_OK);
         FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
         
 

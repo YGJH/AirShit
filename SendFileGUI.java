@@ -2,6 +2,9 @@ package AirShit;
 
 import javax.swing.*;
 import javax.swing.border.*;
+
+import AirShit.Main.SEND_STATUS;
+
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -314,6 +317,7 @@ public class SendFileGUI extends JFrame {
                 target.getTCPPort()
             );
             try {
+                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 sender.sendFiles(
                     selectedFiles,
                     Main.getClient().getUserName(),
@@ -323,6 +327,8 @@ public class SendFileGUI extends JFrame {
             } catch (Exception e) {
                 callback.onError(e);
             }
+            Main.sendStatus.set(SEND_STATUS.SEND_OK);
+
         }, "send-thread").start();
     }
 
