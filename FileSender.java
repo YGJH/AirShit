@@ -45,13 +45,13 @@ public class FileSender {
             dos.flush();
             println("傳送 handshake 訊息： " + sb.toString());
             // 等待 Receiver 確認接收檔案
-            // String response = dis.readUTF();
-            // if (response.equals("ACK")) {
-            //     println("Receiver 確認接收檔案。");
-            // } else {
-            //     System.err.println("Receiver 無法接收檔案，請稍後再試。");
-            //     return;
-            // }
+            String response = dis.readUTF();
+            if (response.equals("ACK")) {
+                println("Receiver 確認接收檔案。");
+            } else {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                return;
+            }
 
         } catch (IOException e) {
             System.err.println("無法連線到 Receiver：");

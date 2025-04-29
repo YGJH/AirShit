@@ -210,7 +210,7 @@ public class Main { // 定義 Main 類別
                 DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
                 socket.send(sendPacket);
                 try {
-                    Thread.sleep(100+random.nextInt(500));
+                    Thread.sleep(100);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
