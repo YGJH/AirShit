@@ -60,7 +60,7 @@ public class FileSender {
         }
 
         callback.onStart(totalSize);
-
+        int cnt = files.length;
         for (File file : files) {
             // notify user
             String fileName = file.getName();
@@ -87,6 +87,10 @@ public class FileSender {
                     host, port, file, threadCount, callback);
                 sendFile.start();
 
+                if(cnt == 1) {
+                    break;
+                }
+                cnt--;
                 response = dis.readUTF();
                 while(!"OK".equals(response)) {
                     Thread.sleep(100);
