@@ -128,7 +128,7 @@ public class SendFileGUI extends JFrame {
         sendButton.setEnabled(false);
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
         sendButton.setPreferredSize(new Dimension(200, 30));
-        sendButton.addActionListener(() -> sendFile());
+        sendButton.addActionListener((e) -> sendFile());
 
         sendProgressBar = new JProgressBar();
         sendProgressBar.setStringPainted(true);

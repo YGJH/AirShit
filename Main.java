@@ -16,7 +16,6 @@ public class Main { // 定義 Main 類別
     static void println(String s) {
         System.out.println(s);
     }
-    private static short state = 0;
     
     private static Client client; // 建立 Client 物件以儲存客戶端資訊
     
