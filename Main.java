@@ -1,5 +1,6 @@
 package AirShit; // 定義套件 AirShit
 
+import java.awt.Font; // 引入 AWT Font類別
 import java.io.*; // 引入輸入輸出相關類別
 import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
@@ -46,30 +47,33 @@ public class Main { // 定義 Main 類別
     }
 
     private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
-
     public static String getNonLoopbackIP() {
         try {
-            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!iface.isUp() || iface.isLoopback() || iface.isVirtual())
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
                     continue;
-                String d = iface.getDisplayName().toLowerCase();
-                String n = iface.getName().toLowerCase();
-                if (d.contains("hyper") || n.startsWith("vethernet"))
+                String name = ni.getDisplayName().toLowerCase();
+                // skip Hyper-V, WFP filter drivers, virtual adapters
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
-
-                for (InetAddress addr : Collections.list(iface.getInetAddresses())) {
-                    // Only return IPv4
-                    if (addr instanceof Inet4Address) {
+                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                    if (addr instanceof Inet4Address
+                            && !addr.isLoopbackAddress()
+                            && !addr.isLinkLocalAddress()) {
+                        System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": "
+                                + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
                 }
             }
-        } catch (SocketException e) {
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        // fallback to localhost IPv4
+        // fallback
         return "127.0.0.1";
     }
+
 
     public static InetAddress getMulticastAddress() {
         try {
@@ -82,22 +86,24 @@ public class Main { // 定義 Main 類別
 
     private static NetworkInterface findCorrectNetworkInterface() {
         try {
-            InetAddress local = InetAddress.getByName(client.getIPAddr());
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
                     continue;
-                String d = ni.getDisplayName().toLowerCase(),
-                        n = ni.getName().toLowerCase();
-                if (d.contains("hyper") || n.startsWith("vethernet"))
+                String name = ni.getDisplayName().toLowerCase();
+                // skip Hyper-V, WFP filter drivers, virtual adapters
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
                     continue;
-
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr.equals(local))
+                    if (addr instanceof Inet4Address
+                            && !addr.isLoopbackAddress()
+                            && !addr.isLinkLocalAddress()) {
                         return ni;
+                    }
                 }
             }
-        } catch (Exception e) {
-            System.err.println("Error finding interface: " + e.getMessage());
+
+        } catch (SocketException e) {
+            e.printStackTrace();
         }
         return null;
     }
@@ -122,40 +128,48 @@ public class Main { // 定義 Main 類別
             // e.printStackTrace();
         }
     }
-
     public static void startMulticastListener() {
-        new Thread(() -> {
-            MulticastSocket socket = null;
-            try {
+        Thread MultiCast = new Thread(() -> {
+            try (
+                MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);
+            ){
                 InetAddress group = getMulticastAddress();
                 if (group == null)
                     return;
 
                 // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
-                socket = new MulticastSocket(DISCOVERY_PORT);
-                InetSocketAddress groupAddr = new InetSocketAddress(group, DISCOVERY_PORT); // Use DISCOVERY_PORT
+                socket.setTimeToLive(32);
 
                 // --- Improved Interface Selection ---
-                NetworkInterface netIf = findCorrectNetworkInterface();
-                if (netIf == null) {
-                    System.err.println("Could not find suitable network interface for multicast. Trying default.");
-                    socket.joinGroup(groupAddr, null);
-                } else {
-                    System.out.println("Joining multicast group on interface: " + netIf.getDisplayName() + " ["
-                            + netIf.getName() + "]"); // Log name too
-                    socket.joinGroup(groupAddr, netIf);
+                NetworkInterface iface = findCorrectNetworkInterface();
+                if (iface != null) {
+                    socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
                 }
-                // --- End Improved Interface Selection ---
 
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started on port: " + DISCOVERY_PORT);
-
+                System.out.println("Multicast listener started on port " + DISCOVERY_PORT);
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-                    // --- Process packet ---
+
                     String message = new String(packet.getData(), 0, packet.getLength());
-                    println(message);
+                    // System.out.println(message);
+                    if ((message).startsWith("HEARTBEAT-")) {
+                        String[] parts = message.split("-"); // use dash as delimiter
+                        if (clientList.containsKey(parts[1]) == false) {
+                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
+                                    DISCOVERY_PORT, parts[4]);
+                            clientList.put(tempClient.getUserName(), tempClient);
+                        }
+
+                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+                        DatagramPacket reply = new DatagramPacket(
+                                resp, resp.length,
+                                packet.getAddress(), packet.getPort());
+                        socket.send(reply);
+                        continue;
+                    }
+
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
@@ -167,38 +181,23 @@ public class Main { // 定義 Main 類別
                         continue;
 
                     // Check if client is self OR already known (use IP as key if possible)
-                    if (tempClient.getIPAddr().equals(client.getIPAddr())
-                            || clientList.containsKey(tempClient.getUserName())) {
+                    if(tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getTCPPort() == client.getTCPPort()
+                    || clientList.containsKey(tempClient.getUserName())) {
                         continue;
                     }
-
                     // Use IP address as the key for consistency
-                    clientList.put(tempClient.getUserName(), tempClient);
-                    System.out.println(
-                            "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
+                    clientList.put(tempClient.getUserName() , tempClient);
                     // Respond directly to the sender (unicast)
-                    for (int i = 0; i < 3; i++) { // Send hello message 3 times
-                        responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
-                                                                                // from
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
+                    responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
 
                     // --- End Process packet ---
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-            } finally {
-                if (socket != null && !socket.isClosed()) {
-                    // Consider leaving the group if needed: socket.leaveGroup(...)
-                    socket.close();
-                }
             }
-        }).start();
+        });
+        MultiCast.start(); // 啟動多播監聽執行緒
     }
 
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
@@ -236,13 +235,37 @@ public class Main { // 定義 Main 類別
     }
 
     public static void main(String[] args) { // 主方法，程式入口點
+
+        System.setProperty("file.encoding", "UTF-8");
+        ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
+                .redirectErrorStream(true)
+                .inheritIO();
+        try {
+            pb.start().waitFor();
+            System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // 2) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft
+        // YaHei, or Noto)
+        Font uiFont = new Font("Microsoft YaHei UI", Font.PLAIN, 12);
+        UIDefaults d = UIManager.getLookAndFeelDefaults();
+        for (Object key : d.keySet()) {
+            if (key.toString().toLowerCase().endsWith(".font")) {
+                UIManager.put(key, uiFont);
+            }
+        }
+
+
+
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
                 + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
         multicastHello(); // Then announce yourself
 
-        startHeartbeatResponder(); // 啟動心跳回應器
         SwingUtilities.invokeLater(() -> {
             new SendFileGUI();
             new Thread(() -> Main.receiveFile()).start();
@@ -268,40 +291,7 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static void startHeartbeatResponder() {
-        new Thread(() -> {
-            try (DatagramSocket sock = new DatagramSocket(HEARTBEAT_PORT)) {
-                byte[] buf = new byte[64];
-                while (true) {
-                    DatagramPacket recv = new DatagramPacket(buf, buf.length);
-                    sock.receive(recv);
-                    String msg = new String(recv.getData(), 0, recv.getLength(), StandardCharsets.UTF_8);
-                    println(msg);
-                    if ((msg).startsWith("HEARTBEAT-")) {
-                        String[] parts = msg.split("-"); // use dash as delimiter
-                        if (clientList.containsKey(parts[1]) == false) {
-                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
-                                    DISCOVERY_PORT, parts[4]);
-                            clientList.put(tempClient.getUserName(), tempClient);
-                        }
 
-                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket reply = new DatagramPacket(
-                                resp, resp.length,
-                                recv.getAddress(), recv.getPort());
-                        sock.send(reply);
-                    }
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            try{
-                Thread.sleep(2000 + random.nextInt(1000)); // Sleep for 1 second before next heartbeat
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }, "heartbeat-responder").start();
-    }
 
     public static void receiveFile() { // 定義接收檔案的方法
         SendFileGUI.start = false;
@@ -479,7 +469,7 @@ public class Main { // 定義 Main 類別
             try (DatagramSocket ds = new DatagramSocket()) {
                 ds.setSoTimeout(2000);
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
-                ds.send(new DatagramPacket(ping, ping.length, addr, HEARTBEAT_PORT));
+                ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送心跳訊息
                 byte[] buf = new byte[64];
                 DatagramPacket resp = new DatagramPacket(buf, buf.length);
                 ds.receive(resp);
