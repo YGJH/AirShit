@@ -164,7 +164,21 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength());
                     System.out.println(message);
+                    if ((message).startsWith("HEARTBEAT-")) {
+                        String[] parts = message.split("-"); // use dash as delimiter
+                        if (clientList.containsKey(parts[1]) == false) {
+                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
+                                    DISCOVERY_PORT, parts[4]);
+                            clientList.put(tempClient.getUserName(), tempClient);
+                        }
 
+                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+                        DatagramPacket reply = new DatagramPacket(
+                                resp, resp.length,
+                                packet.getAddress(), packet.getPort());
+                        socket.send(reply);
+                        continue;
+                    }
 
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
@@ -323,15 +337,32 @@ public class Main { // 定義 Main 類別
         }
     }
     public static void checkAlive() {
-        try{
-            Thread.sleep(5000+random.nextInt(5000)); // 隨機延遲 5 秒
-            clientList.clear();
-            multicastHello();
-            Thread.sleep(500);
-            GUI.refreshClientList();
-
-        } catch (Exception e) {
-
+        byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8); // 取得 Hello 訊息
+        ArrayList<String> dead = new ArrayList<>();
+        for (Map.Entry<String, Client> e : clientList.entrySet()) {
+            String name = e.getKey();
+            Client c = e.getValue();
+            boolean alive = false;
+            try (DatagramSocket ds = new DatagramSocket()) {
+                ds.setSoTimeout(2000);
+                InetAddress addr = InetAddress.getByName(c.getIPAddr());
+                ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送心跳訊息
+                byte[] buf = new byte[64];
+                DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                ds.receive(resp);
+                String reply = new String(resp.getData(), 0, resp.getLength(), StandardCharsets.UTF_8);
+                if ("ALIVE".equals(reply))
+                    alive = true;
+            } catch (IOException ignore) {
+                // timeout or error => not alive
+            }
+            if (!alive) {
+                dead.add(name);
+            }
+        }
+        for (String name : dead) {
+            clientList.remove(name);
+            println("Removed dead client: " + name);
         }
     }
 

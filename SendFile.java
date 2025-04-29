@@ -34,7 +34,6 @@ public class SendFile {
 
         // 建立固定大小 ThreadPool
         ExecutorService pool = Executors.newFixedThreadPool((int)Runtime.getRuntime().availableProcessors());
-        System.out.printf("worker: %d, poolSize=%ld%n", workerCount);
 
         // submit 每個 chunk 處理
         for (int i = 0; i < workerCount; i++) {
@@ -51,7 +50,7 @@ public class SendFile {
             pool.shutdownNow();
         }
 
-        System.out.printf("檔案傳輸完成，總共傳送 %ld bytes%n", fileLength);
+        System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", fileLength);
     }
 
     private class ChunkSender implements Runnable {
