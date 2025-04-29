@@ -1,6 +1,8 @@
 package AirShit;
+
 import java.io.*;
 import java.net.Socket;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -15,7 +17,8 @@ public class SendFile {
     private final int threadCount;
     private final AtomicLong totalSent = new AtomicLong(0);
     private final TransferCallback callback;
-    public SendFile(String host, int port, File file, int threadCount , TransferCallback callback) {
+
+    public SendFile(String host, int port, File file, int threadCount, TransferCallback callback) {
         this.callback = callback;
         this.host = host;
         this.port = port;
@@ -25,16 +28,16 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L*1024*1024) / threadCount;
+        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / threadCount;
         List<Thread> workers = new ArrayList<>();
         long workerCount = fileLength / baseChunkSize;
-        System.out.printf("worker: %d%n",workerCount);
+        System.out.printf("worker: %d%n", workerCount);
         for (int i = 0; i < workerCount; i++) {
             long offset = i * baseChunkSize;
             // 最後一塊撥給剩下的所有 byte
             long chunkSize = (i == workerCount - 1)
-                ? fileLength - offset
-                : baseChunkSize;
+                    ? fileLength - offset
+                    : baseChunkSize;
 
             Thread t = new Thread(new ChunkSender(offset, (int) chunkSize));
             t.start();
@@ -59,15 +62,17 @@ public class SendFile {
 
         @Override
         public void run() {
-            try (
+            try {
                 Socket socket = new Socket(host, port);
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                RandomAccessFile raf = new RandomAccessFile(file, "r")
-            ) {
-                // 先傳 offset 與 chunk 大小（header）
-                dos.writeLong(offset);
-                dos.writeInt(length);
-                dos.flush();
+                socket.connect(new InetSocketAddress(host, port), 5000);  // 等最久 5 秒
+                try (
+                    DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                    RandomAccessFile raf = new RandomAccessFile(file, "r")
+                ) {
+                    // 先傳 offset 與 chunk 大小（header）
+                    dos.writeLong(offset);
+                    dos.writeInt(length);
+                    dos.flush();
 
                 // 移動到 offset 並依序讀取、傳送
                 raf.seek(offset);
@@ -80,23 +85,29 @@ public class SendFile {
                     callback.onProgress(read);
                 }
                 System.out.printf("已傳送分段：offset=%d, length=%d%n", offset, length);
-            } catch (IOException e) {
+                } catch (IOException e) {
+                    System.err.println("ChunkSender 發生錯誤：");
+                    socket.close();
+                    e.printStackTrace();
+                }
+            } catch (Exception e) {
                 System.err.println("ChunkSender 發生錯誤：");
                 e.printStackTrace();
             }
         }
     }
 
-    // public static void main(String[] args) throws Exception {
-    //     if (args.length != 4) {
-    //         System.err.println("Usage: java SendFile <host> <port> <file-path> <threads>");
-    //         System.exit(1);
-    //     }
-    //     String host = args[0];
-    //     int port = Integer.parseInt(args[1]);
-    //     String filePath = args[2];
-    //     int threads = Integer.parseInt(args[3]);
+        // public static void main(String[] args) throws Exception {
+        // if (args.length != 4) {
+        // System.err.println("Usage: java SendFile <host> <port> <file-path>
+        // <threads>");
+        // System.exit(1);
+        // }
+        // String host = args[0];
+        // int port = Integer.parseInt(args[1]);
+        // String filePath = args[2];
+        // int threads = Integer.parseInt(args[3]);
 
-    //     new SendFile(host, port, filePath, threads).start();
-    // }
+        // new SendFile(host, port, filePath, threads).start();
+        // }
 }
