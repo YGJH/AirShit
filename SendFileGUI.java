@@ -127,7 +127,7 @@ public class SendFileGUI extends JFrame {
         sendButton = createStyledButton("Send File", ACCENT_COLOR);
         sendButton.setEnabled(false);
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        sendButton.setPreferredSize(new Dimension(200, 20));
+        sendButton.setPreferredSize(new Dimension(200, 30));
         sendButton.addActionListener(e -> sendFile());
 
         sendProgressBar = new JProgressBar();
@@ -222,6 +222,11 @@ public class SendFileGUI extends JFrame {
         Main.clearClientList();
         listModel.clear();
         Main.multicastHello();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         refreshClientList();
     }
     public void refreshClientList() {
