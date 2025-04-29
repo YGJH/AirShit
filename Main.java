@@ -111,23 +111,27 @@ public class Main { // 定義 Main 類別
     }
 
     public static void multicastHello() {
-        try {
-            client.setIPAddr(getNonLoopbackIP()); // Set the IP address
+        try (
+            MulticastSocket socket = new MulticastSocket();
+        ){
             InetAddress group = getMulticastAddress();
             if (group == null)
                 return;
 
-            byte[] sendData = client.getHelloMessage().getBytes();
-            MulticastSocket socket = new MulticastSocket();
+            byte[] sendData = client.getHelloMessage().getBytes("UTF-8");
             socket.setTimeToLive(32);
-
+            socket.setNetworkInterface(findCorrectNetworkInterface());
+            socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
+            
+            socket.setOption(StandardSocketOptions.IP_MULTICAST_LOOP, false);
+            // println(sendData.length + " bytes sent to multicast group " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
 
             socket.close();
         } catch (Exception e) {
-            // e.printStackTrace();
+            e.printStackTrace(); // Uncommented for better error handling
         }
     }
     public static void startMulticastListener() {
@@ -337,7 +341,7 @@ public class Main { // 定義 Main 類別
     public static void receiveFile(TransferCallback cb) throws IOException { // 此port 是你本地的port
 
         // handshake
-        try (ServerSocket serverSocket = new ServerSocket(client.getUDPPort())) { // 建立 ServerSocket 以接收檔案
+        try (ServerSocket serverSocket = new ServerSocket(client.getTCPPort())) { // 建立 ServerSocket 以接收檔案
             while (true) {
                 // listen for handshake
                 boolean isSingle = false;
@@ -461,7 +465,7 @@ public class Main { // 定義 Main 類別
                     // println("已接受檔案傳送。");
 
                     // notify sender to start sending the file
-                    // println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
+                    println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                     for (int i = 0; i < fileCount; i++) {
                         try (Socket ctrlSock = serverSocket.accept();
                                 DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
@@ -482,7 +486,7 @@ public class Main { // 定義 Main 類別
                                 while ((bytesRead = fileDis.read(buffer)) != -1) {
                                     fos.write(buffer, 0, bytesRead);
                                     totalBytesRead += bytesRead;
-                                    cb.onProgress(totalBytesRead); // 更新進度
+                                    cb.onProgress(bytesRead); // 更新進度
                                 }
                                 println("檔案接收完成：" + fileName);
                             } catch (IOException e) {
@@ -570,7 +574,7 @@ public class Main { // 定義 Main 類別
                     System.err.println("Receiver 無法接收檔案：" + fileName);
                     return;
                 } else {
-                    println("receiver 已開始接收檔案");
+                    println("receiver 已開始接收檔案" + fileName);
                 }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
@@ -582,7 +586,7 @@ public class Main { // 定義 Main 類別
                     while ((bytesRead = fis.read(buffer)) != -1) {
                         dos.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
-                        callback.onProgress(totalBytesRead); // 更新進度
+                        callback.onProgress(bytesRead); // 更新進度
                     }
                 } catch (IOException e) {
                     System.err.println("檔案傳送失敗：" + fileName);
