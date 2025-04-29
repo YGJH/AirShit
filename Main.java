@@ -480,15 +480,15 @@ public class Main { // 定義 Main 類別
                             // receive the file
                             File file = new File(outPutPath + "\\" + fileName);
                             try (FileOutputStream fos = new FileOutputStream(file)) {
-                                byte[] buffer = new byte[8192]; // 8KB buffer
-                                int bytesRead;
-                                long totalBytesRead = 0;
-                                while ((bytesRead = fileDis.read(buffer)) != -1 && totalBytesRead < fileSize) {
-                                    fos.write(buffer, 0, bytesRead);
-                                    totalBytesRead += bytesRead;
-                                    cb.onProgress(bytesRead); // 更新進度
+                                byte[] buf = new byte[8192];
+                                long   recv = 0;
+                                while (recv < fileSize) {
+                                    int r = dis.read(buf,0,(int)Math.min(buf.length, fileSize-recv));
+                                    fos.write(buf,0,r);
+                                    recv += r;
+                                    cb.onProgress(r);
                                 }
-                                println("檔案接收完成：" + fileName);
+                                                    println("檔案接收完成：" + fileName);
                             } catch (IOException e) {
                                 System.err.println("檔案接收失敗：" + fileName);
                                 e.printStackTrace();
