@@ -164,25 +164,25 @@ public class FileReceiver {
                         long fileSize = Long.parseLong(pp[1]);
                         println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                         // notify sender to start sending the file
-                        try (DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
-                            dos.writeUTF("ACK");
-                            dos.flush();
-                            while(Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb) == false) {
-                                // 等待所有 handler 完成
-                                try {
-                                    Thread.sleep(10); // 等待 1 秒後重試
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                }
+                        // try (DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
+                        //     dos.writeUTF("ACK");
+                        //     dos.flush();
+                        while(Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb) == false) {
+                            // 等待所有 handler 完成
+                            try {
+                                Thread.sleep(1000); // 等待 10 mill second 後重試
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
                             }
-                            dos.writeUTF("OK");
-                            dos.flush();
-                        } catch (IOException e) {
-                            System.err.println("無法與 Sender 通訊：");
-                            socket.close();
-                            dis.close();
-                            e.printStackTrace();
                         }
+                        //     dos.writeUTF("OK");
+                        //     dos.flush();
+                        // } catch (IOException e) {
+                        //     System.err.println("無法與 Sender 通訊：");
+                        //     socket.close();
+                        //     dis.close();
+                        //     e.printStackTrace();
+                        // }
 
                     } catch (IOException e) {
                         socket.close();
