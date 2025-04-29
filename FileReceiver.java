@@ -54,6 +54,7 @@ public class FileReceiver {
                 if (parts[0].equals("isSingle")) {
                     isSingle = true;
                     senderUserName = parts[1];
+                    fileCount = 1;
                     fileNames = parts[2];
                     totalSize = Long.parseLong(parts[3]);
                     sb.append(fileNames);

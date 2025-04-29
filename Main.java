@@ -23,6 +23,9 @@ public class Main { // 定義 Main 類別
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
     }
+    public static void clearClientList() { // 定義清除客戶端列表的方法
+        clientList.clear(); // 清空客戶端哈希表
+    }
     
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
     
@@ -175,18 +178,13 @@ public class Main { // 定義 Main 類別
                         continue;
 
                     // Check if client is self OR already known (use IP as key if possible)
-                    if(tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getTCPPort() == client.getTCPPort()) {
+                    if(tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getTCPPort() == client.getTCPPort()
+                    || clientList.containsKey(tempClient.getUserName())) {
                         continue;
                     }
                     // Use IP address as the key for consistency
-                    // System.out.println(
-                    //         "Discovered client: " + tempClient.getUserName() + " at " + tempClient.getIPAddr());
 
-                    if(state == 0) {
-                        clientList.put(tempClient.getUserName() , tempClient);
-                    } else {
-                        tempClientList.put(tempClient.getUserName() , tempClient);
-                    }
+                    clientList.put(tempClient.getUserName() , tempClient);
                     // Respond directly to the sender (unicast)
                     responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
 
@@ -204,7 +202,7 @@ public class Main { // 定義 Main 類別
             DatagramSocket socket = new DatagramSocket();
         ) {
 
-            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times

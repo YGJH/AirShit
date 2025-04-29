@@ -23,28 +23,22 @@ public class Receiver {
         while (totalReceived.get() < fileSize) {
             Thread handler = new Thread(() -> {
                 try (
-                    Socket socket = serverSocket.accept();
-                    RandomAccessFile raf = new RandomAccessFile(out, "rw");
-                    DataInputStream dis = new DataInputStream(socket.getInputStream())
+                    Socket sock = serverSocket.accept();
+                    DataInputStream dis = new DataInputStream(sock.getInputStream());
+                    RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
                 ) {
-                    // 讀取 offset 與 chunk 大小
-                    long offset = dis.readLong();
-                    int length = dis.readInt();
-
-                    // 寫入資料
-                    raf.seek(offset);
-                    byte[] buffer = new byte[8 * 1024 * 1024];
-                    int read, remaining = length;
-                    while (remaining > 0 && (read = dis.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
-                        raf.write(buffer, 0, read);
-                        totalReceived.addAndGet(read);
-                        remaining -= read;
-                    }
-                    System.out.printf("接收分段：offset=%d, length=%d | 總共已接收：%d bytes%n",
-                                      offset, length, totalReceived.get());
-                    // 更新進度條
-                    if (cb != null) {
-                        cb.onProgress(totalReceived.get());
+                    int segments = dis.readInt();
+                    for (int i = 0; i < segments; i++) {
+                      long offset = dis.readLong();
+                      int len    = dis.readInt();
+                      byte[] buf = new byte[8192];
+                      int r, rem = len;
+                      raf.seek(offset);
+                      while (rem > 0 && (r = dis.read(buf,0,Math.min(buf.length,rem)))>0) {
+                        raf.write(buf,0,r);
+                        rem -= r;
+                        if (cb!=null) cb.onProgress(r);
+                      }
                     }
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
@@ -54,13 +48,13 @@ public class Receiver {
             });
             handler.start();
             handlers.add(handler);
-            for(Thread t : handlers) {
-                try {
-                    t.join(); // 等待所有 handler 完成
-                } catch (InterruptedException e) {
-                    out.delete();
-                    e.printStackTrace();
-                }
+        }
+        for(Thread t : handlers) {
+            try {
+                t.join(); // 等待所有 handler 完成
+            } catch (InterruptedException e) {
+                out.delete();
+                e.printStackTrace();
             }
         }
 
