@@ -74,24 +74,24 @@ public class FileSender {
                 dos.flush();
         
                 // 2) wait for ACK on the same socket
-                String response = dis.readUTF();
-                if (!"ACK".equals(response)) {
-                    System.err.println("Receiver 無法接收檔案：" + fileName);
-                    return;
-                } else {
-                    println("receiver 已開始接收檔案");
-                }
+                // String response = dis.readUTF();
+                // if (!"ACK".equals(response)) {
+                //     System.err.println("Receiver 無法接收檔案：" + fileName);
+                //     return;
+                // } else {
+                //     println("receiver 已開始接收檔案");
+                // }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
                 SendFile sendFile = new SendFile(
                     host, port, file, threadCount, callback);
                 sendFile.start();
 
-                response = dis.readUTF();
-                while(!"OK".equals(response)) {
-                    Thread.sleep(10);
-                    response = dis.readUTF();
-                } 
+                // String response = dis.readUTF();
+                // while(!"OK".equals(response)) {
+                //     Thread.sleep(10);
+                //     response = dis.readUTF();
+                // } 
        
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);

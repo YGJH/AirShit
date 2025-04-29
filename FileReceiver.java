@@ -175,8 +175,6 @@ public class FileReceiver {
                                 e.printStackTrace();
                             }
                         }
-                        //     dos.writeUTF("OK");
-                        //     dos.flush();
                         // } catch (IOException e) {
                         //     System.err.println("無法與 Sender 通訊：");
                         //     socket.close();
