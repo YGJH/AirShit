@@ -55,7 +55,12 @@ class Client {
         return IPAddr;
     }
 
-        // 解析訊息
+    public static boolean check(Client c1, Client c2) {
+        return c1.getUserName().equals(c2.getUserName()) &&
+               c1.getIPAddr().equals(c2.getIPAddr()) &&
+               c1.getTCPPort() == c2.getTCPPort();
+    }   
+    // 解析訊息
     public static Client parseMessage(String message) {
         String[] parts = message.split("-");
         // 檢查訊息格式是否正確

@@ -1,11 +1,13 @@
 package AirShit; // 定義套件 AirShit
 
 import java.awt.Font; // 引入 AWT Font類別
+import java.awt.Dimension; // 引入 AWT Dimension 類別
 import java.io.*; // 引入輸入輸出相關類別
 import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
+
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 
 public class Main { // 定義 Main 類別
@@ -20,7 +22,7 @@ public class Main { // 定義 Main 類別
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
     }
-
+    public static SendFileGUI GUI; // 建立 SendFileGUI 物件以顯示檔案傳送介面
     public static final int HEARTBEAT_PORT = 50001; // pick any free port
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
@@ -37,7 +39,7 @@ public class Main { // 定義 Main 類別
 
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
 
-    public static Hashtable<String, Client> getClientPorts() { // 定義取得客戶端端口的方法
+    public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
     }
 
@@ -46,7 +48,7 @@ public class Main { // 定義 Main 類別
         SEND_WAITING // 正在等待傳送
     }
 
-    private static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
+    public static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
     public static String getNonLoopbackIP() {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -262,14 +264,53 @@ public class Main { // 定義 Main 類別
 
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
-                + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
+        + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
         multicastHello(); // Then announce yourself
-
+        
+        
         SwingUtilities.invokeLater(() -> {
-            new SendFileGUI();
-            new Thread(() -> Main.receiveFile()).start();
+            GUI = new SendFileGUI();
         }); // 建立並顯示檔案傳送介面
+        TransferCallback cb = new TransferCallback() {
+            long totalReceived = 0;
+            long totalBar = 0;
+            @Override
+            public void onStart(long totalBytes) {
+                totalBar = totalBytes;
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
+            }
+            @Override
+            public void onProgress(long bytesTransferred) {
+                totalReceived += bytesTransferred;
+                long cumul = totalReceived;
+                SwingUtilities.invokeLater(() -> {
+                    int pct = (int)(cumul*100/totalBar);
+                    SendFileGUI.receiveProgressBar.setValue((int)pct);
+                    if (pct % 10 == 0) {
+                        GUI.log("%%rProgress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
+                    }
+                });
+            }
+            @Override
+            public void onError(Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    GUI.log("Error: " + e.getMessage());
+                    SendFileGUI.receiveProgressBar.setVisible(false);
+                });
+            }
+        };
+
+        Thread receiver = new Thread(() -> {
+            try {
+                receiveFile(cb); // 接收檔案
+            } catch (IOException e) { // 捕捉 I/O 異常
+                e.printStackTrace(); // 列印異常資訊
+            }
+        });
+        receiver.setName("Receiver"); // 設定執行緒名稱
+        receiver.start();
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -293,153 +334,272 @@ public class Main { // 定義 Main 類別
 
 
 
-    public static void receiveFile() { // 定義接收檔案的方法
-        SendFileGUI.start = false;
-        SendFileGUI.receiveFileProgress(0);
+    public static void receiveFile(TransferCallback cb) throws IOException { // 此port 是你本地的port
 
-        try { // 嘗試建立 TCP 伺服器以接收連線
-
-            ServerSocket serverSocket = new ServerSocket(client.getTCPPort()); // 建立伺服器並監聽 TCP_PORT
-            System.out.println("TCP 伺服器啟動，等待客戶端連線 (端口 " + client.getTCPPort() + ")"); // 輸出伺服器啟動訊息
-            while (true) { // 無限迴圈等待客戶端連線
-                Socket socket = serverSocket.accept(); // 接受客戶端連線請求
-                System.out.println("接收到來自 " + socket.getInetAddress() + " 的連線請求"); // 輸出連線來源資訊
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream())); // 建立輸入串流讀取器
-                String header = reader.readLine(); // 讀取傳送的標頭資訊
-                System.out.println("接收到的標頭: " + header); // 輸出接收到的標頭資訊
-                System.out.println(header); // 輸出標頭資訊
-                if (header == null || !header.contains(":")) { // 驗證標頭資訊格式
-                    System.out.println("Invalid header. Closing connection."); // 輸出錯誤訊息
-                    socket.close(); // 關閉連線
-                    continue; // 繼續等待下一個連線
-                }
-                String[] parts = header.split(":"); // use pipe as delimiter
-
-                if (parts.length != 2) {
-                    System.out.println("Invalid header. Closing connection.");
-                    socket.close();
+        // handshake
+        ServerSocket serverSocket = new ServerSocket(client.getUDPPort()); // 建立 ServerSocket 以接收檔案
+        while (true) {
+            // listen for handshake
+            boolean isSingle = false;
+            String senderUserName = null;
+            String fileNames = null;
+            String folderName = null;
+            int fileCount = 0;
+            long totalSize = 0;
+            StringBuilder sb = new StringBuilder();
+            try (
+                    Socket socket = serverSocket.accept();
+                    DataInputStream dis = new DataInputStream(socket.getInputStream());) {
+                String handshake = dis.readUTF();
+                String[] parts = handshake.split("\\|");
+                if (parts.length < 3) {
+                    System.err.println("無效的 handshake 訊息： " + handshake);
                     continue;
                 }
-                // System.out.println("Header parts: " + header.split("|")[0] ); // 輸出標頭分割後的資訊
-                String fileName = parts[0];
-                long fileSize = Long.parseLong(parts[1]);
-                int option = JOptionPane.showConfirmDialog(null,
-                        "接受檔案傳輸?\n檔案名稱: " + fileName + "\n檔案大小: " + fileSize + " bytes",
-                        "檔案傳輸",
-                        JOptionPane.YES_NO_OPTION); // 顯示對話框詢問是否接受檔案
-                if (option != JOptionPane.YES_OPTION) { // 如果使用者拒絕接受檔案
-                    System.out.println("使用者拒絕接收檔案"); // 輸出拒絕訊息
-                    socket.close(); // 關閉連線
-                    continue; // 繼續等待下一個連線
+                // isSingle|SenderUserName|file.getName()|file.length();
+                // isMulti|SenderUserName|folderName|file.getName()|file.length();
+                println("接收到 handshake 訊息： " + handshake);
+                if (parts[0].equals("isSingle")) {
+                    isSingle = true;
+                    senderUserName = parts[1];
+                    fileCount = 1;
+                    fileNames = parts[2];
+                    totalSize = Long.parseLong(parts[3]);
+                    sb.append(fileNames);
+                    println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
+                            + totalSize);
+                } else if (parts[0].equals("isMulti")) {
+                    senderUserName = parts[1];
+                    folderName = parts[2];
+                    fileCount = parts.length - 4;
+                    totalSize = Long.parseLong(parts[parts.length - 1]);
+                    for (int i = 3; i < parts.length - 1; i++) {
+                        sb.append(parts[i]).append("\n");
+                    }
+                    println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
+                } else {
+                    System.err.println("無效的 handshake 類型： " + parts[0]);
+                    continue;
                 }
-                JFileChooser fileChooser = new JFileChooser(); // 建立檔案選取器
-                fileChooser.setSelectedFile(new File(fileName)); // 設定預設檔案名稱
-                int chooserResult = fileChooser.showSaveDialog(null); // 顯示儲存檔案對話框
-                if (chooserResult != JFileChooser.APPROVE_OPTION) { // 如果使用者取消選取
-                    System.out.println("User cancelled save dialog."); // 輸出取消訊息
-                    socket.close(); // 關閉連線
-                    continue; // 繼續等待下一個連線
+                // ask user to accept the file
+                // build a scrollable text area for the file list
+                StringBuilder listText = new StringBuilder();
+                if (isSingle) {
+                    listText.append(fileNames);
+                } else {
+                    for (int j = 3; j < parts.length - 1; j++) {
+                        listText.append(parts[j]).append("\n");
+                    }
                 }
-                File saveFile = fileChooser.getSelectedFile(); // 取得使用者選擇的儲存檔案
-                sendACK(socket); // 傳送 ACK 訊息以通知傳送者開始資料傳送
-                SendFileGUI.receiveFileProgress(0); // 更新接收檔案進度
-                SendFileGUI.start = true; // 更新 GUI 狀態
-                FileOutputStream fos = new FileOutputStream(saveFile); // 建立檔案輸出串流以寫入接收資料
-                InputStream is = socket.getInputStream(); // 取得連線的輸入串流
-                byte[] buffer = new byte[100005]; // 建立資料緩衝區
-                int bytesRead; // 定義讀取位元組數變數
-                long totalRead = 0; // 初始化已讀取位元組總數
-                try {
+                String info = "Sender: " + senderUserName
+                        + "\nFolder: " + folderName
+                        + "\nTotal Size: " + totalSize + " bytes\n\nFiles:\n";
+                JTextArea ta = new JTextArea(info + listText.toString());
+                ta.setEditable(false);
+                ta.setLineWrap(true);
+                ta.setWrapStyleWord(true);
 
-                    while ((bytesRead = is.read(buffer)) != -1 && totalRead < fileSize) { // 持續讀取直到檔案結束或資料量達到檔案大小
-                        fos.write(buffer, 0, bytesRead); // 將讀取的資料寫入檔案
-                        totalRead += bytesRead; // 更新已讀取位元組數
-                        // sendACK(socket); // 傳送 ACK 訊息以確認接收
-                        int percent = (int) ((totalRead * 100) / fileSize); // 計算傳送進度百分比
-                        SendFileGUI.receiveFileProgress(percent); // 更新接收檔案進度
+                // wrap it in a scroll pane
+                JScrollPane pane = new JScrollPane(ta,
+                        JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                        JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+                pane.setPreferredSize(new Dimension(400, 200));
+
+                // show the confirm dialog with the scroll pane as the message component
+                int response = JOptionPane.showConfirmDialog(
+                        null,
+                        pane,
+                        "檔案傳送 — 接收確認",
+                        JOptionPane.YES_NO_OPTION);
+                if (response != JOptionPane.YES_OPTION) {
+                    try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                        dos.writeUTF("REJECT");
+                        dos.flush();
+                        continue;
+                    } catch (IOException e) {
+                        System.err.println("無法與 Sender 通訊：");
+                        e.printStackTrace();
+                    }
+                    System.out.println("使用者拒絕接收檔案。");
+                    continue;
+
+                }
+
+                // get output file path
+                String outputFilePath = FolderSelector.selectFolder();
+                if (outputFilePath == null) {
+                    System.out.println("使用者取消選擇資料夾。");
+                    try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                        dos.writeUTF("REJECT");
+                        dos.flush();
+                    } catch (IOException e) {
+                        System.err.println("無法與 Sender 通訊：");
+                        e.printStackTrace();
+                    }
+                    continue;
+                }
+                if (!isSingle) {
+                    outputFilePath = outputFilePath + "\\" + folderName;
+                    println("outputFilePath: " + outputFilePath);
+                    File folder = new File(outputFilePath);
+                    if (!folder.exists()) {
+                        folder.mkdirs(); // Create the directory if it doesn't exist
+                        println("已建立資料夾：" + folderName);
+                    }
+                }
+                // send accept message to sender
+                cb.onStart(totalSize); // 開始接收檔案
+                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
+                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                    dos.writeUTF("ACK");
+                    dos.flush();
+                } catch (IOException e) {
+                    System.err.println("無法與 Sender 通訊：");
+                    e.printStackTrace();
+                }
+                final String outPutPath = outputFilePath;
+                // println("已接受檔案傳送。");
+
+                // notify sender to start sending the file
+                // println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
+                for (int i = 0; i < fileCount; i++) {
+                    try (Socket ctrlSock = serverSocket.accept();
+                            DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
+                            DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
+                        String[] pp = fileDis.readUTF().split("\\|");
+                        final String fileName = pp[0];
+                        long fileSize = Long.parseLong(pp[1]);
+                        println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
+                        // notify sender to start sending the file
+                        dos.writeUTF("ACK");
+                        dos.flush();
+                        // receive the file
+                        File file = new File(outPutPath + "\\" + fileName);
+                        try (FileOutputStream fos = new FileOutputStream(file)) {
+                            byte[] buffer = new byte[8192]; // 8KB buffer
+                            int bytesRead;
+                            long totalBytesRead = 0;
+                            while ((bytesRead = fileDis.read(buffer)) != -1) {
+                                fos.write(buffer, 0, bytesRead);
+                                totalBytesRead += bytesRead;
+                                cb.onProgress(totalBytesRead); // 更新進度
+                            }
+                            println("檔案接收完成：" + fileName);
+                        } catch (IOException e) {
+                            System.err.println("檔案接收失敗：" + fileName);
+                            e.printStackTrace();
+                        }
+                        // send ACK to sender
+                        dos.writeUTF("ACK");
+                        dos.flush();
+
+                    } catch (IOException e) {
+                        socket.close();
                     }
 
-                    println("接收檔案完成"); // 輸出檔案接收完成訊息
-                } catch (IOException e) { // 捕捉 I/O 異常
-                    saveFile.delete();
-                    saveFile.delete();
-                    System.out.println("檔案接收失敗，已刪除檔案"); // 輸出檔案接收失敗訊息
                 }
+            } catch (IOException e) {
+                System.err.println("無法連線到 Sender：");
+                e.printStackTrace();
+            }
+            Main.sendStatus.set(SEND_STATUS.SEND_OK);
+        }
+    }
+    public static void clearClientList() {
+        clientList.clear(); // 清空客戶端列表
+    }
+    public static void sendFiles(File[] files , Client targClient , String folderName , TransferCallback callback) throws IOException, InterruptedException {
 
-                fos.close(); // 關閉檔案輸出串流
-                socket.close(); // 關閉 TCP 連線
-                SendFileGUI.start = false; // 更新 GUI 狀態
-                SendFileGUI.receiveFileProgress(0); // 重置接收檔案進度
+        // handshake
+        StringBuilder sb = new StringBuilder();
+        long totalSize = 0;
+        boolean isSingleFile = files.length == 1;
+        if(isSingleFile) {
+            sb.append("isSingle|");
+            sb.append(client.getUserName()).append("|").append(files[0].getName()).append("|").append(files[0].length());
+        } else {
+            sb.append("isMulti|");
+            sb.append(client.getUserName() + "|" + folderName);
+            for (File f : files) {
+                totalSize += f.length();
+                sb.append("|").append(f.getName());
+            }
+            sb.append("|").append(totalSize);
+        }
+
+        // 連線到 Receiver
+        try (Socket socket = new Socket(targClient.getIPAddr(), targClient.getTCPPort());
+             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+             DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            // 傳送 handshake 訊息
+            dos.writeUTF(sb.toString());
+            dos.flush();
+            println("傳送 handshake 訊息： " + sb.toString());
+            // 等待 Receiver 確認接收檔案
+            String response = dis.readUTF();
+            if (response.equals("ACK")) {
+                println("Receiver 確認接收檔案。");
+            } else {
+                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                return;
             }
 
-        } catch (Exception e) { // 捕捉所有例外
-            e.printStackTrace(); // 列印例外資訊
+        } catch (IOException e) {
+            System.err.println("無法連線到 Receiver：");
+            e.printStackTrace();
+            return;
+        }
+
+        callback.onStart(totalSize);
+        int cnt = files.length;
+        for (File file : files) {
+            // notify user
+            String fileName = file.getName();
+            String fileSize = String.valueOf(file.length());
+            try (Socket socket2 = new Socket(targClient.getIPAddr(), targClient.getTCPPort());
+                DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
+                DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
+        
+                // 1) send the file‑name|size header
+                dos.writeUTF(fileName + "|" + fileSize);
+                dos.flush();
+        
+                // 2) wait for ACK on the same socket
+                String response = dis.readUTF();
+                if (!"ACK".equals(response)) {
+                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    return;
+                } else {
+                    println("receiver 已開始接收檔案");
+                }
+            
+                // 3) now kick off your SendFile/ChunkSender against socket2
+                // send the file
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    byte[] buffer = new byte[8192]; // 8KB buffer
+                    int bytesRead;
+                    long totalBytesRead = 0;
+                    while ((bytesRead = fis.read(buffer)) != -1) {
+                        dos.write(buffer, 0, bytesRead);
+                        totalBytesRead += bytesRead;
+                        callback.onProgress(totalBytesRead); // 更新進度
+                    }
+                } catch (IOException e) {
+                    System.err.println("檔案傳送失敗：" + fileName);
+                    e.printStackTrace();
+                }
+                response = dis.readUTF();
+                while(!"OK".equals(response)) {
+                    Thread.sleep(10);
+                    response = dis.readUTF();
+                } 
+                
+            } catch (IOException | InterruptedException e) {
+                callback.onError(e);
+            }
         }
     }
 
-    public static boolean sendFileToUser(String selectedUserName, File file, FileTransferCallback callback) { // 定義傳送檔案給指定使用者的方法
-
-        Client targetClient = clientList.get(selectedUserName); // 根據 IP 位址取得目標客戶端資訊
-
-        try { // 嘗試開始檔案傳送程序
-            if (sendStatus.get() == SEND_STATUS.SEND_WAITING) { // 如果已有檔案正在傳送
-                System.out.println("Currently, a file is being transferred."); // 輸出當前傳送中訊息
-                return false; // 返回失敗
-            }
-            println(selectedUserName);
-            // Compress the file before sending
-            File originalFile = file;
-            // File compressedFile = File.createTempFile("compressed_", ".gz");
-
-            Socket socket = new Socket(targetClient.getIPAddr(), targetClient.getTCPPort()); // 建立與接收者之間的 TCP 連線
-            System.out.println("Starting to send file: " + originalFile.getName() + " to " + targetClient.getIPAddr()
-                    + ":" + targetClient.getTCPPort()); // 輸出開始傳送檔案訊息
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true); // 建立輸出串流以傳送檔案標頭
-            out.println(originalFile.getName() + ":" + originalFile.length()); // 傳送檔案名稱與大小
-            out.flush(); // 清空輸出串流
-
-            short cnt = 0; // 初始化等待 ACK 的次數
-            while (recevieACK(socket) == false && cnt < 3) { // 嘗試等待 ACK 回覆，最多三次
-                println("Waiting for ACK..."); // 輸出等待 ACK 訊息
-                Thread.sleep(300); // 延遲等待 300 毫秒
-                cnt++; // 增加等待次數計數器
-            }
-            if (cnt == 3) { // 如果三次嘗試後仍未收到 ACK
-                System.out.println("Failed to receive ACK, file sending aborted"); // 輸出失敗訊息
-                socket.close(); // 關閉連線
-                return false; // 返回失敗
-            }
-            FileInputStream fis = new FileInputStream(originalFile); // 建立檔案輸入串流以讀取壓縮後檔案內容
-            OutputStream os = socket.getOutputStream(); // 取得 TCP 連線的輸出串流
-            byte[] buffer = new byte[100005]; // 建立傳輸用緩衝區
-            int bytesRead; // 定義讀取位元組數變數
-            long total = originalFile.length();
-            long sent = 0;
-            while ((bytesRead = fis.read(buffer)) != -1) { // 迴圈讀取檔案資料直到結尾
-                os.write(buffer, 0, bytesRead); // 傳送讀取的資料區塊
-                os.flush(); // 清空輸出串流
-                // sendACK(socket); // 傳送 ACK 訊息以確認接收
-
-                sent += bytesRead;
-                int percent = (int) ((sent * 100) / total); // 計算傳送進度百分比
-                if (callback != null) { // 如果有回呼函式
-                    callback.onProgress(percent); // 呼叫回呼函式以更新進度
-                }
-
-            }
-            if (callback != null)
-                callback.onComplete(true);
-
-            fis.close(); // 關閉檔案輸入串流
-            socket.close(); // 關閉 TCP 連線
-            System.out.println("File sent successfully"); // 輸出檔案傳送成功訊息
-
-            return true; // 返回成功
-        } catch (Exception e) { // 捕捉例外
-            e.printStackTrace(); // 列印例外資訊
-            return false; // 返回失敗
-        }
-    }
 
     public static boolean recevieACK(Socket socket) {
         try {
