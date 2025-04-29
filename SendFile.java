@@ -17,7 +17,7 @@ public class SendFile {
     private final String host;
     private final int port;
     private final File file;
-    private final AtomicLong totalSent = new AtomicLong(0);
+    // private final AtomicLong totalSent = new AtomicLong(0);
     private final TransferCallback callback;
 
     public SendFile(String host, int port, File file, TransferCallback callback) {
@@ -51,7 +51,7 @@ public class SendFile {
             pool.shutdownNow();
         }
 
-        System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", totalSent.get());
+        System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", fileLength);
     }
 
     private class ChunkSender implements Runnable {
@@ -82,7 +82,7 @@ public class SendFile {
                 int read, remaining = length;
                 while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
                     dos.write(buffer, 0, read);
-                    totalSent.addAndGet(read);
+                    // totalSent.addAndGet(read);
                     remaining -= read;
                     callback.onProgress(read);
                 }
