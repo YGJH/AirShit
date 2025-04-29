@@ -12,7 +12,7 @@ public class Receiver {
     public static void println(String a) {
         System.out.println(a);
     }
-    public static void start(ServerSocket serverSocket , String outputFile , long fileSize , TransferCallback cb) throws IOException {
+    public static boolean start(ServerSocket serverSocket , String outputFile , long fileSize , TransferCallback cb) throws IOException {
 
         println("開始接收: " + (outputFile).toString());
         // 使用 RandomAccessFile 以便於多執行緒寫入不同 offset
@@ -39,10 +39,13 @@ public class Receiver {
                         raf.write(buffer, 0, read);
                         totalReceived.addAndGet(read);
                         remaining -= read;
-                        cb.onProgress(read);
                     }
                     System.out.printf("接收分段：offset=%d, length=%d | 總共已接收：%d bytes%n",
                                       offset, length, totalReceived.get());
+                    // 更新進度條
+                    if (cb != null) {
+                        cb.onProgress(totalReceived.get());
+                    }
                 } catch (IOException e) {
                     System.err.println("Handler 發生錯誤：");
                     out.delete();
@@ -61,7 +64,8 @@ public class Receiver {
             }
         }
 
-        
+        // 等待所有 handler 完成
+        return true; // 這裡可以根據實際情況返回成功或失敗的狀態
 
         // （可加上條件退出並 handler.join()）
     }

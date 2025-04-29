@@ -153,19 +153,27 @@ public class FileReceiver {
                 // notify sender to start sending the file
                 cb.onStart(totalSize); // 開始接收檔案
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveFileProgress(0));
-
+                println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
-                    try {
-
-                        parts = dis.readUTF().split("\\|");
-                        final String fileName = parts[0];
-                        long fileSize = Long.parseLong(parts[1]);
+                    try(Socket ctrlSock = serverSocket.accept();
+                    DataInputStream  fileDis = new DataInputStream(ctrlSock.getInputStream()))
+                    {
+                        String[] pp = fileDis.readUTF().split("\\|");
+                        final String fileName = pp[0];
+                        long fileSize = Long.parseLong(pp[1]);
                         println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                         // notify sender to start sending the file
-                        try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
+                        try (DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
                             dos.writeUTF("ACK");
                             dos.flush();
-                            Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb);
+                            while(Receiver.start(serverSocket, outPutPath + "\\" + fileName, fileSize, cb) == false) {
+                                // 等待所有 handler 完成
+                                try {
+                                    Thread.sleep(10); // 等待 1 秒後重試
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                            }
                             dos.writeUTF("OK");
                             dos.flush();
                         } catch (IOException e) {
