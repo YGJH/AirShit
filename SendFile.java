@@ -25,7 +25,7 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L*1024*1024*1024) / threadCount;
+        long baseChunkSize = Math.min(fileLength, 5L*1024*1024) / threadCount;
         List<Thread> workers = new ArrayList<>();
         long workerCount = fileLength / baseChunkSize;
         for (int i = 0; i < workerCount; i++) {
@@ -70,7 +70,7 @@ public class SendFile {
 
                 // 移動到 offset 並依序讀取、傳送
                 raf.seek(offset);
-                byte[] buffer = new byte[8 * 1024 * 1024]; // 8 MB
+                byte[] buffer = new byte[8 * 1024]; // 8 kB
                 int read, remaining = length;
                 while (remaining > 0 && (read = raf.read(buffer, 0, Math.min(buffer.length, remaining))) != -1 && remaining > 0) {
                     dos.write(buffer, 0, read);

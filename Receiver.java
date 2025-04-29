@@ -35,7 +35,7 @@ public class Receiver {
                     int length  = dis.readInt();
 
                     raf.seek(offset);
-                    byte[] buf = new byte[8*1024*1024];
+                    byte[] buf = new byte[8*1024];
                     int  r, rem = length;
                     while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
                         raf.write(buf, 0, r);
