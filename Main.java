@@ -583,7 +583,7 @@ public class Main { // 定義 Main 類別
                     byte[] buffer = new byte[8192]; // 8KB buffer
                     int bytesRead;
                     long totalBytesRead = 0;
-                    while ((bytesRead = fis.read(buffer)) != -1) {
+                    while ((bytesRead = fis.read(buffer)) != -1 && totalBytesRead < file.length()) {
                         dos.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
                         callback.onProgress(bytesRead); // 更新進度
