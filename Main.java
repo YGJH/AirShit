@@ -184,9 +184,7 @@ public class Main { // 定義 Main 類別
 
                     if(state == 0) {
                         clientList.put(tempClient.getUserName() , tempClient);
-                        state = 1;
                     } else {
-                        state = 0;
                         tempClientList.put(tempClient.getUserName() , tempClient);
                     }
                     // Respond directly to the sender (unicast)
@@ -311,7 +309,7 @@ public class Main { // 定義 Main 類別
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(50); // 每 50 millisecond 秒檢查一次
+                    Thread.sleep(500); // 每 50 millisecond 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
@@ -332,6 +330,7 @@ public class Main { // 定義 Main 類別
         multicastHello();
         try{
             Thread.sleep(500+random.nextInt(500)); // sleep for 500ms + random 0-500ms
+            state ^= 1; // 切換狀態
             for(String key : clientList.keySet()) { // 遍歷客戶端哈希表的鍵
                 Client client = clientList.get(key); // 取得客戶端資訊
                 if (client != null) { // 如果客戶端資訊不為空
@@ -353,7 +352,6 @@ public class Main { // 定義 Main 類別
         } catch (Exception e) {
 
         }
-    
     }
 
 }
