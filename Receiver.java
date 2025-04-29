@@ -27,18 +27,19 @@ public class Receiver {
         for (int i = 0; i < chunkCount; i++) {
             Thread handler = new Thread(() -> {
                 try (
-                  Socket sock = serverSocket.accept();
-                  DataInputStream dis = new DataInputStream(sock.getInputStream());
-                  RandomAccessFile raf = new RandomAccessFile(out, "rw")
+                    Socket chunkSock = serverSocket.accept();
+                    DataInputStream chunkIn  = new DataInputStream(chunkSock.getInputStream());
+                    DataOutputStream chunkOut = new DataOutputStream(chunkSock.getOutputStream());
+                    RandomAccessFile raf = new RandomAccessFile(outputFile, "rw")
                 ) {
                     // read exactly what ChunkSender writes:
-                    long offset = dis.readLong();
-                    int length  = dis.readInt();
+                    long offset = chunkIn.readLong();
+                    int length  = chunkIn.readInt();
 
                     raf.seek(offset);
                     byte[] buf = new byte[8*1024*1024];
                     int  r, rem = length;
-                    while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0 && rem > 0) {
+                    while (rem > 0 && (r = chunkIn.read(buf, 0, Math.min(buf.length, rem))) > 0 && rem > 0) {
                         raf.write(buf, 0, r);
                         totalReceived.addAndGet(r);
                         rem -= r;
