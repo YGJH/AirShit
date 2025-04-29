@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
-import java.util.concurrent.ConcurrentHashMap; // 引入 ConcurrentHashMap
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
 

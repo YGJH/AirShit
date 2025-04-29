@@ -158,58 +158,49 @@ public class FileReceiver {
                 // println("已接受檔案傳送。");
 
                 // notify sender to start sending the file
-                // println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
-                    try (Socket ctrlSock = serverSocket.accept();
-                            DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
-                            DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
-                        String[] pp = fileDis.readUTF().split("\\|");
-                        final String fileName = pp[0];
-                        long fileSize = Long.parseLong(pp[1]);
+                    // handle each file in a single accept + read/write pass
+                    String fileName = null;
+                    try (Socket fileSock = serverSocket.accept();
+                         DataInputStream dis2 = new DataInputStream(fileSock.getInputStream());
+                         DataOutputStream dos2 = new DataOutputStream(fileSock.getOutputStream())) {
+
+                        // 1) read file header "name|size"
+                        String[] hdr = dis2.readUTF().split("\\|");
+                        fileName = hdr[0];
+                        long fileSize = Long.parseLong(hdr[1]);
                         println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
-                        // notify sender to start sending the file
-                        dos.writeUTF("ACK");
-                        dos.flush();
-                        ExecutorService executor = Executors.newSingleThreadExecutor();
-                        // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
-                        Future<Boolean> future = executor.submit(() -> {
-                            try {
-                                return Receiver.start(
-                                    serverSocket,
-                                    outPutPath + "\\" + fileName,
-                                    fileSize,
-                                    cb);
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                return false;
+
+                        // 2) ACK so sender begins streaming
+                        dos2.writeUTF("ACK");
+                        dos2.flush();
+
+                        // 3) write bytes to disk
+                        try (RandomAccessFile raf = new RandomAccessFile(
+                                outPutPath + "\\" + fileName, "rw")) {
+                            byte[] buf = new byte[8192];
+                            long received = 0;
+                            while (received < fileSize) {
+                                int r = dis2.read(buf, 0,
+                                      (int)Math.min(buf.length, fileSize - received));
+                                raf.write(buf, 0, r);
+                                received += r;
+                                cb.onProgress(r);
                             }
-                        });
-                        boolean success;
-                        try {
-                            success = future.get();
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt(); // 恢復中斷狀態
-                            success = false;
-                        } catch (ExecutionException ee) {
-                            ee.printStackTrace();
-                            success = false;
-                        } finally {
-                            executor.shutdown();
                         }
 
-                        if (success) {
-                            println("檔案傳輸完成，總共傳送 " + fileSize + " bytes");
-                            dos.writeUTF("OK");
-                            dos.flush();
-                        } else {
-                            System.err.println("檔案接收失敗：" + fileName);
-                            dos.writeUTF("ERROR");
-                            dos.flush();
-                        }
+                        // 4) final OK
+                        dos2.writeUTF("OK");
+                        dos2.flush();
                     } catch (IOException e) {
-                        socket.close();
+                        System.err.println("檔案接收中發生錯誤：" + fileName);
+                        e.printStackTrace();
+                        // delete partial file
+                        if (fileName != null) {
+                            new File(outPutPath + "\\" + fileName).delete();
+                        }
+                        break;
                     }
-
                 }
             } catch (IOException e) {
                 System.err.println("無法連線到 Sender：");
