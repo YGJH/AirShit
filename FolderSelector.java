@@ -2,9 +2,7 @@ package AirShit;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+
 
 public class FolderSelector {
     private static String folderName = null;

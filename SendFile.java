@@ -4,7 +4,6 @@ import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * SendFile: 改成使用 UDP 傳輸檔案分段

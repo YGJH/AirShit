@@ -34,7 +34,7 @@ public class Main { // 定義 Main 類別
         } catch (UnknownHostException e) { // 異常處理：未知主機
             userName = System.getProperty("user" + UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
-        client = new Client(getNonLoopbackIP(), userName, getFreeTCPPort(), DISCOVERY_PORT,
+        client = new Client(getNonLoopbackIP(), userName, getFreeUDPPort(), DISCOVERY_PORT,
         System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
     
@@ -50,6 +50,17 @@ public class Main { // 定義 Main 類別
     }
 
     public static AtomicReference<SEND_STATUS> sendStatus = new AtomicReference<>(SEND_STATUS.SEND_OK); // 建立原子參考變數以追蹤傳送狀態
+    /**
+     * 定義取得空閒 UDP 端口的方法
+     * @return 可用的 UDP 端口號
+     */
+    public static int getFreeUDPPort() {
+        try (DatagramSocket ds = new DatagramSocket(0)) {
+            return ds.getLocalPort();
+        } catch (IOException e) {
+            throw new RuntimeException("No free UDP port available", e);
+        }
+    }
 
     public static String getNonLoopbackIP() {
         try {
@@ -231,16 +242,6 @@ public class Main { // 定義 Main 類別
         }
     }
 
-    public static void sendACK(Socket socket) { // 定義傳送 ACK 訊息的方法
-        try { // 嘗試傳送 ACK
-            OutputStream os = socket.getOutputStream(); // 取得連線的輸出串流
-            os.write("ACK".getBytes("UTF-8")); // 傳送 ACK 訊息的位元組資料
-            os.flush(); // 清空輸出串流
-            System.out.println("ACK 已傳送到 " + socket.getInetAddress() + ":" + socket.getPort()); // 輸出 ACK 訊息傳送資訊
-        } catch (IOException e) { // 捕捉 I/O 異常
-            e.printStackTrace(); // 列印異常資訊
-        }
-    }
 
     public static void main(String[] args) { // 主方法，程式入口點
         // 1) Force JVM encoding to UTF‑8
@@ -284,8 +285,13 @@ public class Main { // 定義 Main 類別
             @Override
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
+                totalReceived.set(0);
+                SwingUtilities.invokeLater(() -> {
+                    SendFileGUI.receiveProgressBar.setVisible(true);
+                    SendFileGUI.receiveProgressBar.setString("Receiving file...");
+                    SendFileGUI.receiveProgressBar.setStringPainted(true);
+                    SendFileGUI.receiveProgressBar.setIndeterminate(false);
+                });
             }
             @Override
             public void onProgress(long bytesTransferred) {
@@ -294,8 +300,16 @@ public class Main { // 定義 Main 類別
                     int pct = (int)(cumul*100/totalBar);
                     SendFileGUI.receiveProgressBar.setValue((int)pct);
                     if (pct % 10 == 0) {
-                        GUI.log("%%rProgress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
+                        GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
+                });
+            }
+            @Override
+            public void onComplete() {
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(GUI, "Files receive successfully!", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
+                    GUI.log("File received successfully!");
+                    SendFileGUI.receiveProgressBar.setVisible(false);
                 });
             }
             @Override
