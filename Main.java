@@ -467,40 +467,46 @@ public class Main { // 定義 Main 類別
                     // notify sender to start sending the file
                     println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                     for (int i = 0; i < fileCount; i++) {
-                        try (Socket ctrlSock = serverSocket.accept();
-                                DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
-                                DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
-                            String[] pp = fileDis.readUTF().split("\\|");
-                            final String fileName = pp[0];
-                            long fileSize = Long.parseLong(pp[1]);
-                            println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
-                            // notify sender to start sending the file
-                            dos.writeUTF("ACK");
-                            dos.flush();
-                            // receive the file
-                            File file = new File(outPutPath + "\\" + fileName);
-                            try (FileOutputStream fos = new FileOutputStream(file)) {
-                                byte[] buf = new byte[8192];
-                                long   recv = 0;
-                                while (recv < fileSize) {
-                                    int r = dis.read(buf,0,(int)Math.min(buf.length, fileSize-recv));
-                                    fos.write(buf,0,r);
-                                    recv += r;
-                                    cb.onProgress(r);
+                        try ( Socket sock = serverSocket.accept();
+                              DataInputStream  dis = new DataInputStream(sock.getInputStream());
+                              DataOutputStream dos = new DataOutputStream(sock.getOutputStream()) ) {
+                            // --- 1) handshake ---
+                            String handshake = dis.readUTF();
+                            String[] header = handshake.split("\\|");
+                            String  fname = header[0];
+                            long    fsize = Long.parseLong(header[1]);
+                            // cb.onStart(totalSize); // 開始接收檔案
+                            // send accept message to sender
+                            dos.writeUTF("ACK");  dos.flush();
+                            // --- 2) for each file, 直接在同一條連線上連續送 header + data + 等 OK ---
+                            for (FileInfo fi : filesToReceive) {
+                                // a) 讀 header "filename|size"
+                                String[] h = dis.readUTF().split("\\|");
+                                String  fileName = h[0];
+                                long    fileSize = Long.parseLong(h[1]);
+                                // b) 回 ACK
+                                dos.writeUTF("ACK");  dos.flush();
+                                // c) 寫檔
+                                try ( FileOutputStream fos = new FileOutputStream(outputDir + "\\" + fileName) ) {
+                                    byte[] buf = new byte[8192];
+                                    long   recv = 0;
+                                    while (recv < fileSize) {
+                                        int r = dis.read(buf,0,(int)Math.min(buf.length, fileSize-recv));
+                                        fos.write(buf,0,r);
+                                        recv += r;
+                                        cb.onProgress(r);
+                                    }
                                 }
-                                                    println("檔案接收完成：" + fileName);
-                            } catch (IOException e) {
-                                System.err.println("檔案接收失敗：" + fileName);
-                                e.printStackTrace();
+                                // d) 等對方傳回 "OK"
+                                if (!"OK".equals(dis.readUTF())) {
+                                    throw new IOException("Receiver aborted");
+                                }
                             }
-                            // send ACK to sender
-                            dos.writeUTF("OK");
-                            dos.flush();
-
+                            // 全部檔案收完，回到最頂端繼續下一次 handshake
                         } catch (IOException e) {
-                            socket.close();
+                            System.err.println("檔案接收失敗：");
+                            e.printStackTrace();
                         }
-
                     }
                 } catch (IOException e) {
                     System.err.println("無法連線到 Sender：");
