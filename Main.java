@@ -485,8 +485,8 @@ public class Main { // 定義 Main 類別
                 } catch (Exception e) {
 
                 }
+                Main.sendStatus.set(SEND_STATUS.SEND_OK);
             }
-            Main.sendStatus.set(SEND_STATUS.SEND_OK);
         }
     }
 
