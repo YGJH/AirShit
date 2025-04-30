@@ -468,11 +468,11 @@ public class Main { // 定義 Main 類別
                     println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                     for (int i = 0; i < fileCount; i++) {
                         try ( Socket sock = serverSocket.accept();
-                              DataInputStream  dis = new DataInputStream(sock.getInputStream());
+                              DataInputStream  ddis = new DataInputStream(sock.getInputStream());
                               DataOutputStream dos = new DataOutputStream(sock.getOutputStream()) ) {
                             // --- 1) handshake ---
-                            String handshake = dis.readUTF();
-                            String[] header = handshake.split("\\|");
+                            String han = ddis.readUTF();
+                            String[] header = han.split("\\|");
                             String  fname = header[0];
                             long    fsize = Long.parseLong(header[1]);
                             // cb.onStart(totalSize); // 開始接收檔案
@@ -497,10 +497,10 @@ public class Main { // 定義 Main 類別
                                         cb.onProgress(r);
                                     }
                                 }
-                                // d) 等對方傳回 "OK"
-                                if (!"OK".equals(dis.readUTF())) {
-                                    throw new IOException("Receiver aborted");
-                                }
+
+                                dos.write("OK".getBytes()); // 傳送 OK 訊息
+                                dos.flush(); // 清空輸出串流
+                                println("檔案接收完成：" + fileName + " (" + fileSize + " bytes)");
                             }
                             // 全部檔案收完，回到最頂端繼續下一次 handshake
                         } catch (IOException e) {
