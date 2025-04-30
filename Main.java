@@ -479,7 +479,7 @@ public class Main { // 定義 Main 類別
                             // send accept message to sender
                             dos.writeUTF("ACK");  dos.flush();
                             // --- 2) for each file, 直接在同一條連線上連續送 header + data + 等 OK ---
-                            for (FileInfo fi : filesToReceive) {
+                            for (int j = 0 ; j < fileCount ; j++) {
                                 // a) 讀 header "filename|size"
                                 String[] h = dis.readUTF().split("\\|");
                                 String  fileName = h[0];
@@ -487,7 +487,7 @@ public class Main { // 定義 Main 類別
                                 // b) 回 ACK
                                 dos.writeUTF("ACK");  dos.flush();
                                 // c) 寫檔
-                                try ( FileOutputStream fos = new FileOutputStream(outputDir + "\\" + fileName) ) {
+                                try ( FileOutputStream fos = new FileOutputStream(outputFilePath + "\\" + fileName) ) {
                                     byte[] buf = new byte[8192];
                                     long   recv = 0;
                                     while (recv < fileSize) {
