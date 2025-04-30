@@ -456,18 +456,15 @@ public class Main { // 定義 Main 類別
                         long fsize = Long.parseLong(header[1]);
                         // cb.onStart(totalSize); // 開始接收檔案
                         // send accept message to sender
-                        String[] h = dis.readUTF().split("\\|");
-                        String fileName = h[0];
-                        long fileSize = Long.parseLong(h[1]);
                         // b) 回 ACK
                         dos.writeUTF("ACK");
                         dos.flush();
                         // c) 寫檔
-                        try (FileOutputStream fos = new FileOutputStream(outputFilePath + "\\" + fileName)) {
+                        try (FileOutputStream fos = new FileOutputStream(outputFilePath + "\\" + fname)) {
                             byte[] buf = new byte[8192];
                             long recv = 0;
-                            while (recv < fileSize) {
-                                int r = dis.read(buf, 0, (int) Math.min(buf.length, fileSize - recv));
+                            while (recv < fsize) {
+                                int r = dis.read(buf, 0, (int) Math.min(buf.length, fsize - recv));
                                 fos.write(buf, 0, r);
                                 recv += r;
                                 cb.onProgress(r);
