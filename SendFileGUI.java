@@ -288,6 +288,9 @@ public class SendFileGUI extends JFrame {
             @Override
             public void onStart(long totalBytes) {
                 totalbar = totalBytes;
+                sentSoFar = 0;
+                sendProgressBar.setVisible(true);
+                SwingUtilities.invokeLater(() -> sendProgressBar.setValue(0));
                 SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
             }
             @Override
@@ -298,7 +301,7 @@ public class SendFileGUI extends JFrame {
                     int pct = (int)(cumul*100/totalSize);
                     sendProgressBar.setValue(pct);
                     if (pct % 10 == 0) {
-                        log("%%rProgress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                        log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
                     }
                 });
             }
