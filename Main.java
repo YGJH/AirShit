@@ -474,7 +474,7 @@ public class Main { // 定義 Main 類別
                             e.printStackTrace();
                         }
 
-                        dos.writeUTF("OK".getBytes()); // 傳送 OK 訊息
+                        dos.writeUTF("OK"); // 傳送 OK 訊息
                         dos.flush(); // 清空輸出串流
                     }
                     // 全部檔案收完，回到最頂端繼續下一次 handshake
