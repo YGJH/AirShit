@@ -470,13 +470,11 @@ public class Main { // 定義 Main 類別
                                 cb.onProgress(r);
                             }
                         } catch (IOException e) {
-                            System.err.println("檔案接收失敗：" + fileName);
                             e.printStackTrace();
                         }
 
                         dos.write("OK".getBytes()); // 傳送 OK 訊息
                         dos.flush(); // 清空輸出串流
-                        println("檔案接收完成：" + fileName + " (" + fileSize + " bytes)");
                     }
                     // 全部檔案收完，回到最頂端繼續下一次 handshake
                 } catch (Exception e) {
