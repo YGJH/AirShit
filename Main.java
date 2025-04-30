@@ -454,6 +454,7 @@ public class Main { // 定義 Main 類別
                         String[] header = han.split("\\|");
                         String fname = header[0];
                         long fsize = Long.parseLong(header[1]);
+                        println("檔案名稱：" + fname + ", 檔案大小：" + fsize + " bytes");
                         // cb.onStart(totalSize); // 開始接收檔案
                         // send accept message to sender
                         // b) 回 ACK
@@ -473,7 +474,7 @@ public class Main { // 定義 Main 類別
                             e.printStackTrace();
                         }
 
-                        dos.write("OK".getBytes()); // 傳送 OK 訊息
+                        dos.writeUTF("OK".getBytes()); // 傳送 OK 訊息
                         dos.flush(); // 清空輸出串流
                     }
                     // 全部檔案收完，回到最頂端繼續下一次 handshake
@@ -562,6 +563,7 @@ public class Main { // 定義 Main 類別
                 }
                 response = dis.readUTF();
                 if ("OK".equals(response)) {
+                    println("檔案傳送成功：" + fileName);
                     continue;
                 }
 
