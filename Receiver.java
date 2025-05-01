@@ -22,10 +22,10 @@ public class Receiver {
 
         ExecutorService pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         File out = new File(outputFile);
-        long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB /
+        // long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB /
                                                                                                                 // 8
         // spawn one handler per chunk
-        long chunkCount = (long) Math.ceil((double) fileLength / baseChunkSize);
+        long chunkCount = (long) Math.ceil((double) fileSize / 5L * 1024 * 1024);
         AtomicLong totalReceived = new AtomicLong(0);
         for (int i = 0; i < chunkCount; i++) {
             for(int j = 0 ; j < Runtime.getRuntime().availableProcessors() ; j++) {
