@@ -34,7 +34,7 @@ public class SendFile {
         long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB / 8
         long workerCount   = (long) Math.ceil((double) fileLength / 8); // 向上取整
         // 建立固定大小 ThreadPool
-        println(workerCount);
+        // println(workerCount);
         ExecutorService pool = Executors.newFixedThreadPool((int)Runtime.getRuntime().availableProcessors());
 
         // submit 每個 chunk 處理
