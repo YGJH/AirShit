@@ -280,17 +280,18 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setVisible(true);
         sendProgressBar.setValue(0);
 
-        long totalSize = Arrays.stream(selectedFiles)
+        final long totalSize = Arrays.stream(selectedFiles)
                                .mapToLong(File::length)
                                .sum();
                                
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
-            long totalbar = 0;
             @Override
             public void onStart(long totalBytes) {
-                totalbar = totalBytes;
+                sentSoFar.set(0);
                 SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
+                SwingUtilities.invokeLater(() -> sendProgressBar.setVisible(true));
+                SwingUtilities.invokeLater(() -> sendProgressBar.setValue(0));
             }
             @Override
             public void onProgress(long bytesTransferred) {
@@ -299,9 +300,18 @@ public class SendFileGUI extends JFrame {
                     int pct = (int)(cumul*100/totalSize);
                     sendProgressBar.setValue(pct);
                     if (pct % 10 == 0) {
-                        log("%%rProgress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                        log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
                     }
                 });
+            }
+            @Override
+            public void @Override
+            public void onComplete() {
+                SwingUtilities.invokeLater(() -> {
+                    log("File transfer complete.");
+                    sendButton.setEnabled(true);
+                    sendProgressBar.setVisible(false);
+                });    
             }
             @Override
             public void onError(Exception e) {

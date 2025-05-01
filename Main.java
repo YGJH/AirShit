@@ -285,8 +285,10 @@ public class Main { // 定義 Main 類別
             @Override
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
+                totalReceived.set(0);
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setValue((int)0));
             }
             @Override
             public void onProgress(long bytesTransferred) {
@@ -295,8 +297,15 @@ public class Main { // 定義 Main 類別
                     int pct = (int)(cumul*100/totalBar);
                     SendFileGUI.receiveProgressBar.setValue((int)pct);
                     if (pct % 10 == 0) {
-                        GUI.log("%%rProgress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
+                        GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
+                });
+            }
+            @Override
+            public void onComplete() {
+                SwingUtilities.invokeLater(() -> {
+                    GUI.log("Transfer complete");
+                    SendFileGUI.receiveProgressBar.setVisible(false);
                 });
             }
             @Override
