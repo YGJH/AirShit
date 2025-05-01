@@ -305,7 +305,6 @@ public class SendFileGUI extends JFrame {
                 });
             }
             @Override
-            public void @Override
             public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
                     log("File transfer complete.");
