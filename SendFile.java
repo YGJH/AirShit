@@ -32,13 +32,14 @@ public class SendFile {
         // long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB / 8
         // long workerCount   = fileLength / baseChunkSize ;
         long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB / 8
-        long workerCount   = (long) Math.ceil((double) fileLength / baseChunkSize); // 向上取整
+        long workerCount   = (long) Math.ceil((double) fileLength / 8); // 向上取整
         // 建立固定大小 ThreadPool
+        println(workerCount);
         ExecutorService pool = Executors.newFixedThreadPool((int)Runtime.getRuntime().availableProcessors());
 
         // submit 每個 chunk 處理
         for(int j = 0 ; j < workerCount ; j++)
-            for (int i = 0; i < baseChunkSize; i++) {
+            for (int i = 0; i < 8; i++) {
                 long offset = i * baseChunkSize + j * baseChunkSize;
                 // 檢查是否超出檔案大小
                 if (offset >= file.length()) {
