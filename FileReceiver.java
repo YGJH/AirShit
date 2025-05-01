@@ -168,6 +168,11 @@ public class FileReceiver {
                         long fileSize = Long.parseLong(pp[1]);
                         println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                         // notify sender to start sending the file
+                        File tmp = new File(outPutPath + "\\" + fileName);
+                        if(tmp.exists()) {
+                            tmp.delete();
+                        }
+                        
                         dos.writeUTF("ACK");
                         dos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();

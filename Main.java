@@ -59,7 +59,7 @@ public class Main { // 定義 Main 類別
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vmware"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
@@ -95,7 +95,7 @@ public class Main { // 定義 Main 類別
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter"))
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vmware"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
