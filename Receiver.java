@@ -16,43 +16,45 @@ public class Receiver {
     }
 
     public static boolean start(ServerSocket serverSocket,
-            String outputFile,
-            long fileSize,
+            String outputFile, 
+            long fileSize,int threadCount,
             TransferCallback cb) throws IOException {
 
-        ExecutorService pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         File out = new File(outputFile);
-        long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB /
+        // long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / threadCount; // 5MB /
                                                                                                                 // 8
         // spawn one handler per chunk
-        long chunkCount = fileSize / baseChunkSize;
+        long chunkCount = fileSize / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
         AtomicLong totalReceived = new AtomicLong(0);
         for (int i = 0; i < chunkCount; i++) {
-            pool.submit(() -> {
-                try (
-                        Socket sock = serverSocket.accept();
-                        DataInputStream dis = new DataInputStream(sock.getInputStream());
-                        RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-                    long offset = dis.readLong();
-                    int length = dis.readInt();
-
-                    raf.seek(offset);
-                    byte[] buf = new byte[8 * 1024]; // 8 KB 緩衝改小
-                    int r, rem = length;
-                    while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
-                        raf.write(buf, 0, r);
-                        totalReceived.addAndGet(r);
-                        rem -= r;
-                        if (cb != null)
-                            cb.onProgress(r);
+            for(int j = 0; j < threadCount; j++) {
+                pool.submit(() -> {
+                    try (
+                            Socket sock = serverSocket.accept();
+                            DataInputStream dis = new DataInputStream(sock.getInputStream());
+                            RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
+                        long offset = dis.readLong();
+                        int length = dis.readInt();
+    
+                        raf.seek(offset);
+                        byte[] buf = new byte[8 * 1024]; // 8 KB 緩衝改小
+                        int r, rem = length;
+                        while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
+                            raf.write(buf, 0, r);
+                            totalReceived.addAndGet(r);
+                            rem -= r;
+                            if (cb != null)
+                                cb.onProgress(r);
+                        }
+                        // println("Chunk: " + offset + ", length: " + length);
+                    } catch (IOException e) {
+                        System.err.println("Handler 發生錯誤：");
+                        out.delete();
+                        e.printStackTrace();
                     }
-                    // println("Chunk: " + offset + ", length: " + length);
-                } catch (IOException e) {
-                    System.err.println("Handler 發生錯誤：");
-                    out.delete();
-                    e.printStackTrace();
-                }
-            });
+                });
+            }
         }
 
         pool.shutdown();

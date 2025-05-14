@@ -21,6 +21,7 @@ public class FileSender {
         // handshake
         StringBuilder sb = new StringBuilder();
         long totalSize = 0;
+        int threadCount = Runtime.getRuntime().availableProcessors(); // 硬體執行緒數量
         boolean isSingleFile = files.length == 1;
         if(isSingleFile) {
             sb.append("isSingle|");
@@ -34,7 +35,7 @@ public class FileSender {
             }
             sb.append("|").append(totalSize);
         }
-
+        sb.append("|"+(threadCount)); // 硬體執行緒數量
         // 連線到 Receiver
         try (Socket socket = new Socket(host, port);
              DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
@@ -45,7 +46,11 @@ public class FileSender {
             println("傳送 handshake 訊息： " + sb.toString());
             // 等待 Receiver 確認接收檔案
             String response = dis.readUTF();
-            if (response.equals("ACK")) {
+            
+            if (response.startsWith("ACK")) {
+                String thread = response.split("\\|")[1];
+                int tmp = Integer.parseInt(thread); // 硬體執行緒數量
+                threadCount = Math.min(threadCount , tmp); // 硬體執行緒數量
                 println("Receiver 確認接收檔案。");
             } else {
                 System.err.println("Receiver 無法接收檔案，請稍後再試。");
@@ -83,7 +88,7 @@ public class FileSender {
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
                 SendFile sendFile = new SendFile(
-                    host, port, file, callback);
+                    host, port, file,threadCount, callback);
                 sendFile.start();
 
                 response = dis.readUTF();

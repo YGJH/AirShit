@@ -56,12 +56,14 @@ public class FileReceiver {
                 // isSingle|SenderUserName|file.getName()|file.length();
                 // isMulti|SenderUserName|folderName|file.getName()|file.length();
                 println("接收到 handshake 訊息： " + handshake);
+                int receiveThreads = 0;
                 if (parts[0].equals("isSingle")) {
                     isSingle = true;
                     senderUserName = parts[1];
                     fileCount = 1;
                     fileNames = parts[2];
                     totalSize = Long.parseLong(parts[3]);
+                    receiveThreads = Integer.parseInt(parts[4]);
                     sb.append(fileNames);
                     println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
                             + totalSize);
@@ -69,7 +71,8 @@ public class FileReceiver {
                     senderUserName = parts[1];
                     folderName = parts[2];
                     fileCount = parts.length - 4;
-                    totalSize = Long.parseLong(parts[parts.length - 1]);
+                    totalSize = Long.parseLong(parts[parts.length - 2]);
+                    receiveThreads = Integer.parseInt(parts[parts.length - 1]);
                     for (int i = 3; i < parts.length - 1; i++) {
                         sb.append(parts[i]).append("\n");
                     }
@@ -144,11 +147,12 @@ public class FileReceiver {
                         println("已建立資料夾：" + folderName);
                     }
                 }
+                final int threadCount = Math.min(receiveThreads, Runtime.getRuntime().availableProcessors()); // 硬體執行緒數量
                 // send accept message to sender
                 cb.onStart(totalSize); // 開始接收檔案
                 Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                    dos.writeUTF("ACK");
+                    dos.writeUTF("ACK" + threadCount);
                     dos.flush();
                 } catch (IOException e) {
                     System.err.println("無法與 Sender 通訊：");
@@ -182,7 +186,7 @@ public class FileReceiver {
                                 return Receiver.start(
                                     serverSocket,
                                     outPutPath + "\\" + fileName,
-                                    fileSize,
+                                    fileSize, threadCount,
                                     cb);
                             } catch (IOException e) {
                                 e.printStackTrace();

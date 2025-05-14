@@ -19,21 +19,22 @@ public class SendFile {
     private final File file;
     // private final AtomicLong totalSent = new AtomicLong(0);
     private final TransferCallback callback;
-
-    public SendFile(String host, int port, File file, TransferCallback callback) {
+    private final int threadCount;
+    public SendFile(String host, int port, File file , int threadCount, TransferCallback callback) {
         this.callback = callback;
         this.host = host;
         this.port = port;
         this.file = file;
+        this.threadCount = threadCount;
     }
 
     public void start() throws IOException, InterruptedException {
         long fileLength    = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / Runtime.getRuntime().availableProcessors(); // 5MB / 8
-        long workerCount   = fileLength / baseChunkSize ;
+        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / this.threadCount; // 5MB / 8
+        long workerCount   = fileLength / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
 
         // 建立固定大小 ThreadPool
-        ExecutorService pool = Executors.newFixedThreadPool((int)Runtime.getRuntime().availableProcessors());
+        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
 
         // submit 每個 chunk 處理
         for (int i = 0; i < workerCount; i++) {

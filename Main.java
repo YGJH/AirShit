@@ -67,6 +67,7 @@ public class Main { // 定義 Main 類別
                             && !addr.isLinkLocalAddress()) {
                         System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": "
                                 + addr.getHostAddress());
+                            System.out.println(name);
                         return addr.getHostAddress();
                     }
                 }
