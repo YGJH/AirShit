@@ -20,14 +20,19 @@ public class Receiver {
             long fileSize,int threadCount,
             TransferCallback cb) throws IOException {
 
-        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
-        File out = new File(outputFile);
-        // long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / threadCount; // 5MB /
-                                                                                                                // 8
+
+                File out = new File(outputFile);
+        System.out.println("outputFile: " + outputFile);
         // spawn one handler per chunk
-        long chunkCount = fileSize / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
-        AtomicLong totalReceived = new AtomicLong(0);
-        for (int i = 0; i < chunkCount; i++) {
+        // long fileLength    = file.length();
+        // long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / this.threadCount; // 5MB / 8
+        // long workerCount   = fileLength / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
+
+        long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / threadCount; // 5MB / 8
+        long workerCount = fileSize / baseChunkSize + 1; // 每個 chunk 大小為 5MB
+        // 建立固定大小 ThreadPool
+        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+        for (int i = 0; i < workerCount; i++) {
             for(int j = 0; j < threadCount; j++) {
                 pool.submit(() -> {
                     try (
