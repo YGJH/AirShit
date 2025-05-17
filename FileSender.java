@@ -114,7 +114,7 @@ public class FileSender {
 
                 response = dis.readUTF();
                 println(response);
-                if (!"ACK".equals(response)) {
+                if (!"OK".equals(response)) {
                     System.err.println("Receiver 無法接收檔案：" + fileName);
                     callback.onError(new IOException("Receiver 無法接收檔案：" + fileName));
                     return;
