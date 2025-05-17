@@ -26,9 +26,11 @@ public class FileSender {
         long totalSize = 0;
         int threadCount = Runtime.getRuntime().availableProcessors(); // 硬體執行緒數量
         boolean isSingleFile = files.length == 1;
+        // System.out.println("folderName: " + fatherDir+"\\"+folderName+"\\"+files[0]);
         if(isSingleFile) {
             sb.append("isSingle|");
-            sb.append(SenderUserName).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).getName()).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).length());
+            sb.append(SenderUserName).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).getName());
+            totalSize = new File(fatherDir+"\\"+folderName+"\\"+files[0]).length();
         } else {
             sb.append("isMulti|");
             sb.append(SenderUserName + "|" + folderName);
@@ -37,7 +39,19 @@ public class FileSender {
                 totalSize += f.length();
                 sb.append("|").append(f.getName());
             }
-            sb.append("|").append(totalSize);
+        }
+        sb.append("|");
+        if(totalSize > 1024*1024*1024) {
+            totalSize = totalSize / (1024*1024*1024);
+            sb.append(totalSize + "  GB");
+        } else if(totalSize > 1024*1024) {
+            totalSize = totalSize / (1024*1024);
+            sb.append(totalSize + " MB");
+        } else if(totalSize > 1024) {
+            totalSize = totalSize / (1024);
+            sb.append(totalSize + " KB");
+        } else {
+            sb.append(totalSize + " B");
         }
         sb.append("|"+(threadCount)); // 硬體執行緒數量
         // 連線到 Receiver
@@ -63,7 +77,7 @@ public class FileSender {
 
         } catch (IOException e) {
             System.err.println("無法連線到 Receiver：");
-            e.printStackTrace();
+            // e.printStackTrace();
             return;
         }
 
@@ -72,7 +86,7 @@ public class FileSender {
         for (String filePath : files) {
             // notify user
             File file = new File(fatherDir+"\\"+folderName+"\\"+filePath);
-            String fileName = file.getName();
+            String fileName = filePath;
             String fileSize = String.valueOf(file.length());
             try (Socket socket2 = new Socket(host, port);
                 DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());

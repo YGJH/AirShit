@@ -10,13 +10,13 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class FolderSelector {
-    private static String folderName = null;
+    // private static String folderName = null;
 
 
 
-    public static String getFolderName() {
-        return folderName;
-    }
+    // public static String getFolderName() {
+    //     return folderName;
+    // }
     public static void println(String str) {
         System.out.println(str);
     }
@@ -39,7 +39,6 @@ public class FolderSelector {
         System.out.println(result);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFileOrFolder = chooser.getSelectedFile();
-            folderName = selectedFileOrFolder.getAbsolutePath(); // Store the full path
             if(selectedFileOrFolder != null) {
                 return selectedFileOrFolder;
             }
@@ -112,9 +111,8 @@ public class FolderSelector {
         int result = chooser.showOpenDialog(null);
         if (result == JFileChooser.APPROVE_OPTION) {
             File folder = chooser.getSelectedFile();
-            folderName = folder.getAbsolutePath();
 
-            return folderName;
+            return folder.getAbsolutePath();
         } else {
             // 使用者按了「取消」或關閉視窗
             return null;

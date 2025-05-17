@@ -24,6 +24,7 @@ public class SendFileGUI extends JFrame {
     private JButton sendButton;
     private JButton refreshButton;
     private String[] selectedFiles;
+    private String folderName;
     public File fatherDir;
     private Timer refreshTimer;
     private JScrollPane fiScrollPane;
@@ -257,6 +258,7 @@ public class SendFileGUI extends JFrame {
         File selectedFile;
         selectedFile = FolderSelector.selectFolderOrFiles(null);
         fatherDir = selectedFile.getParentFile();
+        folderName = selectedFile.getName();
         if (selectedFile == null) {
             log("No file selected");
             return;
@@ -304,7 +306,7 @@ public class SendFileGUI extends JFrame {
 
         final long totalSize = Arrays.stream(selectedFiles)
                                .mapToLong(file -> {
-                                   File f = new File(fatherDir, file);
+                                   File f = new File(fatherDir+"\\"+folderName+"\\"+ file);
                                    if (f.exists()) {
                                        return f.length();
                                    } else {
@@ -313,6 +315,8 @@ public class SendFileGUI extends JFrame {
                                    }
                                })
                                .sum();
+
+        System.out.println("folderName: " + folderName);
             
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
@@ -363,7 +367,7 @@ public class SendFileGUI extends JFrame {
                 sender.sendFiles(
                     selectedFiles,
                     Main.getClient().getUserName(),
-                    FolderSelector.getFolderName(),
+                    folderName,
                     callback
                 );
             } catch (Exception e) {
