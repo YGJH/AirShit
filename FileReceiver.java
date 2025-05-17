@@ -74,7 +74,7 @@ public class FileReceiver {
                     senderUserName = parts[1];
                     folderName = parts[2];
                     fileCount = parts.length - 4;
-                    totalSize = Integer.parseInt(parts[parts.length - 3]);
+                    totalSize = Long.parseLong(parts[parts.length - 3]);
                     totalSizeStr = (parts[parts.length - 2]);
                     receiveThreads = Integer.parseInt(parts[parts.length - 1]);
                     for (int i = 3; i < parts.length - 3; i++) {
@@ -217,7 +217,7 @@ public class FileReceiver {
                         } finally {
                             executor.shutdown();
                         }
-
+                        
                         if (success) {
                             println("檔案傳輸完成，總共傳送 " + fileSize + " bytes");
                             dos.writeUTF("OK");
@@ -230,7 +230,8 @@ public class FileReceiver {
                     } catch (IOException e) {
                         socket.close();
                     }
-
+                    cb.complete(true);
+                    
                 }
             } catch (IOException e) {
                 System.err.println("無法連線到 Sender：");
@@ -239,5 +240,5 @@ public class FileReceiver {
             Main.sendStatus.set(SEND_STATUS.SEND_OK);
         }
     }
-
+    
 }

@@ -8,6 +8,8 @@ import AirShit.Main.SEND_STATUS;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -349,7 +351,11 @@ public class SendFileGUI extends JFrame {
             @Override
             public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    log("Error: " + e.getMessage());
+                    // 先印到 log 裡
+                    log("Error: " + e);              // 印 e.toString() 而不是 e.getMessage()
+                    StringWriter sw = new StringWriter();
+                    e.printStackTrace(new PrintWriter(sw));
+                    log(sw.toString());               // 把 stack‐trace 也印進 log
                     sendButton.setEnabled(true);
                     sendProgressBar.setVisible(false);
                 });
