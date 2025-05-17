@@ -184,6 +184,7 @@ public class FileReceiver {
                         dos.writeUTF("ACK");
                         dos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
+                        System.out.println("開始接收檔案：" + fileName);
                         // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
                         Future<Boolean> future = executor.submit(() -> {
                             try {
