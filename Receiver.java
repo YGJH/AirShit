@@ -6,88 +6,63 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 public class Receiver {
-    private ServerSocket serverSocket;
-    
-    public static void println(String a) {
-        System.out.println(a);
+    private final ServerSocket serverSocket;
+    public Receiver(ServerSocket ss) {
+        this.serverSocket = ss;
     }
-    public Receiver(ServerSocket serverSocket) throws IOException {
-        this.serverSocket = serverSocket;
-    }
-    public boolean start(
-            String outputFile,
-            long fileLength, int threadCount,
-            TransferCallback cb) throws IOException {
+    public boolean start(String outputFile,
+                         long fileLength,
+                         int threadCount,
+                         TransferCallback cb) throws IOException {
         File out = new File(outputFile);
-
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024 * 1024);
-        long workerCount = (long)Math.ceil((double)fileLength / (double)baseChunkSize);
-        int chunkSize = (int)Math.ceil((double)baseChunkSize / (double)threadCount);
-
-        // 3) 建一个固定 threadCount 的 pool
-        long alreadySubbmitted = 0;
+        // 计算要分多少 worker（chunk）就不展开了…
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
-        for (int i = 0; i < workerCount; i++) {
-            long processing = Math.min(baseChunkSize, fileLength - alreadySubbmitted);
-            for (int j = 0; j < threadCount; j++) {
-                long offset = j * chunkSize + alreadySubbmitted;
-                int tempChunkSize = (j == threadCount - 1) ? (int)(processing - offset) : (int)chunkSize;
-                pool.submit(new ChunkReceiver(offset, tempChunkSize , serverSocket.accept() , out, cb));
+        for (int w = 0; w < workerCount; w++) {
+            for (int t = 0; t < threadCount; t++) {
+                // accept data‐connection
+                Socket dataSock = serverSocket.accept();
+                pool.submit(new ChunkReceiver(dataSock, out, cb));
             }
-            alreadySubbmitted += processing;
         }
         pool.shutdown();
-        try {
-            // 等所有 chunk 都完成
-            if (!pool.awaitTermination(10000, TimeUnit.MINUTES)) {
-                pool.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            pool.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-
+        pool.awaitTermination(1, TimeUnit.HOURS);
         return true;
     }
 
-    private class ChunkReceiver implements Runnable {
-        private final long offset;
-        private final int length;
+    private static class ChunkReceiver implements Runnable {
         private final Socket socket;
-        private final File out;
+        private final File   out;
         private final TransferCallback cb;
-        public ChunkReceiver(long offset, int length, Socket socket, File out, TransferCallback cb) {
-            this.offset = offset;
-            this.length = length;
+
+        public ChunkReceiver(Socket socket, File out, TransferCallback cb) {
             this.socket = socket;
-            this.out = out;
-            this.cb = cb;
+            this.out    = out;
+            this.cb     = cb;
         }
 
         @Override
         public void run() {
             try (
-                    DataInputStream dis = new DataInputStream(socket.getInputStream());
-                    RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-                // 先讀 ChunkSender 寄來的 header
-                raf.seek(offset);
-                byte[] buf = new byte[8 * 1024];
-                int rem = length;
-                int r = 0;
+              DataInputStream dis = new DataInputStream(socket.getInputStream());
+              RandomAccessFile raf = new RandomAccessFile(out, "rw")
+            ) {
+                // 1) 先从 client 端 header 读出实际 offset/length
+                long offset = dis.readLong();
+                int length  = dis.readInt();
+                raf.seek(offset);              // 绝对安全，不会负数
+
+                // 2) 再按 length 读数据
+                byte[] buf = new byte[8*1024];
+                int rem = length, r;
                 while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
                     raf.write(buf, 0, r);
                     rem -= r;
-                    if (cb != null)
-                        cb.onProgress(r);
+                    if (cb != null) cb.onProgress(r);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                System.err.println("Handler 發生錯誤：");
-                out.delete();
             }
         }
     }
-
 }
