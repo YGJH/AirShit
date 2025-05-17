@@ -230,7 +230,6 @@ public class FileReceiver {
                     } catch (IOException e) {
                         socket.close();
                     }
-                    cb.onComplete();
                     
                 }
             } catch (IOException e) {
@@ -238,6 +237,8 @@ public class FileReceiver {
                 e.printStackTrace();
             }
             Main.sendStatus.set(SEND_STATUS.SEND_OK);
+            cb.onComplete();
+
         }
     }
     
