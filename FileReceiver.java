@@ -156,7 +156,7 @@ public class FileReceiver {
                 cb.onStart(totalSize); // 開始接收檔案
                 Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                    dos.writeUTF("ACK" + threadCount);
+                    dos.writeUTF("ACK|" + threadCount);
                     dos.flush();
                 } catch (IOException e) {
                     System.err.println("無法與 Sender 通訊：");

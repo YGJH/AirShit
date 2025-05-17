@@ -41,16 +41,17 @@ public class FileSender {
             }
         }
         sb.append("|").append(totalSize);
+        long totalSize2 = totalSize;
         sb.append("|");
         if(totalSize > 1024*1024*1024) {
-            totalSize = totalSize / (1024*1024*1024);
-            sb.append(totalSize + "  GB");
+            totalSize2 = totalSize / (1024*1024*1024);
+            sb.append(totalSize2 + "  GB");
         } else if(totalSize > 1024*1024) {
-            totalSize = totalSize / (1024*1024);
-            sb.append(totalSize + " MB");
+            totalSize2 = totalSize / (1024*1024);
+            sb.append(totalSize2 + " MB");
         } else if(totalSize > 1024) {
-            totalSize = totalSize / (1024);
-            sb.append(totalSize + " KB");
+            totalSize2 = totalSize / (1024);
+            sb.append(totalSize2 + " KB");
         } else {
             sb.append(totalSize + " B");
         }
@@ -85,14 +86,16 @@ public class FileSender {
         callback.onStart(totalSize);
         int cnt = files.length;
         for (String filePath : files) {
+            System.out.println("開始傳送檔案：" + filePath);
             // notify user
             File file = new File(fatherDir+"\\"+folderName+"\\"+filePath);
+
             String fileName = filePath;
             String fileSize = String.valueOf(file.length());
             try (Socket socket2 = new Socket(host, port);
                 DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
                 DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
-        
+                System.out.println("開始傳送檔案：" + fileName + " size: " + fileSize);
                 // 1) send the file‑name|size header
                 dos.writeUTF(fileName + "|" + fileSize);
                 dos.flush();
