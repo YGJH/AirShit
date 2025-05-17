@@ -126,6 +126,26 @@ public class FileSender {
         }
     }
 
+19:55:28] Error: java.io.EOFException
 
+[19:55:28] java.io.EOFException
+	at java.base/java.io.DataInputStream.readFully(DataInputStream.java:215)
+	at java.base/java.io.DataInputStream.readUnsignedShort(DataInputStream.java:346)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:580)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:555)
+	at AirShit.FileSender.sendFiles(FileSender.java:120)
+	at AirShit.SendFileGUI.lambda$sendFile$1(SendFileGUI.java:373)
+	at java.base/java.lang.Thread.run(Thread.java:1447)
+
+20:02:09] Error: java.io.EOFException
+
+[20:02:09] java.io.EOFException
+	at java.base/java.io.DataInputStream.readFully(DataInputStream.java:215)
+	at java.base/java.io.DataInputStream.readUnsignedShort(DataInputStream.java:346)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:580)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:555)
+	at AirShit.FileSender.sendFiles(FileSender.java:120)
+	at AirShit.SendFileGUI.lambda$sendFile$1(SendFileGUI.java:373)
+	at java.base/java.lang.Thread.run(Thread.java:1447)
 
 }
