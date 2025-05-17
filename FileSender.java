@@ -29,13 +29,15 @@ public class FileSender {
         // System.out.println("folderName: " + fatherDir+"\\"+folderName+"\\"+files[0]);
         if(isSingleFile) {
             sb.append("isSingle|");
-            sb.append(SenderUserName).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).getName());
-            totalSize = new File(fatherDir+"\\"+folderName+"\\"+files[0]).length();
+            files[0] = new File(files[0]).getName();
+            sb.append(SenderUserName).append("|").append(new File(fatherDir+"\\"+files[0]).getName());
+            totalSize = new File(fatherDir+"\\"+files[0]).length();
         } else {
+            fatherDir = fatherDir + "\\" + folderName;
             sb.append("isMulti|");
             sb.append(SenderUserName + "|" + folderName);
             for (String filePath : files) {
-                File f = new File(fatherDir + "\\" + folderName +"\\"+ filePath);
+                File f = new File(fatherDir +"\\"+ filePath);
                 totalSize += f.length();
                 sb.append("|").append(f.getName());
             }
@@ -81,13 +83,13 @@ public class FileSender {
             System.err.println("無法連線到 Receiver：");
             return;
         }
-
+        
         callback.onStart(totalSize);
         System.out.println(files.length + " 個檔案需要傳送。");
         int cnt = files.length;
         for (String filePath : files) {
             // notify user
-            File file = new File(fatherDir+"\\"+folderName+"\\"+filePath);
+            File file = new File(fatherDir+"\\"+filePath);
             String fileName = filePath;
             String fileSize = String.valueOf(file.length());
             try (Socket socket2 = new Socket(host, port);

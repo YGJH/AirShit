@@ -54,6 +54,7 @@ public class Receiver {
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
+                    return;
                 }
             }));
         }
