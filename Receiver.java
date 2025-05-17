@@ -13,9 +13,8 @@ public class Receiver {
     public static void println(String a) {
         System.out.println(a);
     }
-    public Receiver(int port) throws IOException {
-        this.serverSocket = new ServerSocket(port);
-        System.out.println("Receiver: " + serverSocket.getLocalPort());
+    public Receiver(ServerSocket serverSocket) throws IOException {
+        this.serverSocket = serverSocket;
     }
     public boolean start(
             String outputFile,
@@ -35,7 +34,7 @@ public class Receiver {
             for (int j = 0; j < threadCount; j++) {
                 long offset = j * chunkSize + alreadySubbmitted;
                 int tempChunkSize = (j == threadCount - 1) ? (int)(processing - offset) : (int)chunkSize;
-                pool.submit(new ChunkReceiver(offset, tempChunkSize, out, cb));
+                pool.submit(new ChunkReceiver(offset, tempChunkSize , serverSocket.accept() , out, cb));
             }
             alreadySubbmitted += processing;
         }
@@ -56,11 +55,13 @@ public class Receiver {
     private class ChunkReceiver implements Runnable {
         private final long offset;
         private final int length;
+        private final Socket socket;
         private final File out;
         private final TransferCallback cb;
-        public ChunkReceiver(long offset, int length, File out, TransferCallback cb) {
+        public ChunkReceiver(long offset, int length, Socket socket, File out, TransferCallback cb) {
             this.offset = offset;
             this.length = length;
+            this.socket = socket;
             this.out = out;
             this.cb = cb;
         }
@@ -68,8 +69,7 @@ public class Receiver {
         @Override
         public void run() {
             try (
-                    Socket sock = serverSocket.accept();
-                    DataInputStream dis = new DataInputStream(sock.getInputStream());
+                    DataInputStream dis = new DataInputStream(socket.getInputStream());
                     RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
                 // 先讀 ChunkSender 寄來的 header
                 raf.seek(offset);
