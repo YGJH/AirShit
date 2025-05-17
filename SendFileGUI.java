@@ -322,6 +322,7 @@ public class SendFileGUI extends JFrame {
             
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
+            int lasPct = 0;
             @Override
             public void onStart(long totalBytes) {
                 sentSoFar.set(0);
@@ -335,7 +336,8 @@ public class SendFileGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int)(cumul*100/totalSize);
                     sendProgressBar.setValue(pct);
-                    if (pct % 10 == 0) {
+                    if (pct % 10 == 0 && pct != lasPct) {
+                        lasPct = pct;
                         log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
                     }
                 });

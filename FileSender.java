@@ -79,17 +79,15 @@ public class FileSender {
 
         } catch (IOException e) {
             System.err.println("無法連線到 Receiver：");
-            // e.printStackTrace();
             return;
         }
 
         callback.onStart(totalSize);
+        System.out.println(files.length + " 個檔案需要傳送。");
         int cnt = files.length;
         for (String filePath : files) {
-            System.out.println("開始傳送檔案：" + filePath);
             // notify user
             File file = new File(fatherDir+"\\"+folderName+"\\"+filePath);
-
             String fileName = filePath;
             String fileSize = String.valueOf(file.length());
             try (Socket socket2 = new Socket(host, port);
@@ -115,15 +113,20 @@ public class FileSender {
                 sendFile.start();
 
                 response = dis.readUTF();
-                while(!"OK".equals(response)) {
-                    Thread.sleep(10);
-                    response = dis.readUTF();
-                } 
+                if (!"ACK".equals(response)) {
+                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    callback.onError(new IOException("Receiver 無法接收檔案：" + fileName));
+                    return;
+                } else {
+                    println("receiver 已完成接收檔案");
+                }
                 
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);
             }
         }
+        System.out.println("所有檔案傳送完成。");
+        callback.onComplete();
     }
 
 

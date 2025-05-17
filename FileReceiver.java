@@ -144,15 +144,14 @@ public class FileReceiver {
                 }
                 final int threadCount = Math.min(receiveThreads, Runtime.getRuntime().availableProcessors()); // 硬體執行緒數量
                 // send accept message to sender
-                cb.onStart(totalSize); // 開始接收檔案
                 Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 dos.writeUTF("ACK|" + threadCount);
                 dos.flush();
                 final String outPutPath = outputFilePath;
-                // println("已接受檔案傳送。");
-
+                
+                cb.onStart(totalSize); // 開始接收檔案
                 // notify sender to start sending the file
-                // println(fileCount + " 個檔案，總大小：" + totalSize + " bytes");
+                System.out.println("開始接收檔案：" + fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
                     try (Socket ctrlSock = serverSocket.accept();
                             DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
@@ -178,11 +177,11 @@ public class FileReceiver {
                         fileDos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
                         System.out.println("開始接收檔案：" + fileName);
+                        Receiver receiver = new Receiver(serverSocket);
                         // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
                         Future<Boolean> future = executor.submit(() -> {
                             try {
-                                return Receiver.start(
-                                    serverSocket,
+                                return receiver.start(
                                     outPutPath + "\\" + fileName,
                                     fileSize, threadCount,
                                     cb);

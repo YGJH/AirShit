@@ -30,19 +30,26 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength    = file.length();
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / this.threadCount; // 5MB / 8
-        long workerCount   = fileLength / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
-
+        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024 * 1024);
+        long workerCount   = (long)Math.ceil((double)fileLength / (double)baseChunkSize);
+        long chunkSize = baseChunkSize / threadCount;
+        // 每次傳輸的 chunk 大小不超過 5GB
+        // 然後每次傳輸一個chunk都一定是用threadCount個thread來傳輸，不論大小
         // 建立固定大小 ThreadPool
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
 
         // submit 每個 chunk 處理
+        long alreadySubbmitted = 0;
+        
         for (int i = 0; i < workerCount; i++) {
-            long offset = i * baseChunkSize;
-            long chunkSize = (i == workerCount - 1)
-                ? fileLength - offset
-                : baseChunkSize;
-            pool.submit(new ChunkSender(offset, (int) chunkSize));
+            long processing = Math.min(baseChunkSize, fileLength - alreadySubbmitted);            
+            for(int j = 0 ; j < threadCount ; j++) {
+                long offset = j * chunkSize + alreadySubbmitted;
+                long tempChunkSize = (j == threadCount - 1) ? processing - offset : chunkSize;
+
+                pool.submit(new ChunkSender(offset, (int) tempChunkSize));
+            }
+            alreadySubbmitted += processing;
         }
 
         // 關閉 pool，並等待所有任務完成
