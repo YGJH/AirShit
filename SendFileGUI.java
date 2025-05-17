@@ -23,7 +23,8 @@ public class SendFileGUI extends JFrame {
     private JTextArea logArea;
     private JButton sendButton;
     private JButton refreshButton;
-    private File[] selectedFiles;
+    private String[] selectedFiles;
+    public File fatherDir;
     private Timer refreshTimer;
     private JScrollPane fiScrollPane;
     private static JLabel textOfReceive;
@@ -253,26 +254,47 @@ public class SendFileGUI extends JFrame {
     }
 
     private void selectFile() {
-        selectedFiles = FolderSelector.selectFolderAndListFiles(null);
-        if (selectedFiles != null && selectedFiles.length > 0) {
-            StringBuilder sb = new StringBuilder("<html>");
-            for (File f: selectedFiles) {
-                sb.append(f.getName())
-                  .append(" (")
-                  .append(formatFileSize(f.length()))
-                  .append(")<br>");
-            }
-            sb.append("</html>");
-            selectedFileLabel.setText(sb.toString());
-        } else {
-            selectedFileLabel.setText("No file selected");
+        File selectedFile;
+        selectedFile = FolderSelector.selectFolderOrFiles(null);
+        fatherDir = selectedFile.getParentFile();
+        if (selectedFile == null) {
+            log("No file selected");
+            return;
         }
+
+        if (selectedFile.isDirectory()) {
+            selectedFiles = FolderSelector.listFilesRecursivelyWithRelativePaths(selectedFile);
+            selectedFileLabel.setText("Selected folder: " + selectedFile.getAbsolutePath());
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html><body>");
+            sb.append("<h3>Selected files:</h3>");
+            for (String file : selectedFiles) {
+                sb.append(file).append("<br>");
+            }
+            sb.append("</body></html>");
+            selectedFileLabel.setText(sb.toString());
+            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
+        } else {
+            selectedFiles = new String[]{selectedFile.getAbsolutePath()};
+            selectedFileLabel.setText("Selected file: " + selectedFile.getAbsolutePath());
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html><body>");
+            sb.append("<h3>Selected file:</h3>");
+            sb.append(selectedFile.getAbsolutePath());
+            sb.append("</body></html>");
+            selectedFileLabel.setText(sb.toString());
+            // set chinese font
+            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
+        }
+
         updateSendButtonState();
     }
 
+
     private void sendFile() {
-        if (clientList.getSelectedValue()==null ||
-            selectedFiles==null || selectedFiles.length==0) return;
+        if (clientList.getSelectedValue() == null ||
+            selectedFiles == null) return;
 
         Client target = clientList.getSelectedValue();
         log("Sending files to " + target.getUserName() + "...");
@@ -281,9 +303,17 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setValue(0);
 
         final long totalSize = Arrays.stream(selectedFiles)
-                               .mapToLong(File::length)
+                               .mapToLong(file -> {
+                                   File f = new File(fatherDir, file);
+                                   if (f.exists()) {
+                                       return f.length();
+                                   } else {
+                                       log("File not found: " + file);
+                                       return 0;
+                                   }
+                               })
                                .sum();
-                               
+            
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
             @Override
@@ -325,7 +355,8 @@ public class SendFileGUI extends JFrame {
         new Thread(() -> {
             FileSender sender = new FileSender(
                 target.getIPAddr(),
-                target.getTCPPort()
+                target.getTCPPort(),
+                fatherDir.getAbsolutePath()
             );
             try {
                 Main.sendStatus.set(SEND_STATUS.SEND_WAITING);

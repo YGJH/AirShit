@@ -7,16 +7,19 @@ import java.net.Socket;
 public class FileSender {
     private  String host;
     private  int port;
+    private  String fatherDir; // 父資料夾
     // get Hardware Concurrent
 
-    public FileSender(String host, int port) { // 此port 是對方的port跟host
+    public FileSender(String host, int port , String fatherDir) { 
         this.host = host;
         this.port = port;
+        this.fatherDir = fatherDir;
+        System.out.println("fatherDir: " + fatherDir);
     }
     public void println (String str) {
         System.out.println(str);
     }
-    public void sendFiles(File[] files , String SenderUserName , String folderName , TransferCallback callback) throws IOException, InterruptedException {
+    public void sendFiles(String[] files , String SenderUserName , String folderName , TransferCallback callback) throws IOException, InterruptedException {
 
         // handshake
         StringBuilder sb = new StringBuilder();
@@ -25,11 +28,12 @@ public class FileSender {
         boolean isSingleFile = files.length == 1;
         if(isSingleFile) {
             sb.append("isSingle|");
-            sb.append(SenderUserName).append("|").append(files[0].getName()).append("|").append(files[0].length());
+            sb.append(SenderUserName).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).getName()).append("|").append(new File(fatherDir+"\\"+folderName+"\\"+files[0]).length());
         } else {
             sb.append("isMulti|");
             sb.append(SenderUserName + "|" + folderName);
-            for (File f : files) {
+            for (String filePath : files) {
+                File f = new File(fatherDir + "\\" + folderName +"\\"+ filePath);
                 totalSize += f.length();
                 sb.append("|").append(f.getName());
             }
@@ -65,8 +69,9 @@ public class FileSender {
 
         callback.onStart(totalSize);
         int cnt = files.length;
-        for (File file : files) {
+        for (String filePath : files) {
             // notify user
+            File file = new File(fatherDir+"\\"+folderName+"\\"+filePath);
             String fileName = file.getName();
             String fileSize = String.valueOf(file.length());
             try (Socket socket2 = new Socket(host, port);

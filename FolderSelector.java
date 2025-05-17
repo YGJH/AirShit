@@ -2,13 +2,18 @@ package AirShit;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class FolderSelector {
     private static String folderName = null;
-    private static final int fileMaxCount = 100000; // 每個資料夾最多 100000 個檔案
+
+
+
     public static String getFolderName() {
         return folderName;
     }
@@ -24,7 +29,7 @@ public class FolderSelector {
      * @param parentComponent 作為對話框的父元件，若為 null 則無父元件
      * @return 選擇的資料夾底下所有檔案／子資料夾的 List，若使用者取消則回傳空 List
      */
-    public static File[] selectFolderAndListFiles(Component parentComponent) {
+    public static File selectFolderOrFiles(Component parentComponent) {
         JFileChooser chooser = new JFileChooser();
         // 選擇目錄
         chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
@@ -35,110 +40,69 @@ public class FolderSelector {
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFileOrFolder = chooser.getSelectedFile();
             folderName = selectedFileOrFolder.getAbsolutePath(); // Store the full path
-
-            if(selectedFileOrFolder.isFile()) {
-                return new File[]{selectedFileOrFolder};
-            }
-
-            // At this point, selectedFileOrFolder is a directory
-            File folder = selectedFileOrFolder;
-
-            // Update folderName to be just the name for getFolderName() consistency,
-            // but use 'folder' (File object) for operations.
-            String nameOnly = folder.getName();
-            // The original logic to extract folder name (if needed elsewhere, keep it, but use 'folder' for listing)
-            for(int i = folderName.length() - 1; i >= 0; i--) {
-                if(folderName.charAt(i) == '\\' 
-                        || folderName.charAt(i) == '/') {
-                    FolderSelector.folderName = folderName.substring(i + 1 , folderName.length()); // Update static field
-                    break;
-                }
-            }
-            if (folderName.isEmpty()) { // if root directory was selected
-                FolderSelector.folderName = nameOnly;
-            }
-
-
-            int count = 0;
-            File[] files = new File[fileMaxCount];
-            // String[] fileList = folderName.list(); // Original error line
-            String[] topLevelNames = folder.list(); // Use the File object 'folder'
-
-            if (topLevelNames != null) {
-                for(String name : topLevelNames) {
-                    if(count >= fileMaxCount) {
-                        break;
-                    }
-                    File currentItem = new File(folder, name); // Construct File object correctly
-
-                    if(currentItem.isFile()) {
-                        files[count++] = currentItem;
-                    } else if (currentItem.isDirectory()) {
-                        files[count++] = currentItem; // Add the directory itself
-                        File[] subFiles = getFileAndFolder(currentItem); // Pass the directory File object
-                        if(subFiles != null) {
-                            for(File subFile : subFiles) {
-                                if(count >= fileMaxCount) {
-                                    break;
-                                }
-                                println(currentItem.getName() + "\\" + subFile.getName());
-                                files[count++] = new File(currentItem.getName() + "\\" + subFile.getName()); // Add sub-file with path
-                            }
-                        }
-                    }
-                    if(count >= fileMaxCount) break;
-                }
-            }
-
-            if(count > 0) {
-                return Arrays.copyOf(files, count); // Return a trimmed array
-            } else {
-                return null; // Or new File[0] if preferred for empty/cancelled
+            if(selectedFileOrFolder != null) {
+                return selectedFileOrFolder;
             }
         }
         return null; // User cancelled or closed dialog
     }
 
-    private static File[] getFileAndFolder(File directory) { // Renamed f to directory
-        int count = 0; // Declare and initialize count
-        File[] files = new File[fileMaxCount]; // Local array for this directory's content
 
-        if(directory.isDirectory()) {
-            // String[] fileList = directory.list(); // Original
-            String[] entryNames = directory.list(); // Returns String array of names
+    /**
+     * 列出指定目录下所有文件的相对路径（不包含目录本身）。
+     *
+     * @param folder 根目录
+     * @return 所有子文件的相对路径数组，若输入无效则返回空数组
+     */
+    public static String[] listFilesRecursivelyWithRelativePaths(File folder) {
+        if (folder == null || !folder.exists() || !folder.isDirectory()) {
+            return new String[0];
+        }
 
-            if (entryNames != null) {
-                for(String name : entryNames) { // Iterate over String names
-                    if (count >= fileMaxCount) break;
+        // 用set存储相对路径，避免重复
+        Set<String> relPaths = new HashSet<>();
 
-                    File currentEntry = new File(directory, name); // Create File object
+        Path basePath = folder.toPath();
+        collectRelPaths(folder, basePath, relPaths);
+        for(File f : folder.listFiles()) {
+            if(f.isFile()) {
+                relPaths.add(f.getName());
+            }
+        }
+        return relPaths.toArray(new String[0]);
+    }
 
-                    if(currentEntry.isFile()) {
-                        files[count++] = currentEntry;
-                    } else if (currentEntry.isDirectory()) {
-                        files[count++] = currentEntry; // Add the directory itself
-                        File[] subFiles = getFileAndFolder(currentEntry); // Recursive call
-                        if(subFiles != null) {
-                            for(File subFile : subFiles) {
-                                if(count >= fileMaxCount) {
-                                    break;
-                                }
-                                files[count++] = subFile;
-                            }
-                        }
-                    }
-                    if (count >= fileMaxCount) break;
+    /**
+     * 递归遍历，将每个文件的相对路径加入列表。
+     *
+     * @param current  当前遍历到的文件或目录
+     * @param basePath 根目录的 Path，用于 relativize
+     * @param relPaths 用于收集相对路径的列表
+     */
+    private static void collectRelPaths(File current, Path basePath, Set<String> relPaths) {
+        if (current.isFile()) {
+            // 计算相对路径
+            Path rel = basePath.relativize(current.toPath());
+            relPaths.add(rel.toString());
+        } else if (current.isDirectory()) {
+            File[] children = current.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    collectRelPaths(child, basePath, relPaths);
                 }
             }
-            if (count > 0) {
-                return Arrays.copyOf(files, count); // Return a trimmed array
-            }
-            return new File[0]; // Return empty array if directory is empty or unreadable after checks
-        } else {
-            return null; // Not a directory
         }
     }
 
+    // 範例用法
+    // public static void main(String[] args) {
+    //     File folder = new File("/path/to/your/folder");
+    //     File[] allFiles = listFilesRecursively(folder);
+    //     System.out.println("共找到 " + allFiles.length + " 个文件：");
+    //     for (File f : allFiles) {
+    //         System.out.println(f.getAbsolutePath());
+    //     }
+    // }
     public static String selectFolder() {
         JFileChooser chooser = new JFileChooser();
         // 只允許選擇目錄
