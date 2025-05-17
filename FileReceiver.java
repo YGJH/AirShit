@@ -230,7 +230,7 @@ public class FileReceiver {
                     } catch (IOException e) {
                         socket.close();
                     }
-                    cb.complete(true);
+                    cb.onComplete();
                     
                 }
             } catch (IOException e) {
