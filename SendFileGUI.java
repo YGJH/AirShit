@@ -318,6 +318,7 @@ public class SendFileGUI extends JFrame {
             @Override
             public void onStart(long totalBytes) {
                 sentSoFar.set(0);
+                sendButton.setEnabled(false);
                 this.totalBytes = totalBytes;
                 log("totalBytes: " + totalBytes);
                 SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
@@ -338,6 +339,8 @@ public class SendFileGUI extends JFrame {
             }
             @Override
             public void onComplete() {
+                sendButton.setEnabled(false);
+
                 SwingUtilities.invokeLater(() -> {
                     log("File transfer complete.");
                     sendButton.setEnabled(true);
@@ -348,6 +351,8 @@ public class SendFileGUI extends JFrame {
             public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     // 先印到 log 裡
+                    sendButton.setEnabled(false);
+
                     log("Error: " + e);              // 印 e.toString() 而不是 e.getMessage()
                     StringWriter sw = new StringWriter();
                     e.printStackTrace(new PrintWriter(sw));
@@ -357,7 +362,6 @@ public class SendFileGUI extends JFrame {
                 });
             }
         };
-        sendButton.setEnabled(false);
         new Thread(() -> {
             FileSender sender = new FileSender(
                 target.getIPAddr(),
@@ -378,7 +382,6 @@ public class SendFileGUI extends JFrame {
             Main.sendStatus.set(SEND_STATUS.SEND_OK);
 
         }, "send-thread").start();
-        sendButton.setEnabled(true);
     }
 
     private void updateSendButtonState() {
