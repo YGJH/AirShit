@@ -28,14 +28,15 @@ public class Receiver {
         // 3) 建一个固定 threadCount 的 pool
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         for (int i = 0; i < workerCount; i++) {
-            final long offset = i * chunkSize;
-            final int  length = (int) Math.min(chunkSize, fileSize - offset);
             pool.submit(() -> {
                 try (
                     Socket sock = serverSocket.accept();
                     DataInputStream dis = new DataInputStream(sock.getInputStream());
                     RandomAccessFile raf = new RandomAccessFile(out, "rw")
                 ) {
+                    // 先讀 ChunkSender 寄來的 header
+                    long offset = dis.readLong();
+                    int  length = dis.readInt();
                     raf.seek(offset);
                     byte[] buf = new byte[8 * 1024];
                     int r, rem = length;
