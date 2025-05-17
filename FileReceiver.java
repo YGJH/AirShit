@@ -179,8 +179,15 @@ public class FileReceiver {
                         File tmp = new File(outPutPath + "\\" + fileName);
                         if(tmp.exists()) {
                             tmp.delete();
+                        } else {
+                            File parentDir = tmp.getParentFile();
+                            if (!parentDir.exists()) {
+                                parentDir.mkdirs(); // Create the directory if it doesn't exist
+                                println("已建立資料夾：" + parentDir.getAbsolutePath());
+                            }
                         }
-                        
+
+                        tmp.createNewFile();
                         dos.writeUTF("ACK");
                         dos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
