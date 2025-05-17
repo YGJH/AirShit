@@ -83,6 +83,7 @@ public class Receiver {
                         cb.onProgress(r);
                 }
             } catch (IOException e) {
+                e.printStackTrace();
                 System.err.println("Handler 發生錯誤：");
                 out.delete();
             }

@@ -322,7 +322,7 @@ public class SendFileGUI extends JFrame {
             
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
-            int lasPct = 0;
+            int lasPct = -1;
             @Override
             public void onStart(long totalBytes) {
                 sentSoFar.set(0);

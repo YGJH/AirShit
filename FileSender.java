@@ -124,6 +124,7 @@ public class FileSender {
                 
             } catch (IOException | InterruptedException e) {
                 callback.onError(e);
+                return;
             }
         }
         System.out.println("所有檔案傳送完成。");

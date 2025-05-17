@@ -283,6 +283,7 @@ public class Main { // 定義 Main 類別
         TransferCallback cb = new TransferCallback() {
             AtomicLong totalReceived = new AtomicLong(0);
             long totalBar = 0;
+            long lasPct = -1;
             @Override
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
@@ -297,7 +298,8 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int)(cumul*100/totalBar);
                     SendFileGUI.receiveProgressBar.setValue((int)pct);
-                    if (pct % 10 == 0) {
+                    if (pct % 10 == 0 && pct != lasPct) {
+                        lasPct = pct;
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
