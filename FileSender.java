@@ -40,6 +40,7 @@ public class FileSender {
                 sb.append("|").append(f.getName());
             }
         }
+        sb.append("|").append(totalSize);
         sb.append("|");
         if(totalSize > 1024*1024*1024) {
             totalSize = totalSize / (1024*1024*1024);

@@ -43,6 +43,8 @@ public class FileReceiver {
             String folderName = null;
             int fileCount = 0;
             long totalSize = 0;
+            String totalSizeStr = null;
+
             StringBuilder sb = new StringBuilder();
             try (
                     Socket socket = serverSocket.accept();
@@ -63,7 +65,8 @@ public class FileReceiver {
                     fileCount = 1;
                     fileNames = parts[2];
                     totalSize = Long.parseLong(parts[3]);
-                    receiveThreads = Integer.parseInt(parts[4]);
+                    totalSizeStr = (parts[4]);
+                    receiveThreads = Integer.parseInt(parts[5]);
                     sb.append(fileNames);
                     println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
                             + totalSize);
@@ -71,7 +74,8 @@ public class FileReceiver {
                     senderUserName = parts[1];
                     folderName = parts[2];
                     fileCount = parts.length - 4;
-                    totalSize = Long.parseLong(parts[parts.length - 2]);
+                    totalSize = Integer.parseInt(parts[parts.length - 3]);
+                    totalSizeStr = (parts[parts.length - 2]);
                     receiveThreads = Integer.parseInt(parts[parts.length - 1]);
                     for (int i = 3; i < parts.length - 1; i++) {
                         sb.append(parts[i]).append("\n");
