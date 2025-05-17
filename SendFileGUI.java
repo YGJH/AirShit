@@ -357,7 +357,7 @@ public class SendFileGUI extends JFrame {
                 });
             }
         };
-
+        sendButton.setEnabled(false);
         new Thread(() -> {
             FileSender sender = new FileSender(
                 target.getIPAddr(),
@@ -378,6 +378,7 @@ public class SendFileGUI extends JFrame {
             Main.sendStatus.set(SEND_STATUS.SEND_OK);
 
         }, "send-thread").start();
+        sendButton.setEnabled(true);
     }
 
     private void updateSendButtonState() {
