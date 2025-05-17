@@ -13,6 +13,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.xml.crypto.Data;
 
 import AirShit.Main.SEND_STATUS;
 
@@ -48,7 +49,8 @@ public class FileReceiver {
             StringBuilder sb = new StringBuilder();
             try (
                     Socket socket = serverSocket.accept();
-                    DataInputStream dis = new DataInputStream(socket.getInputStream());) {
+                    DataInputStream dis = new DataInputStream(socket.getInputStream());
+                    DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                 String handshake = dis.readUTF();
                 String[] parts = handshake.split("\\|");
                 if (parts.length < 3) {
@@ -116,30 +118,19 @@ public class FileReceiver {
                         "檔案傳送 — 接收確認",
                         JOptionPane.YES_NO_OPTION);
                 if (response != JOptionPane.YES_OPTION) {
-                    try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                         dos.writeUTF("REJECT");
                         dos.flush();
+                        System.out.println("使用者拒絕接收檔案。");
                         continue;
-                    } catch (IOException e) {
-                        System.err.println("無法與 Sender 通訊：");
-                        e.printStackTrace();
-                    }
-                    System.out.println("使用者拒絕接收檔案。");
-                    continue;
-
                 }
 
                 // get output file path
                 String outputFilePath = FolderSelector.selectFolder();
                 if (outputFilePath == null) {
                     System.out.println("使用者取消選擇資料夾。");
-                    try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                        dos.writeUTF("REJECT");
-                        dos.flush();
-                    } catch (IOException e) {
-                        System.err.println("無法與 Sender 通訊：");
-                        e.printStackTrace();
-                    }
+                    dos.writeUTF("REJECT");
+                    dos.flush();
+                    System.err.println("無法與 Sender 通訊：");
                     continue;
                 }
                 if (!isSingle) {
@@ -155,13 +146,8 @@ public class FileReceiver {
                 // send accept message to sender
                 cb.onStart(totalSize); // 開始接收檔案
                 Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
-                try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
-                    dos.writeUTF("ACK|" + threadCount);
-                    dos.flush();
-                } catch (IOException e) {
-                    System.err.println("無法與 Sender 通訊：");
-                    e.printStackTrace();
-                }
+                dos.writeUTF("ACK|" + threadCount);
+                dos.flush();
                 final String outPutPath = outputFilePath;
                 // println("已接受檔案傳送。");
 
@@ -170,7 +156,7 @@ public class FileReceiver {
                 for (int i = 0; i < fileCount; i++) {
                     try (Socket ctrlSock = serverSocket.accept();
                             DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
-                            DataOutputStream dos = new DataOutputStream(ctrlSock.getOutputStream())) {
+                            DataOutputStream fileDos = new DataOutputStream(ctrlSock.getOutputStream())) {
                         String[] pp = fileDis.readUTF().split("\\|");
                         final String fileName = pp[0];
                         long fileSize = Long.parseLong(pp[1]);
@@ -188,8 +174,8 @@ public class FileReceiver {
                         }
 
                         tmp.createNewFile();
-                        dos.writeUTF("ACK");
-                        dos.flush();
+                        fileDos.writeUTF("ACK");
+                        fileDos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
                         System.out.println("開始接收檔案：" + fileName);
                         // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
@@ -220,12 +206,12 @@ public class FileReceiver {
                         
                         if (success) {
                             println("檔案傳輸完成，總共傳送 " + fileSize + " bytes");
-                            dos.writeUTF("OK");
-                            dos.flush();
+                            fileDos.writeUTF("OK");
+                            fileDos.flush();
                         } else {
                             System.err.println("檔案接收失敗：" + fileName);
-                            dos.writeUTF("ERROR");
-                            dos.flush();
+                            fileDos.writeUTF("ERROR");
+                            fileDos.flush();
                         }
                     } catch (IOException e) {
                         socket.close();
