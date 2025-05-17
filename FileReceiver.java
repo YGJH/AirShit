@@ -77,7 +77,7 @@ public class FileReceiver {
                     totalSize = Integer.parseInt(parts[parts.length - 3]);
                     totalSizeStr = (parts[parts.length - 2]);
                     receiveThreads = Integer.parseInt(parts[parts.length - 1]);
-                    for (int i = 3; i < parts.length - 1; i++) {
+                    for (int i = 3; i < parts.length - 3; i++) {
                         sb.append(parts[i]).append("\n");
                     }
                     println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
@@ -91,13 +91,13 @@ public class FileReceiver {
                 if (isSingle) {
                     listText.append(fileNames);
                 } else {
-                    for (int j = 3; j < parts.length - 1; j++) {
+                    for (int j = 3; j < parts.length - 3; j++) {
                         listText.append(parts[j]).append("\n");
                     }
                 }
                 String info = "Sender: " + senderUserName
                         + "\nFolder: " + folderName
-                        + "\nTotal Size: " + totalSize + " bytes\n\nFiles:\n";
+                        + "\nTotal Size: " + totalSizeStr + "\n\nFiles:\n";
                 JTextArea ta = new JTextArea(info + listText.toString());
                 ta.setEditable(false);
                 ta.setLineWrap(true);
