@@ -54,6 +54,7 @@ public class Receiver {
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
+                    cb.onError(e);
                     return;
                 }
             }));
@@ -71,6 +72,8 @@ public class Receiver {
                     f.get();
                     return true;
                 } catch (Exception ex) {
+                    ex.printStackTrace();
+                    cb.onError(ex);
                     return false;
                 }
             });

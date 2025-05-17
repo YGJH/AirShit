@@ -261,6 +261,7 @@ public class SendFileGUI extends JFrame {
         selectedFile = FolderSelector.selectFolderOrFiles(null);
         fatherDir = selectedFile.getParentFile();
         folderName = selectedFile.getName();
+
         if (selectedFile == null) {
             log("No file selected");
             return;
@@ -289,6 +290,7 @@ public class SendFileGUI extends JFrame {
             sb.append("</body></html>");
             selectedFileLabel.setText(sb.toString());
             // set chinese font
+            selectedFiles = new String[]{new File(fatherDir+"\\"+selectedFiles[0]).getName()};
             selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
         }
 
@@ -306,26 +308,18 @@ public class SendFileGUI extends JFrame {
         sendProgressBar.setVisible(true);
         sendProgressBar.setValue(0);
 
-        final long totalSize = Arrays.stream(selectedFiles)
-                               .mapToLong(file -> {
-                                   File f = new File(fatherDir+"\\"+folderName+"\\"+ file);
-                                   if (f.exists()) {
-                                       return f.length();
-                                   } else {
-                                       log("File not found: " + file);
-                                       return 0;
-                                   }
-                               })
-                               .sum();
 
         System.out.println("folderName: " + folderName);
             
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
             int lasPct = -1;
+            long totalBytes = 0;
             @Override
             public void onStart(long totalBytes) {
                 sentSoFar.set(0);
+                this.totalBytes = totalBytes;
+                log("totalBytes: " + totalBytes);
                 SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
                 SwingUtilities.invokeLater(() -> sendProgressBar.setVisible(true));
                 SwingUtilities.invokeLater(() -> sendProgressBar.setValue(0));
@@ -334,7 +328,7 @@ public class SendFileGUI extends JFrame {
             public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
-                    int pct = (int)(cumul*100/totalSize);
+                    int pct = (int)(cumul*100/totalBytes);
                     sendProgressBar.setValue(pct);
                     if (pct % 10 == 0 && pct != lasPct) {
                         lasPct = pct;
