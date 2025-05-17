@@ -13,8 +13,8 @@ public class Receiver {
     public static void println(String a) {
         System.out.println(a);
     }
-    public Receiver(ServerSocket serverSocket) throws IOException {
-        this.serverSocket = serverSocket;
+    public Receiver(int port) throws IOException {
+        this.serverSocket = new ServerSocket(port);
         System.out.println("Receiver: " + serverSocket.getLocalPort());
     }
     public boolean start(

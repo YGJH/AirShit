@@ -75,7 +75,7 @@ public class FileReceiver {
                 } else if (parts[0].equals("isMulti")) {
                     senderUserName = parts[1];
                     folderName = parts[2];
-                    fileCount = parts.length - 4;
+                    fileCount = parts.length - 5;
                     totalSize = Long.parseLong(parts[parts.length - 3]);
                     totalSizeStr = (parts[parts.length - 2]);
                     receiveThreads = Integer.parseInt(parts[parts.length - 1]);
@@ -177,7 +177,7 @@ public class FileReceiver {
                         fileDos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
                         System.out.println("開始接收檔案：" + fileName);
-                        Receiver receiver = new Receiver(serverSocket);
+                        Receiver receiver = new Receiver(port);
                         // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
                         Future<Boolean> future = executor.submit(() -> {
                             try {
@@ -204,7 +204,7 @@ public class FileReceiver {
                         }
                         
                         if (success) {
-                            println("檔案傳輸完成，總共傳送 " + fileSize + " bytes");
+                            println("檔案傳輸完成，總共接收 " + fileSize + " bytes");
                             fileDos.writeUTF("OK");
                             fileDos.flush();
                         } else {
