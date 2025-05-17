@@ -3,8 +3,6 @@ package AirShit;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,49 +15,42 @@ public class Receiver {
 
     public static boolean start(ServerSocket serverSocket,
             String outputFile, 
-            long fileSize,int threadCount,
+            long fileSize, int threadCount,
             TransferCallback cb) throws IOException {
+        File out = new File(outputFile);
+        AtomicLong totalReceived = new AtomicLong();
 
+        // 1) 固定 chunk 大小 5MB
+        long chunkSize   = 5L * 1024 * 1024;
+        // 2) ceil 分割成多少 chunk
+        long workerCount = (fileSize + chunkSize - 1) / chunkSize;
 
-                File out = new File(outputFile);
-        System.out.println("outputFile: " + outputFile);
-        // spawn one handler per chunk
-        // long fileLength    = file.length();
-        // long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024) / this.threadCount; // 5MB / 8
-        // long workerCount   = fileLength / 5L / 1024 / 1024 + 1; // 每個 chunk 大小為 5MB
-
-        long baseChunkSize = Math.min(fileSize, 5L * 1024 * 1024) / threadCount; // 5MB / 8
-        long workerCount = fileSize / baseChunkSize + 1; // 每個 chunk 大小為 5MB
-        // 建立固定大小 ThreadPool
+        // 3) 建一个固定 threadCount 的 pool
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         for (int i = 0; i < workerCount; i++) {
-            for(int j = 0; j < threadCount; j++) {
-                pool.submit(() -> {
-                    try (
-                            Socket sock = serverSocket.accept();
-                            DataInputStream dis = new DataInputStream(sock.getInputStream());
-                            RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-                        long offset = dis.readLong();
-                        int length = dis.readInt();
-    
-                        raf.seek(offset);
-                        byte[] buf = new byte[8 * 1024]; // 8 KB 緩衝改小
-                        int r, rem = length;
-                        while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
-                            raf.write(buf, 0, r);
-                            totalReceived.addAndGet(r);
-                            rem -= r;
-                            if (cb != null)
-                                cb.onProgress(r);
-                        }
-                        // println("Chunk: " + offset + ", length: " + length);
-                    } catch (IOException e) {
-                        System.err.println("Handler 發生錯誤：");
-                        out.delete();
-                        e.printStackTrace();
+            final long offset = i * chunkSize;
+            final int  length = (int) Math.min(chunkSize, fileSize - offset);
+            pool.submit(() -> {
+                try (
+                    Socket sock = serverSocket.accept();
+                    DataInputStream dis = new DataInputStream(sock.getInputStream());
+                    RandomAccessFile raf = new RandomAccessFile(out, "rw")
+                ) {
+                    raf.seek(offset);
+                    byte[] buf = new byte[8 * 1024];
+                    int r, rem = length;
+                    while (rem > 0 && (r = dis.read(buf, 0, Math.min(buf.length, rem))) > 0) {
+                        raf.write(buf, 0, r);
+                        totalReceived.addAndGet(r);
+                        rem -= r;
+                        if (cb != null) cb.onProgress(r);
                     }
-                });
-            }
+                } catch (IOException e) {
+                    System.err.println("Handler 發生錯誤：");
+                    out.delete();
+                    e.printStackTrace();
+                }
+            });
         }
 
         pool.shutdown();
