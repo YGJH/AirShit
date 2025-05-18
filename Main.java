@@ -167,7 +167,7 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8); // Specify
                                                                                                                   // UTF-8
-                    System.out.println("Received multicast: " + message); // Log received message
+                    // System.out.println("Received multicast: " + message); // Log received message
 
                     boolean listChanged = false;
 
@@ -232,7 +232,7 @@ public class Main { // 定義 Main 類別
         try (
                 DatagramSocket socket = new DatagramSocket();) {
 
-            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
