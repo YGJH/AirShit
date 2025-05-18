@@ -14,21 +14,9 @@ switch ($Action.ToLower()) {
         git pull
         break
     }
-    'test' {
-        $testDir = '..\AirShitTest'
-        if (Test-Path $testDir) {
-            Remove-Item $testDir -Recurse -Force
-        }
-        Copy-Item 'asset' -Destination $testDir -Recurse
-        Copy-Item '*.java' -Destination $testDir
-
-        # compile original and test copy
-        javac -d . *.java
-        javac -d . "$testDir\*.java"
-
-        # run
-        java AirShit.Main
-        break
+    'wraping' {
+        javac -cp ".;libs/flatlaf-3.4.1.jar" -encoding UTF-8 -d out/production/MyApp *.java ui\*.java
+        jar.exe cfm MyApp.jar out/production/MyApp/AirShit/META-INF/MANIFEST.MF -C out/production/MyApp .
     }
     default {
         # 修改 javac 命令以實際執行並包含 classpath
