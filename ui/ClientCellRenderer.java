@@ -51,7 +51,7 @@ public class ClientCellRenderer extends DefaultListCellRenderer {
         JLabel iconLabel;
         try {
             // Consider making icons a bit larger or using SVG for better scaling if FlatLaf supports it well
-            ImageIcon icon = new ImageIcon(getClass().getResource("/asset/user.png"));
+            ImageIcon icon = new ImageIcon(this.getClass().getResource("/asset/user.png"));
             // Image scaledImage = icon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH); // Example scaling
             iconLabel = new JLabel(icon);
         } catch (Exception e) {
