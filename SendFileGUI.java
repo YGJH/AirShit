@@ -96,6 +96,7 @@ public class SendFileGUI extends JFrame {
                 BORDER_COLOR = BORDER_COLOR_LIGHT;
                 LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_LIGHT;
             }
+            setBackground(APP_BACKGROUND);
         } catch (Exception ex) {
             System.err.println("Failed to initialize LaF: " + ex.getMessage());
         }
