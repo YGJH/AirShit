@@ -43,20 +43,9 @@ public class FileSender {
             }
         }
         sb.append("|").append(totalSize);
-        long totalSize2 = totalSize;
-        sb.append("|");
-        if(totalSize > 1024*1024*1024) {
-            totalSize2 = totalSize / (1024*1024*1024);
-            sb.append(totalSize2 + "  GB");
-        } else if(totalSize > 1024*1024) {
-            totalSize2 = totalSize / (1024*1024);
-            sb.append(totalSize2 + " MB");
-        } else if(totalSize > 1024) {
-            totalSize2 = totalSize / (1024);
-            sb.append(totalSize2 + " KB");
-        } else {
-            sb.append(totalSize + " B");
-        }
+        String totalSize2 = SendFileGUI.formatFileSize(totalSize);
+        sb.append("|"+totalSize2); // 檔案總大小
+
         sb.append("|"+(threadCount)); // 硬體執行緒數量
         // 連線到 Receiver
         try (Socket socket = new Socket(host, port);
