@@ -46,18 +46,6 @@ public class FileSender {
         String totalSize2 = SendFileGUI.formatFileSize(totalSize);
         sb.append("|");
         sb.append(totalSize2);
-        // if(totalSize > 1024*1024*1024) {
-        //     totalSize2 = totalSize / (1024*1024*1024);
-        //     sb.append(totalSize2 + " GB");
-        // } else if(totalSize > 1024*1024) {
-        //     totalSize2 = totalSize / (1024*1024);
-        //     sb.append(totalSize2 + " MB");
-        // } else if(totalSize > 1024) {
-        //     totalSize2 = totalSize / (1024);
-        //     sb.append(totalSize2 + " KB");
-        // } else {
-        //     sb.append(totalSize + " B");
-        // }
         sb.append("|"+(threadCount)); // 硬體執行緒數量
         // 連線到 Receiver
         try (Socket socket = new Socket(host, port);
@@ -126,7 +114,7 @@ public class FileSender {
                 }
                 
             } catch (IOException | InterruptedException e) {
-                callback.onError(e);
+                e.printStackTrace();
                 return;
             }
         }

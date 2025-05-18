@@ -59,7 +59,6 @@ public class SendFile {
             pool.shutdownNow();
         }
 
-        System.out.printf("檔案傳輸完成，總共傳送 %d bytes%n", fileLength);
     }
 
     private class ChunkSender implements Runnable {

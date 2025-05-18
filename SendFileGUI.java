@@ -304,9 +304,6 @@ public class SendFileGUI extends JFrame {
 
         Client target = clientList.getSelectedValue();
         log("Sending files to " + target.getUserName() + "...");
-        sendButton.setEnabled(false);
-        sendProgressBar.setVisible(true);
-        sendProgressBar.setValue(0);
 
 
         System.out.println("folderName: " + folderName);
@@ -321,16 +318,18 @@ public class SendFileGUI extends JFrame {
                 sendButton.setEnabled(false);
                 this.totalBytes = totalBytes;
                 log("totalBytes: " + totalBytes);
-                SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
-                SwingUtilities.invokeLater(() -> sendProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> sendProgressBar.setValue(0));
+                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
+
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setMaximum(100));
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setVisible(true));
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setValue(0));
             }
             @Override
             public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int)(cumul*100/totalBytes);
-                    sendProgressBar.setValue(pct);
+                    receiveProgressBar.setValue(pct);
                     if (pct % 10 == 0 && pct != lasPct) {
                         lasPct = pct;
                         log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
@@ -340,11 +339,12 @@ public class SendFileGUI extends JFrame {
             @Override
             public void onComplete() {
                 sendButton.setEnabled(false);
+                Main.sendStatus.set(SEND_STATUS.SEND_OK);
 
                 SwingUtilities.invokeLater(() -> {
                     log("File transfer complete.");
                     sendButton.setEnabled(true);
-                    sendProgressBar.setVisible(false);
+                    receiveProgressBar.setVisible(false);
                 });    
             }
             @Override
@@ -352,13 +352,13 @@ public class SendFileGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     // 先印到 log 裡
                     sendButton.setEnabled(false);
-
+                    Main.sendStatus.set(SEND_STATUS.SEND_OK);
                     log("Error: " + e);              // 印 e.toString() 而不是 e.getMessage()
                     StringWriter sw = new StringWriter();
                     e.printStackTrace(new PrintWriter(sw));
                     log(sw.toString());               // 把 stack‐trace 也印進 log
                     sendButton.setEnabled(true);
-                    sendProgressBar.setVisible(false);
+                    receiveProgressBar.setVisible(false);
                 });
             }
         };
@@ -369,7 +369,6 @@ public class SendFileGUI extends JFrame {
                 fatherDir.getAbsolutePath()
             );
             try {
-                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 sender.sendFiles(
                     selectedFiles,
                     Main.getClient().getUserName(),

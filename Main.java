@@ -288,6 +288,8 @@ public class Main { // 定義 Main 類別
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
                 totalReceived.set(0);
+                GUI.log("Receiving " + SendFileGUI.formatFileSize(totalBytes));
+                sendStatus.set(SEND_STATUS.SEND_WAITING);
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setValue((int)0));
@@ -306,17 +308,23 @@ public class Main { // 定義 Main 類別
             }
             @Override
             public void onComplete() {
+                sendStatus.set(SEND_STATUS.SEND_OK);
+
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Transfer complete");
                     SendFileGUI.receiveProgressBar.setVisible(false);
+                    SendFileGUI.receiveProgressBar.setValue(0);
                 });
             }
             @Override
             public void onError(Exception e) {
+                sendStatus.set(SEND_STATUS.SEND_OK);
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Error: " + e.getMessage());
                     SendFileGUI.receiveProgressBar.setVisible(false);
+                    SendFileGUI.receiveProgressBar.setValue(0);
                 });
+
             }
         };
         new Thread(() -> {
