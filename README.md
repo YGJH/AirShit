@@ -1,18 +1,17 @@
-================================================================================
- AirShit - Local Area Network P2P File Transfer Tool
-================================================================================
+# AirShit - Local Area Network P2P File Transfer Tool
 
 [中文](README_zh_tw.md)
 
---------------------------------------------------------------------------------
+=====================================================
 
 Version: 1.0.0 (Based on AppVersion in build.ps1)
 Author: AirShit Project (Based on VendorName in build.ps1)
 Last Updated: 2025-05-18
 
---------------------------------------------------------------------------------
- Introduction
---------------------------------------------------------------------------------
+=====================================================
+
+
+## Introduction
 
 AirShit is a peer-to-peer (P2P) file transfer application designed specifically
 for Local Area Network (LAN) environments. It utilizes the TCP protocol for
@@ -30,9 +29,7 @@ providing intuitive file selection, a list of available online nodes, clear
 upload and download progress bars, and detailed status logging, making it
 convenient for users to track the transfer process.
 
---------------------------------------------------------------------------------
- Main Features
---------------------------------------------------------------------------------
+## Main Features
 
 1.  **Automatic Node Discovery and Maintenance:**
     *   Uses UDP Multicast (default address: 239.255.42.99, default port: 50000)
@@ -77,10 +74,10 @@ convenient for users to track the transfer process.
     *   **Light/Dark Mode Toggle:** Provides a button for users to switch
         between light and dark interface themes, enhancing user experience.
 
---------------------------------------------------------------------------------
- Project Structure
---------------------------------------------------------------------------------
+## Project Structure
 
+
+```
 AirShit/
 ├── AirShit/                      # Main Java source code and compiled .class file root directory
 │   ├── Client.java               # Class representing a remote client node
@@ -134,14 +131,15 @@ AirShit/
 ├── build_mac.sh                  # (Possibly a macOS-specific build script)
 ├── bypass.cmd                    # Windows CMD script to bypass PowerShell execution policy for build.ps1
 └── README.md                     # Markdown formatted README file (This file)
+```
 
 (Note: The .class file list above is inferred from the provided folder content.
 The actual compilation result might differ slightly, e.g.,
 SendFileGUI$ClientCellRenderer.class should be under the ui/ subdirectory.)
 
---------------------------------------------------------------------------------
- Build and Execution
---------------------------------------------------------------------------------
+
+
+## Build and Execution
 
 ### Prerequisites
 
@@ -222,7 +220,8 @@ Assuming you are in the project root directory (`AirShit/`):
     java -cp ".;libs/flatlaf-3.4.1.jar" -Dfile.encoding=UTF-8 AirShit.Main
     ```
 
---------------------------------------------------------------------------------
+## Issues
+
 
 *   **Firewall:** Ensure your operating system's firewall allows communication
     on the TCP ports used by AirShit (dynamically allocated for file transfer)
@@ -247,5 +246,3 @@ Assuming you are in the project root directory (`AirShit/`):
 - build.ps1
 
 **This three scripts will reset all of your modify which in your local file, and pull new commit to your local file. Please use it carefully.**
-
-================================================================================
