@@ -311,10 +311,11 @@ public class Main { // 定義 Main 類別
                 GUI.log("Receiving " + SendFileGUI.formatFileSize(totalBytes));
                 sendStatus.set(SEND_STATUS.SEND_WAITING);
                 SwingUtilities.invokeLater(() -> {
-                    GUI.sendPanel.getSendButton().setEnabled(false);
-                    SendFileGUI.receiveProgressBar.setVisible(true);
-                    SendFileGUI.receiveProgressBar.setMaximum((int) 100);
-                    SendFileGUI.receiveProgressBar.setValue((int) 0);
+                    sendPanel.getSendButton().setEnabled(false);
+                    recvPanel.getLabel().setVisible(true);
+                    recvPanel.getProgressBar().setVisible(true);
+                    recvPanel.getProgressBar().setMaximum(100);
+                    recvPanel.getProgressBar().setValue(0);
                 });
             }
 
@@ -323,7 +324,7 @@ public class Main { // 定義 Main 類別
                 long cumul = totalReceived.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int) (cumul * 100 / totalBar);
-                    SendFileGUI.receiveProgressBar.setValue((int) pct);
+                    recvPanel.getProgressBar().setValue((int) pct);
                     if (pct % 10 == 0 && pct != lasPct) {
                         lasPct = pct;
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
@@ -338,8 +339,9 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> {
                     GUI.sendPanel.getSendButton().setEnabled(true);
                     GUI.log("Transfer complete");
-                    SendFileGUI.receiveProgressBar.setVisible(false);
-                    SendFileGUI.receiveProgressBar.setValue(0);
+                    recvPanel.getProgressBar().setVisible(false);
+                    recvPanel.getProgressBar().setValue(0);
+                    recvPanel.getLabel().setVisible(false);
                 });
             }
 
@@ -349,8 +351,9 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Error: " + e.getMessage());
                     GUI.sendPanel.getSendButton().setEnabled(true);
-                    SendFileGUI.receiveProgressBar.setVisible(false);
-                    SendFileGUI.receiveProgressBar.setValue(0);
+                    recvPanel.getProgressBar().setVisible(false);
+                    recvPanel.getProgressBar().setValue(0);
+                    recvPanel.getLabel().setVisible(false);
                 });
 
             }

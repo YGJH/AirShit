@@ -181,8 +181,6 @@ public class FileSender {
                 if (!"OK".equals(response)) {
                     callback.onError(new IOException("Receiver failed to confirm reception for: " + fileNameForHeader + ". Response: " + response));
                     return;
-                } else {
-                    println("Receiver confirmed reception for: " + fileNameForHeader);
                 }
             } catch (IOException | InterruptedException e) {
                 callback.onError(new IOException("Error during transfer of " + fileNameForHeader + ": " + e.getMessage(), e));
