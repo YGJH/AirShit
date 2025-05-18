@@ -2,206 +2,200 @@ package AirShit;
 
 import javax.swing.*;
 import javax.swing.border.*;
-
-import AirShit.Main.SEND_STATUS;
-
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class SendFileGUI extends JFrame {
-    private JList<Client> clientList;
-    private DefaultListModel<Client> listModel;
-    private JLabel selectedFileLabel;
-    private JProgressBar sendProgressBar;
-    private JTextArea logArea;
-    private JButton sendButton;
-    private JButton refreshButton;
-    private String[] selectedFiles;
-    private String folderName;
-    public File fatherDir;
-    private Timer refreshTimer;
-    private JScrollPane fiScrollPane;
-    private static JLabel textOfReceive;
-    public static JProgressBar receiveProgressBar;
+import AirShit.Main.SEND_STATUS;
 
-    private final Color BACKGROUND_COLOR = new Color(240, 240, 240);
-    private final Color PRIMARY_COLOR    = new Color(41, 128, 185);
-    private final Color ACCENT_COLOR     = new Color(39, 174, 96);
-    private final Color TEXT_COLOR       = new Color(52, 73, 94);
-    private final Color LIGHT_TEXT       = new Color(236, 240, 241);
+public class SendFileGUI extends JFrame {
+    private JList<Client>      clientList;
+    private DefaultListModel<Client> listModel;
+    private JLabel             selectedFileLabel;
+    private JTextArea          logArea;
+    private JButton            sendButton, refreshButton;
+    private String[]           selectedFiles;
+    private String             folderName;
+    public  File               fatherDir;
+    private Timer              refreshTimer;
+    private static JLabel      textOfReceive;
+    public  static JProgressBar receiveProgressBar;
+
+    private final Color BG   = new Color(240,240,240);
+    private final Color P    = new Color(41,128,185);
+    private final Color A    = new Color(39,174,96);
+    private final Color TXT  = new Color(52,73,94);
+    private final Color LTXT = new Color(236,240,241);
 
     public SendFileGUI() {
-        setTitle("AirShit File Transfer");
-        setSize(700, 500);
+        super("AirShit File Transfer");
+        setSize(700,500);
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-        // optional app icon
-        try {
-            setIconImage(new ImageIcon(getClass().getResource("/asset/icon.jpg")).getImage());
-        } catch (Exception ignored) {}
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        try { setIconImage(new ImageIcon(getClass().getResource("/asset/icon.jpg")).getImage()); }
+        catch (Exception ignored) {}
 
         setupUI();
         refreshClientList();
 
-        // auto‐refresh every 50ms
-        refreshTimer = new Timer(5000, e -> refreshClientList());
+        refreshTimer = new Timer(5_000, e -> refreshClientList());
         refreshTimer.start();
-
         setVisible(true);
     }
 
     private void setupUI() {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
+        catch (Exception ignored) {}
 
-        getContentPane().setBackground(BACKGROUND_COLOR);
+        getContentPane().setBackground(BG);
+        JPanel main = new JPanel(new BorderLayout(10,10));
+        main.setBorder(BorderFactory.createEmptyBorder(15,15,15,15));
+        main.setBackground(BG);
 
-        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
-        mainPanel.setBackground(BACKGROUND_COLOR);
+        main.add(createClientPanel(),  BorderLayout.WEST);
+        main.add(createControlPanel(), BorderLayout.CENTER);
 
-        // --- CLIENT LIST ---
-        JPanel clientPanel = new JPanel(new BorderLayout(5, 5));
-        clientPanel.setBackground(BACKGROUND_COLOR);
+        setContentPane(main);
 
-        JLabel clientsLabel = new JLabel("Available Clients");
-        clientsLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        clientsLabel.setForeground(TEXT_COLOR);
-
-        listModel  = new DefaultListModel<>();
-        clientList = new JList<>(listModel);
-        clientList.setCellRenderer(new ClientCellRenderer());
-        clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        clientList.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
-        JScrollPane clientScroll = new JScrollPane(clientList);
-        clientScroll.setBorder(BorderFactory.createLineBorder(new Color(189, 195, 199)));
-
-        refreshButton = createStyledButton("Refresh", PRIMARY_COLOR);
-        refreshButton.addActionListener(e -> ForcerefreshClientList());
-
-        clientPanel.add(clientsLabel, BorderLayout.NORTH);
-        clientPanel.add(clientScroll,  BorderLayout.CENTER);
-        clientPanel.add(refreshButton,  BorderLayout.SOUTH);
-
-        // --- CONTROL PANEL ---
-        JPanel controlPanel = new JPanel();
-        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
-        controlPanel.setBackground(BACKGROUND_COLOR);
-
-        // file chooser
-        JPanel filePanel = new JPanel(new BorderLayout(5,5));
-        filePanel.setBackground(BACKGROUND_COLOR);
-        filePanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
-        ));
-        
-        selectedFileLabel = new JLabel("No file selected");
-        selectedFileLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-
-        // wrap the label in a scroll pane so long file lists can scroll
-        JScrollPane fileScrollPane = new JScrollPane(
-            selectedFileLabel,
-            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
-        );
-        fileScrollPane.setPreferredSize(new Dimension(250, 100));
-        filePanel.add(fileScrollPane, BorderLayout.CENTER);
-
-        JButton browseButton = createStyledButton("Browse Files...", PRIMARY_COLOR);
-        browseButton.addActionListener(e -> selectFile());
-        filePanel.add(browseButton,      BorderLayout.EAST);
-
-        // send panel
-        JPanel sendPanel = new JPanel(new BorderLayout(5,5));
-        sendPanel.setBackground(BACKGROUND_COLOR);
-        sendButton = createStyledButton("Send File", ACCENT_COLOR);
-        sendButton.setEnabled(false);
-        sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        sendButton.setPreferredSize(new Dimension(200, 30));
-        sendButton.addActionListener((e) -> sendFile());
-
-        sendProgressBar = new JProgressBar();
-        sendProgressBar.setStringPainted(true);
-        // you could also use a titled border, e.g.:
-        sendProgressBar.setVisible(false);
-
-
-
-        sendPanel.add(sendButton,       BorderLayout.NORTH);
-        sendPanel.add(sendProgressBar,  BorderLayout.SOUTH);
-
-        // receive panel
-        JPanel recvPanel = new JPanel(new BorderLayout(5,5));
-        recvPanel.setBackground(BACKGROUND_COLOR);
-        recvPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "Receive Progress", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
-        ));
-        textOfReceive = new JLabel("Receiving:");
-        textOfReceive.setVisible(false);
-        receiveProgressBar = new JProgressBar();
-        receiveProgressBar.setStringPainted(true);
-        receiveProgressBar.setVisible(false);
-        recvPanel.add(textOfReceive,        BorderLayout.NORTH);
-        recvPanel.add(receiveProgressBar,   BorderLayout.CENTER);
-
-        // log panel
-        JPanel logPanel = new JPanel(new BorderLayout());
-        logPanel.setBackground(BACKGROUND_COLOR);
-        logPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
-        ));
-        logArea = new JTextArea(6,20);
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        JScrollPane logScroll = new JScrollPane(logArea);
-        logPanel.add(logScroll, BorderLayout.CENTER);
-
-        controlPanel.add(filePanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(sendPanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(recvPanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(logPanel);
-
-        mainPanel.add(clientPanel,  BorderLayout.WEST);
-        mainPanel.add(controlPanel, BorderLayout.CENTER);
-        setContentPane(mainPanel);
-
-        // on selection change
         clientList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) updateSendButtonState();
         });
 
-        // initial log
         log("Welcome to AirShit File Transfer");
         Client me = Main.getClient();
         log("Your name: " + me.getUserName());
         log("Your IP:   " + me.getIPAddr());
     }
 
+    private JPanel createClientPanel() {
+        JPanel p = new JPanel(new BorderLayout(5,5));
+        p.setBackground(BG);
+
+        JLabel lbl = new JLabel("Available Clients");
+        lbl.setFont(new Font("Microsoft JhengHei", Font.BOLD,14));
+        lbl.setForeground(TXT);
+
+        listModel  = new DefaultListModel<>();
+        clientList = new JList<>(listModel);
+        clientList.setCellRenderer(new ClientCellRenderer());
+        clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        clientList.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
+
+        refreshButton = createStyledButton("Refresh", P);
+        refreshButton.addActionListener(e -> forceRefreshClientList());
+
+        JScrollPane sp = new JScrollPane(clientList);
+        sp.setBorder(BorderFactory.createLineBorder(new Color(189,195,199)));
+
+        p.add(lbl,    BorderLayout.NORTH);
+        p.add(sp,     BorderLayout.CENTER);
+        p.add(refreshButton, BorderLayout.SOUTH);
+        return p;
+    }
+
+    private JPanel createControlPanel() {
+        JPanel ctr = new JPanel();
+        ctr.setLayout(new BoxLayout(ctr, BoxLayout.Y_AXIS));
+        ctr.setBackground(BG);
+
+        ctr.add(createFilePanel());
+        ctr.add(Box.createRigidArea(new Dimension(0,15)));
+        ctr.add(createSendPanel());
+        ctr.add(Box.createRigidArea(new Dimension(0,15)));
+        ctr.add(createReceivePanel());
+        ctr.add(Box.createRigidArea(new Dimension(0,15)));
+        ctr.add(createLogPanel());
+
+        return ctr;
+    }
+
+    private JPanel createFilePanel() {
+        JPanel p = new JPanel(new BorderLayout(5,5));
+        p.setBackground(BG);
+        p.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(189,195,199)),
+            "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Microsoft JhengHei", Font.BOLD,12), TXT
+        ));
+
+        selectedFileLabel = new JLabel("No file selected");
+        selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN,12));
+        JScrollPane sp = new JScrollPane(
+            selectedFileLabel,
+            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
+        );
+        sp.setPreferredSize(new Dimension(250,100));
+
+        JButton btn = createStyledButton("Browse Files...", P);
+        btn.addActionListener(e -> selectFile());
+
+        p.add(sp, BorderLayout.CENTER);
+        p.add(btn, BorderLayout.EAST);
+        return p;
+    }
+
+    private JPanel createSendPanel() {
+        JPanel p = new JPanel(new BorderLayout(5,5));
+        p.setBackground(BG);
+
+        sendButton = createStyledButton("Send File", A);
+        sendButton.setEnabled(false);
+        sendButton.setFont(new Font("Microsoft JhengHei", Font.BOLD,14));
+        sendButton.setPreferredSize(new Dimension(200,30));
+        sendButton.addActionListener(e -> sendFile());
+
+        p.add(sendButton, BorderLayout.NORTH);
+        return p;
+    }
+
+    private JPanel createReceivePanel() {
+        JPanel p = new JPanel(new BorderLayout(5,5));
+        p.setBackground(BG);
+        p.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(189,195,199)),
+            "進度條", TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Microsoft JhengHei",Font.BOLD,12), TXT
+        ));
+
+        textOfReceive     = new JLabel("Receiving:");
+        textOfReceive.setVisible(false);
+        receiveProgressBar= new JProgressBar();
+        receiveProgressBar.setStringPainted(true);
+        receiveProgressBar.setVisible(false);
+
+        p.add(textOfReceive,      BorderLayout.NORTH);
+        p.add(receiveProgressBar,  BorderLayout.CENTER);
+        return p;
+    }
+
+    private JPanel createLogPanel() {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBackground(BG);
+        p.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(189,195,199)),
+            "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Microsoft JhengHei",Font.BOLD,12), TXT
+        ));
+
+        logArea = new JTextArea(6,20);
+        logArea.setEditable(false);
+        logArea.setFont(new Font("Consolas",Font.PLAIN,12));
+        JScrollPane sp = new JScrollPane(logArea);
+        p.add(sp, BorderLayout.CENTER);
+        return p;
+    }
+
     private JButton createStyledButton(String text, Color color) {
         JButton button = new JButton(text);
         button.setBackground(color);
-        button.setForeground(LIGHT_TEXT);
+        button.setForeground(LTXT);
         button.setFocusPainted(false);
         button.setBorderPainted(false);
         button.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -217,7 +211,7 @@ public class SendFileGUI extends JFrame {
         return button;
     }
 
-    private void ForcerefreshClientList() {
+    private void forceRefreshClientList() {
         Main.clearClientList();
         listModel.clear();
         Main.multicastHello();
@@ -305,8 +299,8 @@ public class SendFileGUI extends JFrame {
         Client target = clientList.getSelectedValue();
         log("Sending files to " + target.getUserName() + "...");
         sendButton.setEnabled(false);
-        sendProgressBar.setVisible(true);
-        sendProgressBar.setValue(0);
+        receiveProgressBar.setVisible(true);
+        receiveProgressBar.setValue(0);
 
 
         System.out.println("folderName: " + folderName);
@@ -320,16 +314,16 @@ public class SendFileGUI extends JFrame {
                 sentSoFar.set(0);
                 this.totalBytes = totalBytes;
                 log("totalBytes: " + totalBytes);
-                SwingUtilities.invokeLater(() -> sendProgressBar.setMaximum(100));
-                SwingUtilities.invokeLater(() -> sendProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> sendProgressBar.setValue(0));
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setMaximum(100));
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setVisible(true));
+                SwingUtilities.invokeLater(() -> receiveProgressBar.setValue(0));
             }
             @Override
             public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
                     int pct = (int)(cumul*100/totalBytes);
-                    sendProgressBar.setValue(pct);
+                    receiveProgressBar.setValue(pct);
                     if (pct % 10 == 0 && pct != lasPct) {
                         lasPct = pct;
                         log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
@@ -341,7 +335,7 @@ public class SendFileGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     log("File transfer complete.");
                     sendButton.setEnabled(true);
-                    sendProgressBar.setVisible(false);
+                    receiveProgressBar.setVisible(false);
                 });    
             }
             @Override
@@ -353,7 +347,7 @@ public class SendFileGUI extends JFrame {
                     e.printStackTrace(new PrintWriter(sw));
                     log(sw.toString());               // 把 stack‐trace 也印進 log
                     sendButton.setEnabled(true);
-                    sendProgressBar.setVisible(false);
+                    receiveProgressBar.setVisible(false);
                 });
             }
         };
@@ -421,7 +415,7 @@ public class SendFileGUI extends JFrame {
             JPanel panel = new JPanel(new BorderLayout(10,0));
             panel.setOpaque(true);
             if (isSelected) {
-                panel.setBackground(PRIMARY_COLOR);
+                panel.setBackground(P);
             } else {
                 panel.setBackground(list.getBackground());
             }

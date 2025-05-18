@@ -183,6 +183,7 @@ public class Main { // 定義 Main 類別
                     // Ignore self-sent messages (more robust check needed if multiple local IPs)
                     InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
                     if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
+                        responseNewClient(localInetAddress, DISCOVERY_PORT);
                         continue;
                     }
 
