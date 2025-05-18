@@ -199,7 +199,7 @@ public class FileReceiver {
                          DataOutputStream fileDos = new DataOutputStream(fileDataSocket.getOutputStream())) {
 
                         String fileMetadata = fileDis.readUTF(); // Expect "fileName|fileSize|isCompressedSuccessfully"
-                        LogPanel.log("Received file metadata: " + fileMetadata);
+                        // LogPanel.log("Received file metadata: " + fileMetadata);
                         String[] metaParts = fileMetadata.split("\\|");
 
                         if (metaParts.length < 2 || metaParts.length > 3) { // Min 2 (name, size), Max 3 (name, size, isCompressed)
@@ -228,7 +228,7 @@ public class FileReceiver {
                         // If this is a compressed archive for a multi-file scenario, it represents all remaining files.
                         if (isThisTransferACompressedArchive && !isSingleFileHandshake) {
                             expectedFileTransfers = transferOpIndex + 1; // This is the last transfer operation
-                            LogPanel.log("Receiving a compressed archive for a multi-file transfer. This will be the only transfer operation.");
+                            // LogPanel.log("Receiving a compressed archive for a multi-file transfer. This will be the only transfer operation.");
                         }
 
 
@@ -281,7 +281,7 @@ public class FileReceiver {
 
                         fileDos.writeUTF("ACK"); // Acknowledge metadata, ready for file data
                         fileDos.flush();
-                        LogPanel.log("Ready to receive data for: " + currentReceivedFileName + ", Size: " + SendFileGUI.formatFileSize(currentReceivedFileSize));
+                        // LogPanel.log("Ready to receive data for: " + currentReceivedFileName + ", Size: " + SendFileGUI.formatFileSize(currentReceivedFileSize));
 
 
                         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -315,12 +315,12 @@ public class FileReceiver {
                         }
 
                         if (success) {
-                            LogPanel.log("File " + currentReceivedFileName + " received successfully. Size: " + SendFileGUI.formatFileSize(currentReceivedFileSize));
+                            // LogPanel.log("File " + currentReceivedFileName + " received successfully. Size: " + SendFileGUI.formatFileSize(currentReceivedFileSize));
                             if (isThisTransferACompressedArchive) {
-                                LogPanel.log("Attempting to decompress archive: " + currentReceivedFileName);
+                                // LogPanel.log("Attempting to decompress archive: " + currentReceivedFileName);
                                 Decompresser decompresser = new Decompresser(); // Create instance here
                                 if (decompresser.decompressFile(fullPathForReceiver, finalSaveBasePath.getAbsolutePath())) {
-                                    LogPanel.log("Successfully decompressed. Deleting archive: " + currentReceivedFileName);
+                                    // LogPanel.log("Successfully decompressed. Deleting archive: " + currentReceivedFileName);
                                     if (!targetFile.delete()) {
                                         LogPanel.log("Warning: Failed to delete archive " + currentReceivedFileName);
                                     }
@@ -413,7 +413,7 @@ public class FileReceiver {
                     zis.closeEntry();
                     zipEntry = zis.getNextEntry();
                 }
-                LogPanel.log("Successfully decompressed " + zipFilePath + " to " + destDirectoryPath);
+                // LogPanel.log("Successfully decompressed " + zipFilePath + " to " + destDirectoryPath);
                 return true;
             } catch (IOException e) {
                 LogPanel.log("Error decompressing file " + zipFilePath + ": " + e.getMessage());

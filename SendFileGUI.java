@@ -247,17 +247,20 @@ public class SendFileGUI extends JFrame {
 
             @Override public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
+                    recvPanel.getLabel().setVisible(false);
                     recvPanel.getProgressBar().setVisible(false);
                     sendPanel.getSendButton().setEnabled(true);
                 });
                 logPanel.log("File transfer complete.");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
-
+            
             @Override public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
+                    recvPanel.getLabel().setVisible(false);
                     recvPanel.getProgressBar().setVisible(false);
                     sendPanel.getSendButton().setEnabled(true);
+                    
                 });
                 logPanel.log("Error: " + e);
                 StringWriter sw = new StringWriter();

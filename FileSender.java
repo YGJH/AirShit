@@ -113,7 +113,7 @@ public class FileSender {
 
         // 嘗試壓縮: 原始總大小小於 600KB 且原始檔案數量大於 1
         if (originalTotalSize < 600 * 1024 && filesToProcess.length > 1 && !isSingleFileOriginally) {
-            println("Total size " + originalTotalSizeFormatted + " with " + filesToProcess.length + " files. Attempting compression...");
+            // println("Total size " + originalTotalSizeFormatted + " with " + filesToProcess.length + " files. Attempting compression...");
             try {
                 // Compresser.compressFile 期望 filesToProcess 中的路徑是相對於 currentBasePath 的
                 String compressedArchiveName = Compresser.compressFile(currentBasePath, filesToProcess, "AirShit_Archive");
@@ -125,7 +125,7 @@ public class FileSender {
                         filesToSendInLoop = new String[]{compressedArchiveName}; // 更新迴圈中要傳送的檔案列表
                         // loopBasePath 保持為 currentBasePath，因為壓縮檔建立在那裡
                         // currentTotalSizeForCallback 保持為 originalTotalSize，以與 handshake 一致
-                        println("Compression successful. New file to send: " + compressedArchiveName);
+                        // println("Compression successful. New file to send: " + compressedArchiveName);
                     } else {
                         println("Compression reported success, but archive file not found: " + archiveFile.getAbsolutePath());
                     }
@@ -196,7 +196,7 @@ public class FileSender {
             File archiveToDelete = new File(loopBasePath, filesToSendInLoop[0]);
             try {
                 Files.deleteIfExists(archiveToDelete.toPath());
-                println("Deleted temporary archive: " + archiveToDelete.getAbsolutePath());
+                // println("Deleted temporary archive: " + archiveToDelete.getAbsolutePath());
             } catch (IOException e) {
                 println("Warning: Failed to delete temporary archive " + archiveToDelete.getAbsolutePath() + ": " + e.getMessage());
             }
