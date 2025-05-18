@@ -54,7 +54,7 @@ public class FileSender {
             // 傳送 handshake 訊息
             dos.writeUTF(sb.toString());
             dos.flush();
-            println("傳送 handshake 訊息： " + sb.toString());
+            // println("傳送 handshake 訊息： " + sb.toString());
             // 等待 Receiver 確認接收檔案
             String response = dis.readUTF();
             
@@ -62,19 +62,20 @@ public class FileSender {
                 String thread = response.split("\\|")[1];
                 int tmp = Integer.parseInt(thread); // 硬體執行緒數量
                 threadCount = Math.min(threadCount , tmp); // 硬體執行緒數量
-                println("Receiver 確認接收檔案。");
+                // println("Receiver 確認接收檔案。");
             } else {
-                System.err.println("Receiver 無法接收檔案，請稍後再試。");
+                // System.err.println("Receiver 無法接收檔案，請稍後再試。");
                 return;
             }
 
         } catch (IOException e) {
-            System.err.println("無法連線到 Receiver：");
+            e.printStackTrace();
+            // System.err.println("無法連線到 Receiver：");
             return;
         }
         
         callback.onStart(totalSize);
-        System.out.println(files.length + " 個檔案需要傳送。");
+        // System.out.println(files.length + " 個檔案需要傳送。");
         for (String filePath : files) {
             // notify user
             File file = new File(fatherDir+"\\"+filePath);
@@ -83,7 +84,7 @@ public class FileSender {
             try (Socket socket2 = new Socket(host, port);
                 DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
                 DataInputStream  dis = new DataInputStream(socket2.getInputStream())) {
-                System.out.println("開始傳送檔案：" + fileName + " size: " + fileSize);
+                // System.out.println("開始傳送檔案：" + fileName + " size: " + fileSize);
                 // 1) send the file‑name|size header
                 dos.writeUTF(fileName + "|" + fileSize);
                 dos.flush();
@@ -91,10 +92,10 @@ public class FileSender {
                 // 2) wait for ACK on the same socket
                 String response = dis.readUTF();
                 if (!"ACK".equals(response)) {
-                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    // System.err.println("Receiver 無法接收檔案：" + fileName);
                     return;
                 } else {
-                    println("receiver 已開始接收檔案");
+                    // println("receiver 已開始接收檔案");
                 }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
@@ -110,11 +111,11 @@ public class FileSender {
                 response = dis.readUTF();
                 println(response);
                 if (!"OK".equals(response)) {
-                    System.err.println("Receiver 無法接收檔案：" + fileName);
+                    // System.err.println("Receiver 無法接收檔案：" + fileName);
                     callback.onError(new IOException("Receiver 無法接收檔案：" + fileName));
                     return;
                 } else {
-                    println("receiver 已完成接收檔案");
+                    // println("receiver 已完成接收檔案");
                 }
                 
             } catch (IOException | InterruptedException e) {
@@ -122,7 +123,7 @@ public class FileSender {
                 return;
             }
         }
-        System.out.println("所有檔案傳送完成。");
+        // System.out.println("所有檔案傳送完成。");
         callback.onComplete();
     }
 

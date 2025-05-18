@@ -16,6 +16,7 @@ import javax.swing.SwingUtilities;
 import javax.xml.crypto.Data;
 
 import AirShit.Main.SEND_STATUS;
+import AirShit.ui.LogPanel;
 
 /**
  * Receiver: 在指定埠口接收多個執行緒送過來的檔案分段，並寫入同一個檔案中。
@@ -70,8 +71,8 @@ public class FileReceiver {
                     totalSizeStr = (parts[4]);
                     receiveThreads = Integer.parseInt(parts[5]);
                     sb.append(fileNames);
-                    println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
-                            + totalSize);
+                    // println("單檔傳送：SenderUserName=" + senderUserName + ", fileNames=" + fileNames + ", totalSize="
+                            // + totalSize);
                 } else if (parts[0].equals("isMulti")) {
                     senderUserName = parts[1];
                     folderName = parts[2];
@@ -82,9 +83,10 @@ public class FileReceiver {
                     for (int i = 3; i < parts.length - 3; i++) {
                         sb.append(parts[i]).append("\n");
                     }
-                    println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
+                    // println("多檔傳送：SenderUserName=" + senderUserName + ", folderName=" + folderName);
                 } else {
-                    System.err.println("無效的 handshake 類型： " + parts[0]);
+                    LogPanel.log("無效的 handshake 類型： " + parts[0]);
+                    // System.err.println("無效的 handshake 類型： " + parts[0]);
                     continue;
                 }
                 // ask user to accept the file
@@ -120,22 +122,23 @@ public class FileReceiver {
                 if (response != JOptionPane.YES_OPTION) {
                         dos.writeUTF("REJECT");
                         dos.flush();
-                        System.out.println("使用者拒絕接收檔案。");
+                        LogPanel.log("使用者拒絕接收檔案。");
+                        // System.out.println("使用者拒絕接收檔案。");
                         continue;
                 }
 
                 // get output file path
                 String outputFilePath = FolderSelector.selectFolder();
                 if (outputFilePath == null) {
-                    System.out.println("使用者取消選擇資料夾。");
+                    // System.out.println("使用者取消選擇資料夾。");
                     dos.writeUTF("REJECT");
                     dos.flush();
-                    System.err.println("無法與 Sender 通訊：");
+                    LogPanel.log("使用者取消選擇資料夾。");
                     continue;
                 }
                 if (!isSingle) {
                     outputFilePath = outputFilePath + "\\" + folderName;
-                    println("outputFilePath: " + outputFilePath);
+                    // println("outputFilePath: " + outputFilePath);
                     File folder = new File(outputFilePath);
                     if (!folder.exists()) {
                         folder.mkdirs(); // Create the directory if it doesn't exist
@@ -150,17 +153,17 @@ public class FileReceiver {
                 
                 cb.onStart(totalSize); // 開始接收檔案
                 // notify sender to start sending the file
-                System.out.println("開始接收檔案：" + fileCount + " 個檔案，總大小：" + totalSize + " bytes");
+                // System.out.println("開始接收檔案：" + fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
                     try (Socket ctrlSock = serverSocket.accept();
                             DataInputStream fileDis = new DataInputStream(ctrlSock.getInputStream());
                             DataOutputStream fileDos = new DataOutputStream(ctrlSock.getOutputStream())) {
                         String res = fileDis.readUTF();
-                        System.out.println("接收檔案：" + res);
+                        // System.out.println("接收檔案：" + res);
                         String[] pp = res.split("\\|");
                         final String fileName = pp[0];
                         long fileSize = Long.parseLong(pp[1]);
-                        println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
+                        // println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
                         // notify sender to start sending the file
                         File tmp = new File(outPutPath + "\\" + fileName);
                         if(tmp.exists()) {
@@ -169,7 +172,7 @@ public class FileReceiver {
                             File parentDir = tmp.getParentFile();
                             if (!parentDir.exists()) {
                                 parentDir.mkdirs(); // Create the directory if it doesn't exist
-                                println("已建立資料夾：" + parentDir.getAbsolutePath());
+                                // println("已建立資料夾：" + parentDir.getAbsolutePath());
                             }
                         }
 
@@ -177,7 +180,7 @@ public class FileReceiver {
                         fileDos.writeUTF("ACK");
                         fileDos.flush();
                         ExecutorService executor = Executors.newSingleThreadExecutor();
-                        System.out.println("開始接收檔案：" + fileName);
+                        // System.out.println("開始接收檔案：" + fileName);
                         Receiver receiver = new Receiver(serverSocket);
                         Future<Boolean> future;
                         if(fileSize < 6 * 1024 * 1024) {
@@ -220,11 +223,11 @@ public class FileReceiver {
                         }
                         
                         if (success) {
-                            println("檔案傳輸完成，總共接收 " + fileSize + " bytes");
+                            // println("檔案傳輸完成，總共接收 " + fileSize + " bytes");
                             fileDos.writeUTF("OK");
                             fileDos.flush();
                         } else {
-                            System.err.println("檔案接收失敗：" + fileName);
+                            // System.err.println("檔案接收失敗：" + fileName);
                             fileDos.writeUTF("ERROR");
                             fileDos.flush();
                         }
@@ -234,10 +237,10 @@ public class FileReceiver {
                     
                 }
             } catch (IOException e) {
-                System.err.println("無法連線到 Sender：");
+                // System.err.println("無法連線到 Sender：");
+                cb.onError(new Exception("無法連線到 Sender："));
                 e.printStackTrace();
             }
-            Main.sendStatus.set(SEND_STATUS.SEND_OK);
             cb.onComplete();
 
         }
