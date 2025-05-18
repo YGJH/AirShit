@@ -15,6 +15,8 @@ elif [[ "$1" == "test" ]] then
     javac -d ../AirShitTest ../AirShitTest/*.java
     java AirShit.Main
 else 
-    javac -encoding UTF-8 -d . *.java
-    java -Dfile.encoding=UTF-8 AirShit.Main
+    # 修改 javac 命令以包含 classpath
+    javac -cp ".:jars/flatlaf-3.4.1.jar" -encoding UTF-8 -d . *.java ui/*.java
+    # 修改 java 命令以包含 classpath
+    java -cp ".:jars/flatlaf-3.4.1.jar" -Dfile.encoding=UTF-8 AirShit.Main
 fi

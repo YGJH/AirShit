@@ -1,444 +1,218 @@
 package AirShit;
 
+import AirShit.ui.*;
+import com.formdev.flatlaf.FlatLightLaf; // Import FlatLaf
+
 import javax.swing.*;
-import javax.swing.border.*;
 import java.awt.*;
-import java.awt.event.*;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicLong;
 
-import AirShit.Main.SEND_STATUS;
-
 public class SendFileGUI extends JFrame {
-    private JList<Client>      clientList;
-    private DefaultListModel<Client> listModel;
-    private JLabel             selectedFileLabel;
-    private JTextArea          logArea;
-    private JButton            sendButton, refreshButton;
-    private String[]           selectedFiles;
-    private String             folderName;
-    public  File               fatherDir;
-    private Timer              refreshTimer;
-    private static JLabel      textOfReceive;
-    public  static JProgressBar receiveProgressBar;
+    // 供 Main.java 等处静态访问
+    public static SendFileGUI INSTANCE;
+    public static JProgressBar receiveProgressBar;
 
-    private final Color BG   = new Color(240,240,240);
-    private final Color P    = new Color(41,128,185);
-    private final Color A    = new Color(39,174,96);
-    private final Color TXT  = new Color(52,73,94);
-    private final Color LTXT = new Color(236,240,241);
+    // A more "gorgeous" and modern color palette
+    private static final Color APP_BACKGROUND = new Color(242, 245, 247); // Light, clean background
+    private static final Color PANEL_BACKGROUND = Color.WHITE; // Panels stand out
+    private static final Color TEXT_PRIMARY = new Color(45, 55, 72);    // Darker, more readable text
+    private static final Color TEXT_SECONDARY = new Color(100, 116, 139); // For less important text
+    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246); // A vibrant blue
+    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129); // A modern green
+    private static final Color BORDER_COLOR = new Color(226, 232, 240); // Subtle borders
+
+    // Modern Fonts (FlatLaf will use system's UI font, which is usually good)
+    public static final Font FONT_PRIMARY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 14);
+    public static final Font FONT_PRIMARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+    public static final Font FONT_SECONDARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+    public static final Font FONT_TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 16);
+
+
+    private ClientPanel          clientPanel;
+    private FileSelectionPanel   filePanel;
+    private SendControlPanel     sendPanel;
+    private ReceiveProgressPanel recvPanel;
+    private LogPanel             logPanel;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
-        setSize(700,500);
+        INSTANCE = this;
+
+        // Apply FlatLaf
+        try {
+            UIManager.setLookAndFeel(new FlatLightLaf());
+        } catch (Exception ex) {
+            System.err.println("Failed to initialize LaF. Using default.");
+        }
+        // Re-apply font settings after L&F change if needed, or let FlatLaf handle it.
+        // UIManager.put("defaultFont", FONT_PRIMARY_PLAIN);
+
+
+        setSize(750, 550); // Slightly larger for better spacing
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        try { setIconImage(new ImageIcon(getClass().getResource("/asset/icon.jpg")).getImage()); }
-        catch (Exception ignored) {}
 
-        setupUI();
-        refreshClientList();
-
-        refreshTimer = new Timer(5_000, e -> refreshClientList());
-        refreshTimer.start();
-        setVisible(true);
-    }
-
-    private void setupUI() {
-        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
-        catch (Exception ignored) {}
-
-        getContentPane().setBackground(BG);
-        JPanel main = new JPanel(new BorderLayout(10,10));
-        main.setBorder(BorderFactory.createEmptyBorder(15,15,15,15));
-        main.setBackground(BG);
-
-        main.add(createClientPanel(),  BorderLayout.WEST);
-        main.add(createControlPanel(), BorderLayout.CENTER);
-
-        setContentPane(main);
-
-        clientList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) updateSendButtonState();
-        });
+        initComponents();
+        layoutComponents();
+        bindEvents();
 
         log("Welcome to AirShit File Transfer");
-        Client me = Main.getClient();
-        log("Your name: " + me.getUserName());
-        log("Your IP:   " + me.getIPAddr());
+        SwingUtilities.invokeLater(() -> setVisible(true));
     }
 
-    private JPanel createClientPanel() {
-        JPanel p = new JPanel(new BorderLayout(5,5));
-        p.setBackground(BG);
+    private void initComponents() {
+        // Pass the new theme colors and fonts to the panels
+        clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
+        filePanel   = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS); // Send button on app background
+        recvPanel   = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
 
-        JLabel lbl = new JLabel("Available Clients");
-        lbl.setFont(new Font("Microsoft JhengHei", Font.BOLD,14));
-        lbl.setForeground(TXT);
+        // 把进度条暴露给 Main
+        receiveProgressBar = recvPanel.getProgressBar();
 
-        listModel  = new DefaultListModel<>();
-        clientList = new JList<>(listModel);
-        clientList.setCellRenderer(new ClientCellRenderer());
-        clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        clientList.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
-
-        refreshButton = createStyledButton("Refresh", P);
-        refreshButton.addActionListener(e -> forceRefreshClientList());
-
-        JScrollPane sp = new JScrollPane(clientList);
-        sp.setBorder(BorderFactory.createLineBorder(new Color(189,195,199)));
-
-        p.add(lbl,    BorderLayout.NORTH);
-        p.add(sp,     BorderLayout.CENTER);
-        p.add(refreshButton, BorderLayout.SOUTH);
-        return p;
+        // 初始时禁用发送按钮
+        sendPanel.getSendButton().setEnabled(false);
+        sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
     }
 
-    private JPanel createControlPanel() {
-        JPanel ctr = new JPanel();
-        ctr.setLayout(new BoxLayout(ctr, BoxLayout.Y_AXIS));
-        ctr.setBackground(BG);
+    private void layoutComponents() {
+        JPanel main = new JPanel(new BorderLayout(15, 15)); // Increased gaps
+        main.setBackground(APP_BACKGROUND);
+        main.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15)); // More padding
 
-        ctr.add(createFilePanel());
-        ctr.add(Box.createRigidArea(new Dimension(0,15)));
-        ctr.add(createSendPanel());
-        ctr.add(Box.createRigidArea(new Dimension(0,15)));
-        ctr.add(createReceivePanel());
-        ctr.add(Box.createRigidArea(new Dimension(0,15)));
-        ctr.add(createLogPanel());
+        main.add(clientPanel, BorderLayout.WEST);
 
-        return ctr;
+        JPanel right = new JPanel();
+        right.setBackground(APP_BACKGROUND); // Match main background
+        right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
+
+        // Add components with consistent spacing
+        right.add(filePanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(sendPanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(recvPanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(logPanel);
+
+        main.add(right, BorderLayout.CENTER);
+        setContentPane(main);
     }
 
-    private JPanel createFilePanel() {
-        JPanel p = new JPanel(new BorderLayout(5,5));
-        p.setBackground(BG);
-        p.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei", Font.BOLD,12), TXT
-        ));
-
-        selectedFileLabel = new JLabel("No file selected");
-        selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN,12));
-        JScrollPane sp = new JScrollPane(
-            selectedFileLabel,
-            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
-        );
-        sp.setPreferredSize(new Dimension(250,100));
-
-        JButton btn = createStyledButton("Browse Files...", P);
-        btn.addActionListener(e -> selectFile());
-
-        p.add(sp, BorderLayout.CENTER);
-        p.add(btn, BorderLayout.EAST);
-        return p;
+    private void bindEvents() {
+        clientPanel.getList().addListSelectionListener(e -> updateSendState());
+        filePanel.addPropertyChangeListener("selectedFiles", ev -> updateSendState());
+        sendPanel.getSendButton().addActionListener(e -> doSend());
     }
 
-    private JPanel createSendPanel() {
-        JPanel p = new JPanel(new BorderLayout(5,5));
-        p.setBackground(BG);
-
-        sendButton = createStyledButton("Send File", A);
-        sendButton.setEnabled(false);
-        sendButton.setFont(new Font("Microsoft JhengHei", Font.BOLD,14));
-        sendButton.setPreferredSize(new Dimension(200,30));
-        sendButton.addActionListener(e -> sendFile());
-
-        p.add(sendButton, BorderLayout.NORTH);
-        return p;
+    private void updateSendState() {
+        boolean ok = clientPanel.getList().getSelectedValue() != null
+                  && filePanel.getSelectedFiles() != null;
+        sendPanel.getSendButton().setEnabled(ok);
     }
 
-    private JPanel createReceivePanel() {
-        JPanel p = new JPanel(new BorderLayout(5,5));
-        p.setBackground(BG);
-        p.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "進度條", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei",Font.BOLD,12), TXT
-        ));
+    private void doSend() {
+        Client target       = clientPanel.getList().getSelectedValue();
+        String[] files      = filePanel.getSelectedFiles();
+        File   fatherDir    = filePanel.getFolder();
+        String folderName   = filePanel.getFolderName();
+        if (target == null || files == null) return;
 
-        textOfReceive     = new JLabel("Receiving:");
-        textOfReceive.setVisible(false);
-        receiveProgressBar= new JProgressBar();
-        receiveProgressBar.setStringPainted(true);
-        receiveProgressBar.setVisible(false);
+        logPanel.log("Sending files to " + target.getUserName() + "...");
 
-        p.add(textOfReceive,      BorderLayout.NORTH);
-        p.add(receiveProgressBar,  BorderLayout.CENTER);
-        return p;
-    }
-
-    private JPanel createLogPanel() {
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBackground(BG);
-        p.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei",Font.BOLD,12), TXT
-        ));
-
-        logArea = new JTextArea(6,20);
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas",Font.PLAIN,12));
-        JScrollPane sp = new JScrollPane(logArea);
-        p.add(sp, BorderLayout.CENTER);
-        return p;
-    }
-
-    private JButton createStyledButton(String text, Color color) {
-        JButton button = new JButton(text);
-        button.setBackground(color);
-        button.setForeground(LTXT);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.addMouseListener(new MouseAdapter() {
-            public void mouseEntered(MouseEvent e) {
-                button.setBackground(color.darker());
-            }
-            public void mouseExited(MouseEvent e) {
-                button.setBackground(color);
-            }
-        });
-        return button;
-    }
-
-    private void forceRefreshClientList() {
-        Main.clearClientList();
-        listModel.clear();
-        Main.multicastHello();
-        try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        refreshClientList();
-    }
-    public void refreshClientList() {
-
-        Hashtable<String, Client> clients = Main.getClientList();
-        for(int i = listModel.size()-1; i>=0; i--) {
-            Client c = listModel.getElementAt(i);
-            // check if the client is still in the list
-            if(clients.get(c.getUserName()) == null) {
-                listModel.remove(i);
-            } else if(!Client.check(c, clients.get(c.getUserName()))) {
-                listModel.remove(i);
-            }
-        }
-        for (Client c : clients.values()) {
-            boolean found = false;
-            for(int i = 0; i < listModel.size(); i++) {
-                Client c2 = listModel.getElementAt(i);
-                if (Client.check(c, c2)) {
-                    found = true;
-                }
-            }
-            if(!found) {
-                listModel.addElement(c);
-            }
-        }
-
-        updateSendButtonState();
-    }
-
-    private void selectFile() {
-        File selectedFile;
-        selectedFile = FolderSelector.selectFolderOrFiles(null);
-        fatherDir = selectedFile.getParentFile();
-        folderName = selectedFile.getName();
-
-        if (selectedFile == null) {
-            log("No file selected");
-            return;
-        }
-
-        if (selectedFile.isDirectory()) {
-            selectedFiles = FolderSelector.listFilesRecursivelyWithRelativePaths(selectedFile);
-            selectedFileLabel.setText("Selected folder: " + selectedFile.getAbsolutePath());
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html><body>");
-            sb.append("<h3>Selected files:</h3>");
-            for (String file : selectedFiles) {
-                sb.append(file).append("<br>");
-            }
-            sb.append("</body></html>");
-            selectedFileLabel.setText(sb.toString());
-            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
-        } else {
-            selectedFiles = new String[]{selectedFile.getAbsolutePath()};
-            selectedFileLabel.setText("Selected file: " + selectedFile.getAbsolutePath());
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html><body>");
-            sb.append("<h3>Selected file:</h3>");
-            sb.append(selectedFile.getAbsolutePath());
-            sb.append("</body></html>");
-            selectedFileLabel.setText(sb.toString());
-            // set chinese font
-            selectedFiles = new String[]{new File(fatherDir+"\\"+selectedFiles[0]).getName()};
-            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
-        }
-
-        updateSendButtonState();
-    }
-
-
-    private void sendFile() {
-        if (clientList.getSelectedValue() == null ||
-            selectedFiles == null) return;
-
-        Client target = clientList.getSelectedValue();
-        log("Sending files to " + target.getUserName() + "...");
-        sendButton.setEnabled(false);
-        receiveProgressBar.setVisible(true);
-        receiveProgressBar.setValue(0);
-
-
-        System.out.println("folderName: " + folderName);
-            
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
-            int lasPct = -1;
-            long totalBytes = 0;
-            @Override
-            public void onStart(long totalBytes) {
-                sentSoFar.set(0);
+            long totalBytes;
+            int lastPct = -1;
+
+            @Override public void onStart(long totalBytes) {
                 this.totalBytes = totalBytes;
-                log("totalBytes: " + totalBytes);
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setMaximum(100));
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setValue(0));
+                sentSoFar.set(0);
+                SwingUtilities.invokeLater(() -> {
+                    sendPanel.getSendButton().setEnabled(false);
+                    recvPanel.getLabel().setVisible(true);
+                    recvPanel.getProgressBar().setVisible(true);
+                    recvPanel.getProgressBar().setMaximum(100);
+                    recvPanel.getProgressBar().setValue(0);
+                });
+                logPanel.log("Total size: " + totalBytes + " bytes");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
-            @Override
-            public void onProgress(long bytesTransferred) {
+
+            @Override public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
-                SwingUtilities.invokeLater(() -> {
-                    int pct = (int)(cumul*100/totalBytes);
-                    receiveProgressBar.setValue(pct);
-                    if (pct % 10 == 0 && pct != lasPct) {
-                        lasPct = pct;
-                        log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
-                    }
-                });
+                int pct = (int)(cumul * 100 / totalBytes);
+                SwingUtilities.invokeLater(() -> recvPanel.getProgressBar().setValue(pct));
+                if (pct % 10 == 0 && pct != lastPct) {
+                    lastPct = pct;
+                    logPanel.log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                }
             }
-            @Override
-            public void onComplete() {
+
+            @Override public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
-                    log("File transfer complete.");
-                    sendButton.setEnabled(true);
-                    receiveProgressBar.setVisible(false);
-                });    
-            }
-            @Override
-            public void onError(Exception e) {
-                SwingUtilities.invokeLater(() -> {
-                    // 先印到 log 裡
-                    log("Error: " + e);              // 印 e.toString() 而不是 e.getMessage()
-                    StringWriter sw = new StringWriter();
-                    e.printStackTrace(new PrintWriter(sw));
-                    log(sw.toString());               // 把 stack‐trace 也印進 log
-                    sendButton.setEnabled(true);
-                    receiveProgressBar.setVisible(false);
+                    recvPanel.getProgressBar().setVisible(false);
+                    sendPanel.getSendButton().setEnabled(true);
                 });
+                logPanel.log("File transfer complete.");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
+            }
+
+            @Override public void onError(Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    recvPanel.getProgressBar().setVisible(false);
+                    sendPanel.getSendButton().setEnabled(true);
+                });
+                logPanel.log("Error: " + e);
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                logPanel.log(sw.toString());
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
         };
 
         new Thread(() -> {
-            FileSender sender = new FileSender(
-                target.getIPAddr(),
-                target.getTCPPort(),
-                fatherDir.getAbsolutePath()
-            );
             try {
-                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
-                sender.sendFiles(
-                    selectedFiles,
-                    Main.getClient().getUserName(),
-                    folderName,
-                    callback
+                FileSender sender = new FileSender(
+                    target.getIPAddr(),
+                    target.getTCPPort(),
+                    fatherDir.getAbsolutePath()
                 );
-            } catch (Exception e) {
-                callback.onError(e);
+                sender.sendFiles(files,
+                                 Main.getClient().getUserName(),
+                                 folderName,
+                                 callback);
+            } catch (Exception ex) {
+                callback.onError(ex);
             }
-            Main.sendStatus.set(SEND_STATUS.SEND_OK);
-
         }, "send-thread").start();
     }
 
-    private void updateSendButtonState() {
-        boolean ok = clientList.getSelectedValue()!=null
-                  && selectedFiles!=null && selectedFiles.length>0;
-        sendButton.setEnabled(ok);
-    }
-
+    /** 供 Main.java 调用：写入日志面板 */
     public void log(String msg) {
-        String t = new SimpleDateFormat("HH:mm:ss").format(new Date());
-        logArea.append("\r[" + t + "] " + msg + "\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
+        if (logPanel != null) { // Check if logPanel is initialized
+            logPanel.log(msg);
+        } else {
+            System.out.println("[LOG EARLY] " + msg); // Fallback if logPanel not ready
+        }
     }
 
     public static String formatFileSize(long size) {
         String[] units = {"B","KB","MB","GB"};
-        int idx = 0;
         double val = size;
-        while (val>1024 && idx<units.length-1) {
+        int idx = 0;
+        while (val > 1024 && idx < units.length-1) {
             val /= 1024;
             idx++;
         }
         return String.format("%.2f %s", val, units[idx]);
     }
 
-    public static void receiveFileProgress(int percent) {
-        SwingUtilities.invokeLater(() -> {
-            textOfReceive.setVisible(true);
-            receiveProgressBar.setVisible(true);
-            receiveProgressBar.setValue(percent);
-        });
-    }
-
-    private class ClientCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list,
-                                                      Object value,
-                                                      int index,
-                                                      boolean isSelected,
-                                                      boolean cellHasFocus) {
-            JPanel panel = new JPanel(new BorderLayout(10,0));
-            panel.setOpaque(true);
-            if (isSelected) {
-                panel.setBackground(P);
-            } else {
-                panel.setBackground(list.getBackground());
-            }
-            Client c = (Client)value;
-            JLabel name = new JLabel(c.getUserName());
-            name.setFont(new Font("Segoe UI", Font.BOLD, 13));
-            JLabel details = new JLabel(c.getIPAddr() + " (" + c.getOS() + ")");
-            details.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-            JPanel texts = new JPanel(new GridLayout(2,1));
-            texts.setOpaque(false);
-            texts.add(name);
-            texts.add(details);
-            panel.add(texts, BorderLayout.CENTER);
-
-            JLabel icon;
-            try {
-                icon = new JLabel(new ImageIcon(getClass().getResource("/asset/user.png")));
-            } catch (Exception e) {
-                icon = new JLabel("👤");
-            }
-            panel.add(icon, BorderLayout.WEST);
-            panel.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
-            return panel;
-        }
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(SendFileGUI::new);
     }
 }
