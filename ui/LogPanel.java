@@ -1,7 +1,6 @@
 package AirShit.ui;
 
-import AirShit.SendFileGUI; // For Font constants
-
+import AirShit.SendFileGUI;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
@@ -9,42 +8,73 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class LogPanel extends JPanel {
-    private final JTextArea logArea;
+    private JTextArea logArea;
+    private JScrollPane scroll;
 
-    // Corrected constructor to accept panelBg, textPrimary, and borderColor
-    public LogPanel(Color panelBg, Color textPrimary, Color borderColor) {
+    private Color currentPanelBg;
+    private Color currentTextPrimary;
+    private Color currentBorderColor;
+    private Color currentLogAreaBg; // Store the specific background for the log area
+
+    // Constructor updated to accept logAreaBg
+    public LogPanel(Color panelBg, Color textPrimary, Color borderColor, Color logAreaBg) {
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentBorderColor = borderColor;
+        this.currentLogAreaBg = logAreaBg; // Store it
+
+        if (logArea == null) {
+            logArea = new JTextArea(6, 20);
+            logArea.setEditable(false);
+            logArea.setLineWrap(true);
+            logArea.setWrapStyleWord(true);
+        }
+        if (scroll == null) {
+            scroll = new JScrollPane(logArea);
+        }
+        styleComponents();
+    }
+
+    private void styleComponents() {
         setLayout(new BorderLayout(5, 5));
-        setBackground(panelBg);
+        setBackground(currentPanelBg);
         setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(borderColor), // Use borderColor
+            BorderFactory.createLineBorder(currentBorderColor),
             "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
-            SendFileGUI.FONT_TITLE, textPrimary // Use new font and text color
+            SendFileGUI.FONT_TITLE, currentTextPrimary
         ));
 
-        logArea = new JTextArea(6, 20);
-        logArea.setEditable(false);
         logArea.setFont(new Font("Consolas", Font.PLAIN, 13));
-        logArea.setForeground(textPrimary);
-        logArea.setBackground(panelBg); // Match panel background or choose a slightly different shade
-        logArea.setLineWrap(true);
-        logArea.setWrapStyleWord(true);
+        logArea.setForeground(currentTextPrimary);
+        logArea.setBackground(currentLogAreaBg); // Use the specific log area background
         logArea.setMargin(new Insets(5,5,5,5));
 
-        JScrollPane scroll = new JScrollPane(logArea);
-        // FlatLaf usually styles scroll pane borders well, but you can force one if needed.
-        scroll.setBorder(BorderFactory.createLineBorder(borderColor));
-        add(scroll, BorderLayout.CENTER);
+        scroll.setBorder(BorderFactory.createLineBorder(currentBorderColor));
+        scroll.getViewport().setBackground(currentLogAreaBg); // Match log area background for viewport
 
-        // Add some internal padding to the LogPanel itself
         setBorder(BorderFactory.createCompoundBorder(
-            getBorder(), // Keep the TitledBorder
-            BorderFactory.createEmptyBorder(5,5,5,5) // Add inner padding
+            getBorder(),
+            BorderFactory.createEmptyBorder(5,5,5,5)
         ));
+        
+        removeAll();
+        add(scroll, BorderLayout.CENTER);
+        revalidate();
+        repaint();
+    }
+
+    // updateThemeColors updated to accept logAreaBg
+    public void updateThemeColors(Color panelBg, Color textPrimary, Color borderColor, Color logAreaBg) {
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentBorderColor = borderColor;
+        this.currentLogAreaBg = logAreaBg; // Update it
+        styleComponents();
     }
 
     public void log(String msg) {
         String time = new SimpleDateFormat("HH:mm:ss").format(new Date());
-        SwingUtilities.invokeLater(() -> { // Ensure UI updates are on EDT
+        SwingUtilities.invokeLater(() -> {
             logArea.append("[" + time + "] " + msg + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });

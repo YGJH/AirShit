@@ -1,42 +1,70 @@
 package AirShit.ui;
 
-import AirShit.SendFileGUI; // For Font constants
-
+import AirShit.SendFileGUI;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 
 public class ReceiveProgressPanel extends JPanel {
-    private final JLabel label;
-    private final JProgressBar progressBar;
+    private JLabel label; // Store to update color
+    private JProgressBar progressBar; // Store to update color (FlatLaf handles most styling)
 
-    // Updated constructor to accept borderColor
+    // Store current colors
+    private Color currentPanelBg;
+    private Color currentTextPrimary;
+    private Color currentBorderColor;
+
     public ReceiveProgressPanel(Color panelBg, Color textPrimary, Color borderColor) {
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentBorderColor = borderColor;
+
+        // Initialize components here if not already
+        if (label == null) {
+            label = new JLabel("Waiting for transfer...");
+        }
+        if (progressBar == null) {
+            progressBar = new JProgressBar();
+        }
+        styleComponents();
+    }
+
+    private void styleComponents() {
         setLayout(new BorderLayout(5, 5));
-        setBackground(panelBg);
+        setBackground(currentPanelBg);
         setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(borderColor), // Use borderColor
+            BorderFactory.createLineBorder(currentBorderColor),
             "Transfer Progress", TitledBorder.LEFT, TitledBorder.TOP,
-            SendFileGUI.FONT_TITLE, textPrimary // Use new font and text color
+            SendFileGUI.FONT_TITLE, currentTextPrimary
         ));
 
-        label = new JLabel("Waiting for transfer...");
         label.setFont(SendFileGUI.FONT_PRIMARY_PLAIN);
-        label.setForeground(textPrimary);
-        label.setVisible(true); // Keep it visible, text will change
+        label.setForeground(currentTextPrimary);
+        // label.setVisible(true); // Visibility managed by SendFileGUI logic
 
-        progressBar = new JProgressBar();
         progressBar.setFont(SendFileGUI.FONT_SECONDARY_PLAIN);
-        progressBar.setStringPainted(true);
-        progressBar.setVisible(false); // Initially hidden, shown on transfer start
-        progressBar.setPreferredSize(new Dimension(progressBar.getPreferredSize().width, 20)); // Make it a bit thicker
+        // progressBar.setStringPainted(true); // Already set
+        // progressBar.setVisible(false); // Visibility managed by SendFileGUI logic
+        progressBar.setPreferredSize(new Dimension(progressBar.getPreferredSize().width, 20));
 
+        // Add some internal padding to the panel itself
+        setBorder(BorderFactory.createCompoundBorder(
+            getBorder(), // Keep the TitledBorder
+            BorderFactory.createEmptyBorder(5,5,5,5)
+        ));
+        
+        removeAll(); // Good practice
         add(label, BorderLayout.NORTH);
         add(progressBar, BorderLayout.CENTER);
-        setBorder(BorderFactory.createCompoundBorder(
-            getBorder(),
-            BorderFactory.createEmptyBorder(5,5,5,5) // Add some internal padding
-        ));
+        revalidate();
+        repaint();
+    }
+
+    public void updateThemeColors(Color panelBg, Color textPrimary, Color borderColor) {
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentBorderColor = borderColor;
+        styleComponents();
     }
 
     public JLabel getLabel() {

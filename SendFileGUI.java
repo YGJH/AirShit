@@ -1,7 +1,7 @@
 package AirShit;
 
 import AirShit.ui.*;
-import com.formdev.flatlaf.FlatDarkLaf; // Import FlatDarkLaf
+import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 
 import javax.swing.*;
@@ -16,32 +16,35 @@ public class SendFileGUI extends JFrame {
     public static SendFileGUI INSTANCE;
     public static JProgressBar receiveProgressBar;
 
-    // Light Theme Colors (Original)
+    // Light Theme Colors
     private static final Color APP_BACKGROUND_LIGHT = new Color(242, 245, 247);
     private static final Color PANEL_BACKGROUND_LIGHT = Color.WHITE;
     private static final Color TEXT_PRIMARY_LIGHT = new Color(45, 55, 72);
     private static final Color TEXT_SECONDARY_LIGHT = new Color(100, 116, 139);
     private static final Color BORDER_COLOR_LIGHT = new Color(226, 232, 240);
+    private static final Color LOG_AREA_BACKGROUND_LIGHT = new Color(250, 250, 250); // Slightly off-white for log area
 
     // Dark Theme Colors
-    private static final Color APP_BACKGROUND_DARK = new Color(43, 43, 43); // Dark gray
-    private static final Color PANEL_BACKGROUND_DARK = new Color(60, 63, 65); // Slightly lighter dark gray
-    private static final Color TEXT_PRIMARY_DARK = new Color(204, 204, 204); // Light gray for text
-    private static final Color TEXT_SECONDARY_DARK = new Color(153, 153, 153); // Medium gray for secondary text
-    private static final Color BORDER_COLOR_DARK = new Color(81, 81, 81); // Darker border
+    private static final Color APP_BACKGROUND_DARK = new Color(43, 43, 43);
+    private static final Color PANEL_BACKGROUND_DARK = new Color(60, 63, 65);
+    private static final Color TEXT_PRIMARY_DARK = new Color(204, 204, 204);
+    private static final Color TEXT_SECONDARY_DARK = new Color(153, 153, 153);
+    private static final Color BORDER_COLOR_DARK = new Color(81, 81, 81);
+    private static final Color LOG_AREA_BACKGROUND_DARK = new Color(45, 48, 51); // Specific dark for log area
 
-    // Accent colors can often remain the same or be slightly adjusted if needed
-    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246); // Blue
-    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129); // Green
+    // Accent colors
+    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246);
+    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129);
 
-    // Current theme colors (non-final, will be updated)
+    // Current theme colors
     public static Color APP_BACKGROUND;
     public static Color PANEL_BACKGROUND;
     public static Color TEXT_PRIMARY;
     public static Color TEXT_SECONDARY;
     public static Color BORDER_COLOR;
+    public static Color LOG_AREA_BACKGROUND; // Current log area background
 
-    // Fonts remain the same
+    // Fonts
     public static final Font FONT_PRIMARY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 14);
     public static final Font FONT_PRIMARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
     public static final Font FONT_SECONDARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
@@ -54,16 +57,14 @@ public class SendFileGUI extends JFrame {
     private ReceiveProgressPanel recvPanel;
     private LogPanel             logPanel;
     private JToggleButton        themeToggleButton;
-    private boolean              isDarkMode = false;
+    private boolean              isDarkMode = true;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
         INSTANCE = this;
+        applyTheme(isDarkMode); // Apply initial theme
 
-        // Apply initial theme (Light) BEFORE initializing components
-        applyTheme(isDarkMode); // isDarkMode is initially false
-
-        setSize(750, 600); // Slightly taller to accommodate theme button
+        setSize(750, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
@@ -85,6 +86,7 @@ public class SendFileGUI extends JFrame {
                 TEXT_PRIMARY = TEXT_PRIMARY_DARK;
                 TEXT_SECONDARY = TEXT_SECONDARY_DARK;
                 BORDER_COLOR = BORDER_COLOR_DARK;
+                LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_DARK;
             } else {
                 UIManager.setLookAndFeel(new FlatLightLaf());
                 APP_BACKGROUND = APP_BACKGROUND_LIGHT;
@@ -92,6 +94,7 @@ public class SendFileGUI extends JFrame {
                 TEXT_PRIMARY = TEXT_PRIMARY_LIGHT;
                 TEXT_SECONDARY = TEXT_SECONDARY_LIGHT;
                 BORDER_COLOR = BORDER_COLOR_LIGHT;
+                LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_LIGHT;
             }
         } catch (Exception ex) {
             System.err.println("Failed to initialize LaF: " + ex.getMessage());
@@ -101,22 +104,20 @@ public class SendFileGUI extends JFrame {
             themeToggleButton.setText(dark ? "Switch to Light Mode" : "Switch to Dark Mode");
         }
         
-        // Update the entire UI tree
         SwingUtilities.updateComponentTreeUI(this);
-        // Then tell custom panels to update their specific colors
         updateUIsOfChildPanels();
     }
 
     private void initComponents() {
         themeToggleButton = new JToggleButton("Switch to Dark Mode");
-        themeToggleButton.setSelected(isDarkMode); // Set initial selection state
+        themeToggleButton.setSelected(isDarkMode);
 
-        // Panels are now initialized using the current theme colors set by applyTheme()
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         filePanel   = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
         sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
         recvPanel   = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
-        logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        // Pass the specific LOG_AREA_BACKGROUND to LogPanel constructor
+        logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
 
         receiveProgressBar = recvPanel.getProgressBar();
         sendPanel.getSendButton().setEnabled(false);
@@ -124,12 +125,12 @@ public class SendFileGUI extends JFrame {
     }
     
     private void updateUIsOfChildPanels() {
-        // These methods will be added to each panel class
         if (clientPanel != null) clientPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         if (filePanel != null) filePanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
         if (sendPanel != null) sendPanel.updateThemeColors(APP_BACKGROUND, ACCENT_SUCCESS);
         if (recvPanel != null) recvPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
-        if (logPanel != null) logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        // Pass the specific LOG_AREA_BACKGROUND to LogPanel's update method
+        if (logPanel != null) logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
     }
 
 
@@ -260,10 +261,10 @@ public class SendFileGUI extends JFrame {
 
     /** 供 Main.java 调用：写入日志面板 */
     public void log(String msg) {
-        if (logPanel != null) { // Check if logPanel is initialized
+        if (logPanel != null) {
             logPanel.log(msg);
         } else {
-            System.out.println("[LOG EARLY] " + msg); // Fallback if logPanel not ready
+            System.out.println("[LOG EARLY] " + msg); 
         }
     }
 
