@@ -90,7 +90,7 @@ public class ClientPanel extends JPanel {
      * Clears Main's client list and sends a multicast hello.
      */
     public void discoverAndRefreshList() {
-        System.out.println("ClientPanel: discoverAndRefreshList() called. Clearing Main's list and multicasting hello.");
+        // System.out.println("ClientPanel: discoverAndRefreshList() called. Clearing Main's list and multicasting hello.");
         Main.clearClientList(); // User-initiated refresh should clear and re-discover from Main's perspective
         if (model == null) model = new DefaultListModel<>();
         model.clear();          // Clear the GUI list immediately
@@ -108,32 +108,32 @@ public class ClientPanel extends JPanel {
      * This method should be called when Main detects a change in its client list.
      */
     public void refreshGuiListOnly() {
-        System.out.println("ClientPanel: refreshGuiListOnly() called.");
+        // System.out.println("ClientPanel: refreshGuiListOnly() called.");
         if (model == null) model = new DefaultListModel<>();
         model.clear(); // Clear current GUI list before repopulating
 
         Hashtable<String,Client> clients = Main.getClientList();
         
         if (clients != null) {
-            System.out.println("ClientPanel (refreshGuiListOnly): Fetched " + clients.size() + " clients from Main.");
+            // System.out.println("ClientPanel (refreshGuiListOnly): Fetched " + clients.size() + " clients from Main.");
             clients.values().forEach(c -> {
                 // Ensure we are not adding self to the list if Main.getClientList() might contain it
                 if (Main.getClient() != null && c.getIPAddr().equals(Main.getClient().getIPAddr()) && c.getUserName().equals(Main.getClient().getUserName())) {
                     // System.out.println("ClientPanel (refreshGuiListOnly): Skipping self: " + c.getUserName());
                     return; 
                 }
-                System.out.println("ClientPanel (refreshGuiListOnly): Adding client to model: " + c.getUserName() + " - " + c.getIPAddr());
+                // System.out.println("ClientPanel (refreshGuiListOnly): Adding client to model: " + c.getUserName() + " - " + c.getIPAddr());
                 model.addElement(c);
             });
         } else {
-            System.out.println("ClientPanel (refreshGuiListOnly): Fetched null client list from Main.");
+            // System.out.println("ClientPanel (refreshGuiListOnly): Fetched null client list from Main.");
         }
         
         if (list != null && list.getModel().getSize() > 0) {
-            System.out.println("ClientPanel (refreshGuiListOnly): Model size after adding: " + model.getSize() + ".");
+            // System.out.println("ClientPanel (refreshGuiListOnly): Model size after adding: " + model.getSize() + ".");
             // Consider not auto-selecting: list.setSelectedIndex(0); 
         } else if (list != null) {
-            System.out.println("ClientPanel (refreshGuiListOnly): Model is empty after refresh. List model size: " + list.getModel().getSize());
+            // System.out.println("ClientPanel (refreshGuiListOnly): Model is empty after refresh. List model size: " + list.getModel().getSize());
         }
         if (list != null) {
             list.revalidate();

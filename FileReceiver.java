@@ -144,7 +144,6 @@ public class FileReceiver {
                 }
                 final int threadCount = Math.min(receiveThreads, Runtime.getRuntime().availableProcessors()); // 硬體執行緒數量
                 // send accept message to sender
-                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
                 dos.writeUTF("ACK|" + threadCount);
                 dos.flush();
                 final String outPutPath = outputFilePath;
