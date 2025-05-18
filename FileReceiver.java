@@ -179,18 +179,33 @@ public class FileReceiver {
                         ExecutorService executor = Executors.newSingleThreadExecutor();
                         System.out.println("開始接收檔案：" + fileName);
                         Receiver receiver = new Receiver(serverSocket);
-                        // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
-                        Future<Boolean> future = executor.submit(() -> {
+                        Future<Boolean> future;
+                        if(fileSize < 6 * 1024 * 1024) {
+                            future = executor.submit(() -> {
                             try {
                                 return receiver.start(
                                     outPutPath + "\\" + fileName,
-                                    fileSize, threadCount,
+                                    fileSize, 1,
                                     cb);
                             } catch (IOException e) {
                                 e.printStackTrace();
                                 return false;
                             }
                         });
+                        } else {
+                            future = executor.submit(() -> {
+                                try {
+                                    return receiver.start(
+                                        outPutPath + "\\" + fileName,
+                                        fileSize, threadCount,
+                                        cb);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    return false;
+                                }
+                            });
+                        }
+                        // submit as a Callable<Boolean> so we can get Receiver.start()’s return value
                         boolean success;
                         try {
                             success = future.get();

@@ -49,15 +49,15 @@ public class ClientCellRenderer extends DefaultListCellRenderer {
         textPanel.add(detailsLabel);
 
         JLabel iconLabel;
-        try {
-            // Consider making icons a bit larger or using SVG for better scaling if FlatLaf supports it well
-            ImageIcon icon = new ImageIcon(this.getClass().getResource("/asset/user.png"));
-            // Image scaledImage = icon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH); // Example scaling
-            iconLabel = new JLabel(icon);
-        } catch (Exception e) {
-            iconLabel = new JLabel("👤"); // Fallback icon
-            iconLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 20)); // Make fallback icon a bit larger
-        }
+        // try {
+        //     // Consider making icons a bit larger or using SVG for better scaling if FlatLaf supports it well
+        //     ImageIcon icon = new ImageIcon(this.getClass().getResource("/asset/user.png"));
+        //     // Image scaledImage = icon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH); // Example scaling
+        //     iconLabel = new JLabel(icon);
+        // } catch (Exception e) {
+        iconLabel = new JLabel("👤"); // Fallback icon
+        iconLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 20)); // Make fallback icon a bit larger
+        // }
         iconLabel.setBorder(BorderFactory.createEmptyBorder(0,0,0,5)); // Space between icon and text
 
         panel.add(iconLabel, BorderLayout.WEST);

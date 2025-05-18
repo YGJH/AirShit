@@ -98,10 +98,15 @@ public class FileSender {
                 }
             
                 // 3) now kick off your SendFile/ChunkSender against socket2
-                SendFile sendFile = new SendFile(
-                    host, port, file,threadCount, callback);
+                SendFile sendFile;
+                if(file.length() < 6 * 1024 * 1024) { // 6MB
+                    sendFile = new SendFile(
+                        host, port, file,1, callback);
+                } else {
+                    sendFile = new SendFile(
+                        host, port, file, threadCount, callback);
+                }
                 sendFile.start();
-
                 response = dis.readUTF();
                 println(response);
                 if (!"OK".equals(response)) {
