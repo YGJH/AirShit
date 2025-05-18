@@ -21,7 +21,6 @@ public class SendFileGUI extends JFrame {
     private JList<Client> clientList;
     private DefaultListModel<Client> listModel;
     private JLabel selectedFileLabel;
-    private JProgressBar sendProgressBar;
     private JTextArea logArea;
     private JButton sendButton;
     private JButton refreshButton;
@@ -134,24 +133,17 @@ public class SendFileGUI extends JFrame {
         sendButton.setPreferredSize(new Dimension(200, 30));
         sendButton.addActionListener((e) -> sendFile());
 
-        sendProgressBar = new JProgressBar();
-        sendProgressBar.setStringPainted(true);
-        // you could also use a titled border, e.g.:
-        sendProgressBar.setVisible(false);
-
-
-
+    
         sendPanel.add(sendButton,       BorderLayout.NORTH);
-        sendPanel.add(sendProgressBar,  BorderLayout.SOUTH);
 
         // receive panel
         JPanel recvPanel = new JPanel(new BorderLayout(5,5));
         recvPanel.setBackground(BACKGROUND_COLOR);
-        // recvPanel.setBorder(BorderFactory.createTitledBorder(
-        //     BorderFactory.createLineBorder(new Color(189,195,199)),
-        //     "Receive Progress", TitledBorder.LEFT, TitledBorder.TOP,
-        //     new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
-        // ));
+        recvPanel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(189,195,199)),
+            "進度條", TitledBorder.LEFT, TitledBorder.TOP,
+            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
+        ));
         textOfReceive = new JLabel("Receiving:");
         textOfReceive.setVisible(false);
         receiveProgressBar = new JProgressBar();
