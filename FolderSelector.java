@@ -10,13 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class FolderSelector {
-    // private static String folderName = null;
 
-
-
-    // public static String getFolderName() {
-    //     return folderName;
-    // }
     public static void println(String str) {
         System.out.println(str);
     }
@@ -93,15 +87,7 @@ public class FolderSelector {
         }
     }
 
-    // 範例用法
-    // public static void main(String[] args) {
-    //     File folder = new File("/path/to/your/folder");
-    //     File[] allFiles = listFilesRecursively(folder);
-    //     System.out.println("共找到 " + allFiles.length + " 个文件：");
-    //     for (File f : allFiles) {
-    //         System.out.println(f.getAbsolutePath());
-    //     }
-    // }
+
     public static String selectFolder() {
         JFileChooser chooser = new JFileChooser();
         // 只允許選擇目錄

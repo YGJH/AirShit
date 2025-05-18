@@ -47,7 +47,7 @@ public class FileSender {
         sb.append("|");
         if(totalSize > 1024*1024*1024) {
             totalSize2 = totalSize / (1024*1024*1024);
-            sb.append(totalSize2 + "  GB");
+            sb.append(totalSize2 + " GB");
         } else if(totalSize > 1024*1024) {
             totalSize2 = totalSize / (1024*1024);
             sb.append(totalSize2 + " MB");

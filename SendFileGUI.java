@@ -76,7 +76,7 @@ public class SendFileGUI extends JFrame {
         clientPanel.setBackground(BACKGROUND_COLOR);
 
         JLabel clientsLabel = new JLabel("Available Clients");
-        clientsLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        clientsLabel.setFont(new Font("Microsoft JhengHei", Font.BOLD, 14));
         clientsLabel.setForeground(TEXT_COLOR);
 
         listModel  = new DefaultListModel<>();
@@ -106,11 +106,11 @@ public class SendFileGUI extends JFrame {
         filePanel.setBorder(BorderFactory.createTitledBorder(
             BorderFactory.createLineBorder(new Color(189,195,199)),
             "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
+            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
         ));
         
         selectedFileLabel = new JLabel("No file selected");
-        selectedFileLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
 
         // wrap the label in a scroll pane so long file lists can scroll
         JScrollPane fileScrollPane = new JScrollPane(
@@ -130,7 +130,7 @@ public class SendFileGUI extends JFrame {
         sendPanel.setBackground(BACKGROUND_COLOR);
         sendButton = createStyledButton("Send File", ACCENT_COLOR);
         sendButton.setEnabled(false);
-        sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        sendButton.setFont(new Font("Microsoft JhengHei", Font.BOLD, 14));
         sendButton.setPreferredSize(new Dimension(200, 30));
         sendButton.addActionListener((e) -> sendFile());
 
@@ -147,11 +147,11 @@ public class SendFileGUI extends JFrame {
         // receive panel
         JPanel recvPanel = new JPanel(new BorderLayout(5,5));
         recvPanel.setBackground(BACKGROUND_COLOR);
-        recvPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "Receive Progress", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
-        ));
+        // recvPanel.setBorder(BorderFactory.createTitledBorder(
+        //     BorderFactory.createLineBorder(new Color(189,195,199)),
+        //     "Receive Progress", TitledBorder.LEFT, TitledBorder.TOP,
+        //     new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
+        // ));
         textOfReceive = new JLabel("Receiving:");
         textOfReceive.setVisible(false);
         receiveProgressBar = new JProgressBar();
@@ -166,7 +166,7 @@ public class SendFileGUI extends JFrame {
         logPanel.setBorder(BorderFactory.createTitledBorder(
             BorderFactory.createLineBorder(new Color(189,195,199)),
             "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Segoe UI", Font.BOLD, 12), TEXT_COLOR
+            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
         ));
         logArea = new JTextArea(6,20);
         logArea.setEditable(false);
@@ -204,7 +204,7 @@ public class SendFileGUI extends JFrame {
         button.setForeground(LIGHT_TEXT);
         button.setFocusPainted(false);
         button.setBorderPainted(false);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        button.setFont(new Font("Microsoft JhengHei", Font.BOLD, 12));
         button.setCursor(new Cursor(Cursor.HAND_CURSOR));
         button.addMouseListener(new MouseAdapter() {
             public void mouseEntered(MouseEvent e) {
@@ -431,9 +431,9 @@ public class SendFileGUI extends JFrame {
             }
             Client c = (Client)value;
             JLabel name = new JLabel(c.getUserName());
-            name.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            name.setFont(new Font("Microsoft JhengHei", Font.BOLD, 13));
             JLabel details = new JLabel(c.getIPAddr() + " (" + c.getOS() + ")");
-            details.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+            details.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 10));
             JPanel texts = new JPanel(new GridLayout(2,1));
             texts.setOpaque(false);
             texts.add(name);

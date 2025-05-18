@@ -106,17 +106,5 @@ public class SendFile {
         }
     }
 
-        // public static void main(String[] args) throws Exception {
-        // if (args.length != 4) {
-        // System.err.println("Usage: java SendFile <host> <port> <file-path>
-        // <threads>");
-        // System.exit(1);
-        // }
-        // String host = args[0];
-        // int port = Integer.parseInt(args[1]);
-        // String filePath = args[2];
-        // int threads = Integer.parseInt(args[3]);
 
-        // new SendFile(host, port, filePath, threads).start();
-        // }
 }

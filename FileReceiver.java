@@ -53,7 +53,7 @@ public class FileReceiver {
                     DataOutputStream dos = new DataOutputStream(socket.getOutputStream())) {
                 String handshake = dis.readUTF();
                 String[] parts = handshake.split("\\|");
-                if (parts.length < 3) {
+                if (parts.length < 3 || Main.SEND_STATUS.SEND_WAITING == Main.sendStatus.get()) {
                     System.err.println("無效的 handshake 訊息： " + handshake);
                     continue;
                 }
