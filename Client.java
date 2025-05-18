@@ -79,7 +79,11 @@ public class Client {
             return null;
         }
     }
-    
+
+    public static boolean isHelloMessage(String message) { // 判斷是否為 Hello 訊息
+        String[] parts = message.split("-");
+        return (parts.length == 5);
+    }
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
         userName = userName.replaceAll("-", "_");
         return IPAddr + "-" + userName + "-" + TCPPort + "-" + UDPPort + "-" + OS; // 組合並返回 Hello 訊息字串

@@ -13,21 +13,23 @@ import java.awt.Font; // 引入 AWT Font類別
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
     static SendFileGUI GUI;
+
     static void println(String s) {
         System.out.println(s);
     }
-    
+
     private static Client client; // 建立 Client 物件以儲存客戶端資訊
-    
+
     public static Client getClient() { // 定義取得客戶端資訊的方法
         return client; // 返回客戶端資訊
     }
+
     public static void clearClientList() { // 定義清除客戶端列表的方法
         clientList.clear(); // 清空客戶端哈希表
     }
-    
+
     public static final int DISCOVERY_PORT = 50000; // Or any other unused port
-    
+
     static {
         String userName;
         try { // 嘗試取得本機主機名稱
@@ -36,11 +38,11 @@ public class Main { // 定義 Main 類別
             userName = System.getProperty("user" + UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
         client = new Client(getNonLoopbackIP(), userName, getFreeTCPPort(), DISCOVERY_PORT,
-        System.getProperty("os.name")); // 取得可用的 TCP 端口
+                System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
-    
+
     private static Hashtable<String, Client> clientList = new Hashtable<>(); // 建立存放客戶端資訊的哈希表
-    
+
     public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
     }
@@ -59,7 +61,8 @@ public class Main { // 定義 Main 類別
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vmware"))
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
+                        || name.contains("vmware"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
@@ -67,7 +70,7 @@ public class Main { // 定義 Main 類別
                             && !addr.isLinkLocalAddress()) {
                         System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": "
                                 + addr.getHostAddress());
-                            System.out.println(name);
+                        System.out.println(name);
                         return addr.getHostAddress();
                     }
                 }
@@ -96,7 +99,8 @@ public class Main { // 定義 Main 類別
                     continue;
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vmware"))
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
+                        || name.contains("vmware"))
                     continue;
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
@@ -115,8 +119,7 @@ public class Main { // 定義 Main 類別
 
     public static void multicastHello() {
         try (
-            MulticastSocket socket = new MulticastSocket();
-        ){
+                MulticastSocket socket = new MulticastSocket();) {
             InetAddress group = getMulticastAddress();
             if (group == null)
                 return;
@@ -125,9 +128,10 @@ public class Main { // 定義 Main 類別
             socket.setTimeToLive(32);
             socket.setNetworkInterface(findCorrectNetworkInterface());
             socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
-            
+
             socket.setOption(StandardSocketOptions.IP_MULTICAST_LOOP, false);
-            // println(sendData.length + " bytes sent to multicast group " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+            // println(sendData.length + " bytes sent to multicast group " +
+            // group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
@@ -141,8 +145,7 @@ public class Main { // 定義 Main 類別
     public static void startMulticastListener() {
         Thread MultiCast = new Thread(() -> {
             try (
-                MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);
-            ){
+                    MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);) {
                 InetAddress group = getMulticastAddress();
                 if (group == null)
                     return;
@@ -162,47 +165,61 @@ public class Main { // 定義 Main 類別
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
 
-                    String message = new String(packet.getData(), 0, packet.getLength());
-                    // System.out.println(message);
-                    if ((message).startsWith("HEARTBEAT-")) {
-                        String[] parts = message.split("-"); // use dash as delimiter
-                        if (clientList.containsKey(parts[1]) == false) {
-                            Client tempClient = new Client(parts[1], parts[2], Integer.parseInt(parts[3]),
-                                    DISCOVERY_PORT, parts[4]);
-                            clientList.put(tempClient.getUserName(), tempClient);
+                    String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8); // Specify
+                                                                                                                  // UTF-8
+                    System.out.println("Received multicast: " + message); // Log received message
+
+                    boolean listChanged = false;
+
+                    if (message.startsWith("HEARTBEAT-")) {
+                        String[] parts = message.split("-");
+                        if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
+                            String clientIp = parts[1];
+                            String clientName = parts[2];
+                            // Check if client is self
+                            if (clientIp.equals(client.getIPAddr()) && clientName.equals(client.getUserName())) {
+                                // It's our own heartbeat
+                            } else if (!clientList.containsKey(clientName)) {
+                                Client tempClient = new Client(clientIp, clientName, Integer.parseInt(parts[3]),
+                                        Integer.parseInt(parts[4]), parts[5]); // Assuming parts[4] is discovery port,
+                                                                               // parts[5] is OS
+                                clientList.put(tempClient.getUserName(), tempClient);
+                                System.out
+                                        .println("Main: Added new client from HEARTBEAT: " + tempClient.getUserName());
+                                listChanged = true;
+                            }
                         }
-
+                        // Respond to HEARTBEAT
                         byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket reply = new DatagramPacket(
-                                resp, resp.length,
-                                packet.getAddress(), packet.getPort());
+                        DatagramPacket reply = new DatagramPacket(resp, resp.length, packet.getAddress(),
+                                packet.getPort());
                         socket.send(reply);
-                        continue;
+
+                    } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
+                        Client tempClient = Client.parseMessage(message);
+                        if (tempClient != null) {
+                            // Check if client is self OR already known
+                            if (tempClient.getIPAddr().equals(client.getIPAddr())
+                                    && tempClient.getUserName().equals(client.getUserName())) {
+                                // It's our own HELLO message
+                            } else if (!clientList.containsKey(tempClient.getUserName())) {
+                                clientList.put(tempClient.getUserName(), tempClient);
+                                System.out.println("Main: Added new client from HELLO: " + tempClient.getUserName());
+                                listChanged = true;
+                                // Respond directly to the sender (unicast)
+                                responseNewClient(packet.getAddress(), packet.getPort());
+                            }
+                        }
                     }
 
-                    // Ignore self-sent messages (more robust check needed if multiple local IPs)
-                    InetAddress localInetAddress = InetAddress.getByName(client.getIPAddr());
-                    if (packet.getAddress().equals(localInetAddress) && packet.getPort() == DISCOVERY_PORT) {
-                        responseNewClient(localInetAddress, DISCOVERY_PORT);
-                        continue;
+                    if (listChanged) {
+                        if (GUI != null && SendFileGUI.INSTANCE != null
+                                && SendFileGUI.INSTANCE.getClientPanel() != null) {
+                            System.out.println("Main: Client list changed, requesting GUI refresh.");
+                            SwingUtilities
+                                    .invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
+                        }
                     }
-
-                    Client tempClient = Client.parseMessage(message);
-                    if (tempClient == null)
-                        continue;
-
-                    // Check if client is self OR already known (use IP as key if possible)
-                    if(tempClient.getIPAddr().equals(client.getIPAddr()) && tempClient.getTCPPort() == client.getTCPPort()
-                    || clientList.containsKey(tempClient.getUserName())) {
-                        continue;
-                    }
-                    // Use IP address as the key for consistency
-
-                    clientList.put(tempClient.getUserName() , tempClient);
-                    // Respond directly to the sender (unicast)
-                    responseNewClient(packet.getAddress(), DISCOVERY_PORT); // Respond to the port the hello came
-
-                    // --- End Process packet ---
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -213,10 +230,9 @@ public class Main { // 定義 Main 類別
 
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
         try (
-            DatagramSocket socket = new DatagramSocket();
-        ) {
+                DatagramSocket socket = new DatagramSocket();) {
 
-            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
@@ -275,36 +291,38 @@ public class Main { // 定義 Main 類別
         startMulticastListener(); // Start listening first
 
         FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
-        
 
         SwingUtilities.invokeLater(() -> {
             GUI = new SendFileGUI();
         });
-        
+
         TransferCallback cb = new TransferCallback() {
             AtomicLong totalReceived = new AtomicLong(0);
             long totalBar = 0;
             long lasPct = -1;
+
             @Override
             public void onStart(long totalBytes) {
                 totalBar = totalBytes;
                 totalReceived.set(0);
                 SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int)100));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setValue((int)0));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int) 100));
+                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setValue((int) 0));
             }
+
             @Override
             public void onProgress(long bytesTransferred) {
                 long cumul = totalReceived.addAndGet(bytesTransferred);
                 SwingUtilities.invokeLater(() -> {
-                    int pct = (int)(cumul*100/totalBar);
-                    SendFileGUI.receiveProgressBar.setValue((int)pct);
+                    int pct = (int) (cumul * 100 / totalBar);
+                    SendFileGUI.receiveProgressBar.setValue((int) pct);
                     if (pct % 10 == 0 && pct != lasPct) {
                         lasPct = pct;
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
             }
+
             @Override
             public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
@@ -312,6 +330,7 @@ public class Main { // 定義 Main 類別
                     SendFileGUI.receiveProgressBar.setVisible(false);
                 });
             }
+
             @Override
             public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
@@ -348,17 +367,27 @@ public class Main { // 定義 Main 類別
             throw new RuntimeException("No free TCP port available", e); // 拋出執行例外表示未找到可用端口
         }
     }
+
     public static void checkAlive() {
-        byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8); // 取得 Hello 訊息
+        byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8);
         ArrayList<String> dead = new ArrayList<>();
-        for (Map.Entry<String, Client> e : clientList.entrySet()) {
-            String name = e.getKey();
-            Client c = e.getValue();
+        // Create a temporary copy of keys to iterate over, to avoid ConcurrentModificationException
+        ArrayList<String> currentClientKeys = new ArrayList<>(clientList.keySet());
+
+        for (String name : currentClientKeys) {
+            Client c = clientList.get(name);
+            if (c == null) continue; // Should not happen if keySet is from clientList
+
+            // Do not ping self
+            if (c.getIPAddr().equals(client.getIPAddr()) && c.getUserName().equals(client.getUserName())) {
+                continue;
+            }
+
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(2000);
+                ds.setSoTimeout(1000); // Reduced timeout for faster check
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
-                ds.send(new DatagramPacket(ping, ping.length, addr, DISCOVERY_PORT)); // 發送心跳訊息
+                ds.send(new DatagramPacket(ping, ping.length, addr, c.getUDPPort())); // Ping client's discovery port
                 byte[] buf = new byte[64];
                 DatagramPacket resp = new DatagramPacket(buf, buf.length);
                 ds.receive(resp);
@@ -367,15 +396,26 @@ public class Main { // 定義 Main 類別
                     alive = true;
             } catch (IOException ignore) {
                 // timeout or error => not alive
+                 System.out.println("Client " + name + " did not respond to heartbeat. Assuming dead.");
             }
             if (!alive) {
                 dead.add(name);
             }
         }
+
+        boolean listChangedInCheckAlive = false;
         for (String name : dead) {
-            clientList.remove(name);
-            println("Removed dead client: " + name);
+            if (clientList.remove(name) != null) { // Check if removal actually happened
+                println("Main: Removed dead client: " + name);
+                listChangedInCheckAlive = true;
+            }
+        }
+
+        if (listChangedInCheckAlive) {
+            if (GUI != null && SendFileGUI.INSTANCE != null && SendFileGUI.INSTANCE.getClientPanel() != null) {
+                System.out.println("Main (checkAlive): Client list changed, requesting GUI refresh.");
+                SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
+            }
         }
     }
-
 }

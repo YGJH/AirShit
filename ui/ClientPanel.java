@@ -12,15 +12,13 @@ public class ClientPanel extends JPanel {
     private JList<Client> list;
     private DefaultListModel<Client> model;
     private JButton refreshButton;
-    private JLabel titleLabel; // Store label to update its color
+    private JLabel titleLabel;
 
-    // Store current colors to re-apply them
     private Color currentPanelBg;
     private Color currentTextPrimary;
     private Color currentTextSecondary;
     private Color currentAccentPrimary;
     private Color currentBorderColor;
-
 
     public ClientPanel(Color panelBg, Color textPrimary, Color textSecondary, Color accentPrimary, Color borderColor) {
         this.currentPanelBg = panelBg;
@@ -30,10 +28,9 @@ public class ClientPanel extends JPanel {
         this.currentBorderColor = borderColor;
 
         setLayout(new BorderLayout(10, 10));
-        // Initial styling using passed colors
         styleComponents();
         
-        refresh(); // Initial data load
+        discoverAndRefreshList(); // Initial discovery and refresh
     }
 
     private void styleComponents() {
@@ -55,25 +52,22 @@ public class ClientPanel extends JPanel {
             list  = new JList<>(model);
             list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         }
-        // IMPORTANT: Re-create cell renderer with new theme colors
         list.setCellRenderer(new ClientCellRenderer(currentAccentPrimary, currentPanelBg, currentTextPrimary, currentTextSecondary));
         list.setBackground(currentPanelBg);
 
-
         JScrollPane scrollPane = new JScrollPane(list);
         scrollPane.setBorder(BorderFactory.createLineBorder(currentBorderColor));
-        scrollPane.getViewport().setBackground(currentPanelBg); // Ensure viewport matches
+        scrollPane.getViewport().setBackground(currentPanelBg);
 
         if (refreshButton == null) {
             refreshButton = new JButton("Refresh");
-            refreshButton.addActionListener(e -> refresh());
+            refreshButton.addActionListener(e -> discoverAndRefreshList()); // Button triggers full discovery
         }
         refreshButton.setFont(SendFileGUI.FONT_PRIMARY_BOLD);
         refreshButton.setBackground(currentAccentPrimary);
-        refreshButton.setForeground(Color.WHITE); // Assuming white text on accent is always good
+        refreshButton.setForeground(Color.WHITE);
         refreshButton.setFocusPainted(false);
 
-        // Remove old components before adding potentially new/restyled ones
         removeAll(); 
         add(titleLabel,    BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
@@ -88,21 +82,62 @@ public class ClientPanel extends JPanel {
         this.currentTextSecondary = textSecondary;
         this.currentAccentPrimary = accentPrimary;
         this.currentBorderColor = borderColor;
-        
-        // Re-apply all styles
         styleComponents();
     }
 
-    public void refresh() {
-        Main.clearClientList();
+    /**
+     * Initiates a client discovery process and schedules a GUI update.
+     * Clears Main's client list and sends a multicast hello.
+     */
+    public void discoverAndRefreshList() {
+        System.out.println("ClientPanel: discoverAndRefreshList() called. Clearing Main's list and multicasting hello.");
+        Main.clearClientList(); // User-initiated refresh should clear and re-discover from Main's perspective
         if (model == null) model = new DefaultListModel<>();
-        model.clear();
-        Main.multicastHello();
-        try { Thread.sleep(500); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+        model.clear();          // Clear the GUI list immediately
+        Main.multicastHello();  // Send out discovery packets
+
+        // Schedule a GUI update after a short delay to allow Main to populate its list
+        // from responses or existing knowledge.
+        Timer timer = new Timer(1000, e -> SwingUtilities.invokeLater(this::refreshGuiListOnly)); // 1 second delay
+        timer.setRepeats(false);
+        timer.start();
+    }
+
+    /**
+     * Refreshes the GUI list strictly from Main.getClientList().
+     * This method should be called when Main detects a change in its client list.
+     */
+    public void refreshGuiListOnly() {
+        System.out.println("ClientPanel: refreshGuiListOnly() called.");
+        if (model == null) model = new DefaultListModel<>();
+        model.clear(); // Clear current GUI list before repopulating
+
         Hashtable<String,Client> clients = Main.getClientList();
-        clients.values().forEach(model::addElement);
-        if (list.getModel().getSize() > 0) {
-            list.setSelectedIndex(0); // Optionally select first item
+        
+        if (clients != null) {
+            System.out.println("ClientPanel (refreshGuiListOnly): Fetched " + clients.size() + " clients from Main.");
+            clients.values().forEach(c -> {
+                // Ensure we are not adding self to the list if Main.getClientList() might contain it
+                if (Main.getClient() != null && c.getIPAddr().equals(Main.getClient().getIPAddr()) && c.getUserName().equals(Main.getClient().getUserName())) {
+                    // System.out.println("ClientPanel (refreshGuiListOnly): Skipping self: " + c.getUserName());
+                    return; 
+                }
+                System.out.println("ClientPanel (refreshGuiListOnly): Adding client to model: " + c.getUserName() + " - " + c.getIPAddr());
+                model.addElement(c);
+            });
+        } else {
+            System.out.println("ClientPanel (refreshGuiListOnly): Fetched null client list from Main.");
+        }
+        
+        if (list != null && list.getModel().getSize() > 0) {
+            System.out.println("ClientPanel (refreshGuiListOnly): Model size after adding: " + model.getSize() + ".");
+            // Consider not auto-selecting: list.setSelectedIndex(0); 
+        } else if (list != null) {
+            System.out.println("ClientPanel (refreshGuiListOnly): Model is empty after refresh. List model size: " + list.getModel().getSize());
+        }
+        if (list != null) {
+            list.revalidate();
+            list.repaint();
         }
     }
 

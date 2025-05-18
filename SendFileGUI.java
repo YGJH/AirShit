@@ -96,16 +96,39 @@ public class SendFileGUI extends JFrame {
                 BORDER_COLOR = BORDER_COLOR_LIGHT;
                 LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_LIGHT;
             }
-            setBackground(APP_BACKGROUND);
         } catch (Exception ex) {
             System.err.println("Failed to initialize LaF: " + ex.getMessage());
         }
 
         if (themeToggleButton != null) {
             themeToggleButton.setText(dark ? "Switch to Light Mode" : "Switch to Dark Mode");
+            // Also update the toggle button's own background if it's part of a panel that doesn't get APP_BACKGROUND
+            // For example, if it's directly on a topBar that should match APP_BACKGROUND:
+            if (themeToggleButton.getParent() != null) {
+                 themeToggleButton.getParent().setBackground(APP_BACKGROUND);
+            }
         }
         
+        // Update the look and feel of all components
         SwingUtilities.updateComponentTreeUI(this);
+
+        // Explicitly update the background of the content pane and its direct children if necessary
+        if (getContentPane() != null) {
+            getContentPane().setBackground(APP_BACKGROUND);
+            // If the contentPane has direct children that need APP_BACKGROUND, update them too.
+            // In your case, the 'container' JPanel is the contentPane.
+            // Its children (topBar and mainContentPanel) also need their backgrounds updated.
+            Component[] components = getContentPane().getComponents();
+            for (Component component : components) {
+                if (component instanceof JPanel) {
+                    // This will catch 'topBar' and 'mainContentPanel' if they are direct children
+                    // of the 'container' (contentPane)
+                    component.setBackground(APP_BACKGROUND);
+                }
+            }
+        }
+        
+        // Then tell custom panels to update their specific colors
         updateUIsOfChildPanels();
     }
 
@@ -137,17 +160,19 @@ public class SendFileGUI extends JFrame {
 
     private void layoutComponents() {
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        topBar.setBackground(APP_BACKGROUND); // Match app background
+        // topBar.setBackground(APP_BACKGROUND); // This will be set by applyTheme now
+
+        themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
         topBar.add(themeToggleButton);
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
-        mainContentPanel.setBackground(APP_BACKGROUND);
-        mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15)); // No top padding, handled by topBar
+        // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by applyTheme
+        mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
 
         mainContentPanel.add(clientPanel, BorderLayout.WEST);
 
         JPanel right = new JPanel();
-        right.setBackground(APP_BACKGROUND);
+        // right.setBackground(APP_BACKGROUND); // This will be set by applyTheme
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
         right.add(filePanel);
         right.add(Box.createVerticalStrut(15));
@@ -158,13 +183,12 @@ public class SendFileGUI extends JFrame {
         right.add(logPanel);
         mainContentPanel.add(right, BorderLayout.CENTER);
 
-        // Main container for topBar and content
         JPanel container = new JPanel(new BorderLayout());
-        container.setBackground(APP_BACKGROUND);
+        // container.setBackground(APP_BACKGROUND); // This will be set by applyTheme
         container.add(topBar, BorderLayout.NORTH);
         container.add(mainContentPanel, BorderLayout.CENTER);
         
-        setContentPane(container);
+        setContentPane(container); // 'container' is now the contentPane
     }
 
     private void bindEvents() {
@@ -278,6 +302,10 @@ public class SendFileGUI extends JFrame {
             idx++;
         }
         return String.format("%.2f %s", val, units[idx]);
+    }
+
+    public ClientPanel getClientPanel() { // Add this getter
+        return clientPanel;
     }
 
     public static void main(String[] args) {
