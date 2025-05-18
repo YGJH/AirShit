@@ -54,7 +54,7 @@ public class SendFileGUI extends JFrame {
     private ClientPanel          clientPanel;
     private FileSelectionPanel   filePanel;
     public  SendControlPanel     sendPanel;
-    private ReceiveProgressPanel recvPanel;
+    public ReceiveProgressPanel recvPanel;
     private LogPanel             logPanel;
     private JToggleButton        themeToggleButton;
     private boolean              isDarkMode = true;
