@@ -264,8 +264,19 @@ public class Main { // 定義 Main 類別
         }
     }
 
+    private static ServerSocket lockSocket; // 用於鎖定應用程式實例
+    private static final int SINGLE_INSTANCE_LOCK_PORT = 61808; // 選擇一個不太可能被其他應用程式使用的埠號
+
     public static void main(String[] args) { // 主方法，程式入口點
         // 1) Force JVM encoding to UTF‑8
+        if (!acquireSingleInstanceLock()) {
+            JOptionPane.showMessageDialog(null,
+                "AirShit is already running.\nOnly one instance is allowed.",
+                "Application Already Running",
+                JOptionPane.WARNING_MESSAGE);
+            System.exit(0);
+        }
+
         System.setProperty("file.encoding", "UTF-8");
         ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
                 .redirectErrorStream(true)
@@ -376,7 +387,34 @@ public class Main { // 定義 Main 類別
                 }
             }
         }).start(); // 啟動檢查存活狀態的執行緒
+        // 註冊一個關閉鉤子，在應用程式退出時釋放鎖
+        Runtime.getRuntime().addShutdownHook(new Thread(Main::releaseSingleInstanceLock));
 
+    }
+
+    private static boolean acquireSingleInstanceLock() {
+        try {
+            // 嘗試在本機回送位址上綁定到指定埠號
+            // 如果埠號已被占用 (表示另一個實例正在運行)，則會拋出 IOException
+            lockSocket = new ServerSocket(SINGLE_INSTANCE_LOCK_PORT, 1, InetAddress.getLoopbackAddress());
+            return true; // 成功獲取鎖
+        } catch (IOException e) {
+            // 無法獲取鎖，可能是埠號已被占用
+            System.err.println("Failed to acquire single instance lock on port " + SINGLE_INSTANCE_LOCK_PORT + ": " + e.getMessage());
+            lockSocket = null;
+            return false;
+        }
+    }
+
+    private static void releaseSingleInstanceLock() {
+        if (lockSocket != null && !lockSocket.isClosed()) {
+            try {
+                lockSocket.close();
+                System.out.println("Single instance lock released.");
+            } catch (IOException e) {
+                System.err.println("Error releasing single instance lock: " + e.getMessage());
+            }
+        }
     }
 
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
