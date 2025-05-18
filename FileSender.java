@@ -44,8 +44,8 @@ public class FileSender {
         }
         sb.append("|").append(totalSize);
         String totalSize2 = SendFileGUI.formatFileSize(totalSize);
-        sb.append("|");
-        sb.append(totalSize2);
+        sb.append("|"+totalSize2); // 檔案總大小
+
         sb.append("|"+(threadCount)); // 硬體執行緒數量
         // 連線到 Receiver
         try (Socket socket = new Socket(host, port);
@@ -75,7 +75,6 @@ public class FileSender {
         
         callback.onStart(totalSize);
         System.out.println(files.length + " 個檔案需要傳送。");
-        int cnt = files.length;
         for (String filePath : files) {
             // notify user
             File file = new File(fatherDir+"\\"+filePath);

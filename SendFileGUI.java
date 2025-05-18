@@ -1,445 +1,313 @@
 package AirShit;
 
+import AirShit.ui.*;
+import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatLightLaf;
+
 import javax.swing.*;
-import javax.swing.border.*;
-
-import AirShit.Main.SEND_STATUS;
-
 import java.awt.*;
-import java.awt.event.*;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SendFileGUI extends JFrame {
-    private JList<Client> clientList;
-    private DefaultListModel<Client> listModel;
-    private JLabel selectedFileLabel;
-    private JTextArea logArea;
-    private JButton sendButton;
-    private JButton refreshButton;
-    private String[] selectedFiles;
-    private String folderName;
-    public File fatherDir;
-    private Timer refreshTimer;
-    private JScrollPane fiScrollPane;
-    private static JLabel textOfReceive;
+    // 供 Main.java 等处静态访问
+    public static SendFileGUI INSTANCE;
     public static JProgressBar receiveProgressBar;
 
-    private final Color BACKGROUND_COLOR = new Color(240, 240, 240);
-    private final Color PRIMARY_COLOR    = new Color(41, 128, 185);
-    private final Color ACCENT_COLOR     = new Color(39, 174, 96);
-    private final Color TEXT_COLOR       = new Color(52, 73, 94);
-    private final Color LIGHT_TEXT       = new Color(236, 240, 241);
+    // Light Theme Colors
+    private static final Color APP_BACKGROUND_LIGHT = new Color(242, 245, 247);
+    private static final Color PANEL_BACKGROUND_LIGHT = Color.WHITE;
+    private static final Color TEXT_PRIMARY_LIGHT = new Color(45, 55, 72);
+    private static final Color TEXT_SECONDARY_LIGHT = new Color(100, 116, 139);
+    private static final Color BORDER_COLOR_LIGHT = new Color(226, 232, 240);
+    private static final Color LOG_AREA_BACKGROUND_LIGHT = new Color(250, 250, 250); // Slightly off-white for log area
+
+    // Dark Theme Colors
+    private static final Color APP_BACKGROUND_DARK = new Color(43, 43, 43);
+    private static final Color PANEL_BACKGROUND_DARK = new Color(60, 63, 65);
+    private static final Color TEXT_PRIMARY_DARK = new Color(204, 204, 204);
+    private static final Color TEXT_SECONDARY_DARK = new Color(153, 153, 153);
+    private static final Color BORDER_COLOR_DARK = new Color(81, 81, 81);
+    private static final Color LOG_AREA_BACKGROUND_DARK = new Color(45, 48, 51); // Specific dark for log area
+
+    // Accent colors
+    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246);
+    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129);
+
+    // Current theme colors
+    public static Color APP_BACKGROUND;
+    public static Color PANEL_BACKGROUND;
+    public static Color TEXT_PRIMARY;
+    public static Color TEXT_SECONDARY;
+    public static Color BORDER_COLOR;
+    public static Color LOG_AREA_BACKGROUND; // Current log area background
+
+    // Fonts
+    public static final Font FONT_PRIMARY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 14);
+    public static final Font FONT_PRIMARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+    public static final Font FONT_SECONDARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+    public static final Font FONT_TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 16);
+
+
+    private ClientPanel          clientPanel;
+    private FileSelectionPanel   filePanel;
+    private SendControlPanel     sendPanel;
+    private ReceiveProgressPanel recvPanel;
+    private LogPanel             logPanel;
+    private JToggleButton        themeToggleButton;
+    private boolean              isDarkMode = true;
 
     public SendFileGUI() {
-        setTitle("AirShit File Transfer");
-        setSize(700, 500);
+        super("AirShit File Transfer");
+        INSTANCE = this;
+        applyTheme(isDarkMode); // Apply initial theme
+
+        setSize(750, 600);
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        // optional app icon
-        try {
-            setIconImage(new ImageIcon(getClass().getResource("/asset/icon.jpg")).getImage());
-        } catch (Exception ignored) {}
+        initComponents();
+        layoutComponents();
+        bindEvents();
 
-        setupUI();
-        refreshClientList();
-
-        // auto‐refresh every 50ms
-        refreshTimer = new Timer(5000, e -> refreshClientList());
-        refreshTimer.start();
-
-        setVisible(true);
-    }
-
-    private void setupUI() {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
-
-        getContentPane().setBackground(BACKGROUND_COLOR);
-
-        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
-        mainPanel.setBackground(BACKGROUND_COLOR);
-
-        // --- CLIENT LIST ---
-        JPanel clientPanel = new JPanel(new BorderLayout(5, 5));
-        clientPanel.setBackground(BACKGROUND_COLOR);
-
-        JLabel clientsLabel = new JLabel("Available Clients");
-        clientsLabel.setFont(new Font("Microsoft JhengHei", Font.BOLD, 14));
-        clientsLabel.setForeground(TEXT_COLOR);
-
-        listModel  = new DefaultListModel<>();
-        clientList = new JList<>(listModel);
-        clientList.setCellRenderer(new ClientCellRenderer());
-        clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        clientList.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
-        JScrollPane clientScroll = new JScrollPane(clientList);
-        clientScroll.setBorder(BorderFactory.createLineBorder(new Color(189, 195, 199)));
-
-        refreshButton = createStyledButton("Refresh", PRIMARY_COLOR);
-        refreshButton.addActionListener(e -> ForcerefreshClientList());
-
-        clientPanel.add(clientsLabel, BorderLayout.NORTH);
-        clientPanel.add(clientScroll,  BorderLayout.CENTER);
-        clientPanel.add(refreshButton,  BorderLayout.SOUTH);
-
-        // --- CONTROL PANEL ---
-        JPanel controlPanel = new JPanel();
-        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
-        controlPanel.setBackground(BACKGROUND_COLOR);
-
-        // file chooser
-        JPanel filePanel = new JPanel(new BorderLayout(5,5));
-        filePanel.setBackground(BACKGROUND_COLOR);
-        filePanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
-        ));
-        
-        selectedFileLabel = new JLabel("No file selected");
-        selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
-
-        // wrap the label in a scroll pane so long file lists can scroll
-        JScrollPane fileScrollPane = new JScrollPane(
-            selectedFileLabel,
-            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
-        );
-        fileScrollPane.setPreferredSize(new Dimension(250, 100));
-        filePanel.add(fileScrollPane, BorderLayout.CENTER);
-
-        JButton browseButton = createStyledButton("Browse Files...", PRIMARY_COLOR);
-        browseButton.addActionListener(e -> selectFile());
-        filePanel.add(browseButton,      BorderLayout.EAST);
-
-        // send panel
-        JPanel sendPanel = new JPanel(new BorderLayout(5,5));
-        sendPanel.setBackground(BACKGROUND_COLOR);
-        sendButton = createStyledButton("Send File", ACCENT_COLOR);
-        sendButton.setEnabled(false);
-        sendButton.setFont(new Font("Microsoft JhengHei", Font.BOLD, 14));
-        sendButton.setPreferredSize(new Dimension(200, 30));
-        sendButton.addActionListener((e) -> sendFile());
-
-    
-        sendPanel.add(sendButton,       BorderLayout.NORTH);
-
-        // receive panel
-        JPanel recvPanel = new JPanel(new BorderLayout(5,5));
-        recvPanel.setBackground(BACKGROUND_COLOR);
-        recvPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "進度條", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
-        ));
-        textOfReceive = new JLabel("Receiving:");
-        textOfReceive.setVisible(false);
-        receiveProgressBar = new JProgressBar();
-        receiveProgressBar.setStringPainted(true);
-        receiveProgressBar.setVisible(false);
-        recvPanel.add(textOfReceive,        BorderLayout.NORTH);
-        recvPanel.add(receiveProgressBar,   BorderLayout.CENTER);
-
-        // log panel
-        JPanel logPanel = new JPanel(new BorderLayout());
-        logPanel.setBackground(BACKGROUND_COLOR);
-        logPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(189,195,199)),
-            "Status Log", TitledBorder.LEFT, TitledBorder.TOP,
-            new Font("Microsoft JhengHei", Font.BOLD, 12), TEXT_COLOR
-        ));
-        logArea = new JTextArea(6,20);
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        JScrollPane logScroll = new JScrollPane(logArea);
-        logPanel.add(logScroll, BorderLayout.CENTER);
-
-        controlPanel.add(filePanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(sendPanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(recvPanel);
-        controlPanel.add(Box.createRigidArea(new Dimension(0,15)));
-        controlPanel.add(logPanel);
-
-        mainPanel.add(clientPanel,  BorderLayout.WEST);
-        mainPanel.add(controlPanel, BorderLayout.CENTER);
-        setContentPane(mainPanel);
-
-        // on selection change
-        clientList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) updateSendButtonState();
-        });
-
-        // initial log
         log("Welcome to AirShit File Transfer");
-        Client me = Main.getClient();
-        log("Your name: " + me.getUserName());
-        log("Your IP:   " + me.getIPAddr());
+        SwingUtilities.invokeLater(() -> setVisible(true));
     }
 
-    private JButton createStyledButton(String text, Color color) {
-        JButton button = new JButton(text);
-        button.setBackground(color);
-        button.setForeground(LIGHT_TEXT);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
-        button.setFont(new Font("Microsoft JhengHei", Font.BOLD, 12));
-        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.addMouseListener(new MouseAdapter() {
-            public void mouseEntered(MouseEvent e) {
-                button.setBackground(color.darker());
-            }
-            public void mouseExited(MouseEvent e) {
-                button.setBackground(color);
-            }
-        });
-        return button;
-    }
-
-    private void ForcerefreshClientList() {
-        Main.clearClientList();
-        listModel.clear();
-        Main.multicastHello();
+    private void applyTheme(boolean dark) {
+        this.isDarkMode = dark;
         try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            if (dark) {
+                UIManager.setLookAndFeel(new FlatDarkLaf());
+                APP_BACKGROUND = APP_BACKGROUND_DARK;
+                PANEL_BACKGROUND = PANEL_BACKGROUND_DARK;
+                TEXT_PRIMARY = TEXT_PRIMARY_DARK;
+                TEXT_SECONDARY = TEXT_SECONDARY_DARK;
+                BORDER_COLOR = BORDER_COLOR_DARK;
+                LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_DARK;
+            } else {
+                UIManager.setLookAndFeel(new FlatLightLaf());
+                APP_BACKGROUND = APP_BACKGROUND_LIGHT;
+                PANEL_BACKGROUND = PANEL_BACKGROUND_LIGHT;
+                TEXT_PRIMARY = TEXT_PRIMARY_LIGHT;
+                TEXT_SECONDARY = TEXT_SECONDARY_LIGHT;
+                BORDER_COLOR = BORDER_COLOR_LIGHT;
+                LOG_AREA_BACKGROUND = LOG_AREA_BACKGROUND_LIGHT;
+            }
+        } catch (Exception ex) {
+            System.err.println("Failed to initialize LaF: " + ex.getMessage());
         }
-        refreshClientList();
-    }
-    public void refreshClientList() {
 
-        Hashtable<String, Client> clients = Main.getClientList();
-        for(int i = listModel.size()-1; i>=0; i--) {
-            Client c = listModel.getElementAt(i);
-            // check if the client is still in the list
-            if(clients.get(c.getUserName()) == null) {
-                listModel.remove(i);
-            } else if(!Client.check(c, clients.get(c.getUserName()))) {
-                listModel.remove(i);
+        if (themeToggleButton != null) {
+            themeToggleButton.setText(dark ? "Switch to Light Mode" : "Switch to Dark Mode");
+            // Also update the toggle button's own background if it's part of a panel that doesn't get APP_BACKGROUND
+            // For example, if it's directly on a topBar that should match APP_BACKGROUND:
+            if (themeToggleButton.getParent() != null) {
+                 themeToggleButton.getParent().setBackground(APP_BACKGROUND);
             }
         }
-        for (Client c : clients.values()) {
-            boolean found = false;
-            for(int i = 0; i < listModel.size(); i++) {
-                Client c2 = listModel.getElementAt(i);
-                if (Client.check(c, c2)) {
-                    found = true;
+        
+        // Update the look and feel of all components
+        SwingUtilities.updateComponentTreeUI(this);
+
+        // Explicitly update the background of the content pane and its direct children if necessary
+        if (getContentPane() != null) {
+            getContentPane().setBackground(APP_BACKGROUND);
+            // If the contentPane has direct children that need APP_BACKGROUND, update them too.
+            // In your case, the 'container' JPanel is the contentPane.
+            // Its children (topBar and mainContentPanel) also need their backgrounds updated.
+            Component[] components = getContentPane().getComponents();
+            for (Component component : components) {
+                if (component instanceof JPanel) {
+                    // This will catch 'topBar' and 'mainContentPanel' if they are direct children
+                    // of the 'container' (contentPane)
+                    component.setBackground(APP_BACKGROUND);
                 }
             }
-            if(!found) {
-                listModel.addElement(c);
-            }
         }
-
-        updateSendButtonState();
+        
+        // Then tell custom panels to update their specific colors
+        updateUIsOfChildPanels();
     }
 
-    private void selectFile() {
-        File selectedFile;
-        selectedFile = FolderSelector.selectFolderOrFiles(null);
-        fatherDir = selectedFile.getParentFile();
-        folderName = selectedFile.getName();
+    private void initComponents() {
+        themeToggleButton = new JToggleButton("Switch to Dark Mode");
+        themeToggleButton.setSelected(isDarkMode);
 
-        if (selectedFile == null) {
-            log("No file selected");
-            return;
-        }
+        clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
+        filePanel   = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
+        recvPanel   = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        // Pass the specific LOG_AREA_BACKGROUND to LogPanel constructor
+        logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
 
-        if (selectedFile.isDirectory()) {
-            selectedFiles = FolderSelector.listFilesRecursivelyWithRelativePaths(selectedFile);
-            selectedFileLabel.setText("Selected folder: " + selectedFile.getAbsolutePath());
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html><body>");
-            sb.append("<h3>Selected files:</h3>");
-            for (String file : selectedFiles) {
-                sb.append(file).append("<br>");
-            }
-            sb.append("</body></html>");
-            selectedFileLabel.setText(sb.toString());
-            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
-        } else {
-            selectedFiles = new String[]{selectedFile.getAbsolutePath()};
-            selectedFileLabel.setText("Selected file: " + selectedFile.getAbsolutePath());
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html><body>");
-            sb.append("<h3>Selected file:</h3>");
-            sb.append(selectedFile.getAbsolutePath());
-            sb.append("</body></html>");
-            selectedFileLabel.setText(sb.toString());
-            // set chinese font
-            selectedFiles = new String[]{new File(fatherDir+"\\"+selectedFiles[0]).getName()};
-            selectedFileLabel.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 12));
-        }
-
-        updateSendButtonState();
+        receiveProgressBar = recvPanel.getProgressBar();
+        sendPanel.getSendButton().setEnabled(false);
+        sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
+    }
+    
+    private void updateUIsOfChildPanels() {
+        if (clientPanel != null) clientPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (filePanel != null) filePanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (sendPanel != null) sendPanel.updateThemeColors(APP_BACKGROUND, ACCENT_SUCCESS);
+        if (recvPanel != null) recvPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        // Pass the specific LOG_AREA_BACKGROUND to LogPanel's update method
+        if (logPanel != null) logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
     }
 
 
-    private void sendFile() {
-        if (clientList.getSelectedValue() == null ||
-            selectedFiles == null) return;
+    private void layoutComponents() {
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        // topBar.setBackground(APP_BACKGROUND); // This will be set by applyTheme now
 
-        Client target = clientList.getSelectedValue();
-        log("Sending files to " + target.getUserName() + "...");
+        themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
+        topBar.add(themeToggleButton);
 
+        JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
+        // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by applyTheme
+        mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
 
-        System.out.println("folderName: " + folderName);
-            
+        mainContentPanel.add(clientPanel, BorderLayout.WEST);
+
+        JPanel right = new JPanel();
+        // right.setBackground(APP_BACKGROUND); // This will be set by applyTheme
+        right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
+        right.add(filePanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(sendPanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(recvPanel);
+        right.add(Box.createVerticalStrut(15));
+        right.add(logPanel);
+        mainContentPanel.add(right, BorderLayout.CENTER);
+
+        JPanel container = new JPanel(new BorderLayout());
+        // container.setBackground(APP_BACKGROUND); // This will be set by applyTheme
+        container.add(topBar, BorderLayout.NORTH);
+        container.add(mainContentPanel, BorderLayout.CENTER);
+        
+        setContentPane(container); // 'container' is now the contentPane
+    }
+
+    private void bindEvents() {
+        themeToggleButton.addActionListener(e -> {
+            applyTheme(themeToggleButton.isSelected());
+        });
+
+        clientPanel.getList().addListSelectionListener(e -> updateSendState());
+        filePanel.addPropertyChangeListener("selectedFiles", ev -> updateSendState());
+        sendPanel.getSendButton().addActionListener(e -> doSend());
+    }
+
+    private void updateSendState() {
+        boolean ok = clientPanel.getList().getSelectedValue() != null
+                  && filePanel.getSelectedFiles() != null;
+        sendPanel.getSendButton().setEnabled(ok);
+    }
+
+    private void doSend() {
+        Client target       = clientPanel.getList().getSelectedValue();
+        String[] files      = filePanel.getSelectedFiles();
+        File   fatherDir    = filePanel.getFolder();
+        String folderName   = filePanel.getFolderName();
+        if (target == null || files == null) return;
+
+        logPanel.log("Sending files to " + target.getUserName() + "...");
+
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
-            int lasPct = -1;
-            long totalBytes = 0;
-            @Override
-            public void onStart(long totalBytes) {
-                sentSoFar.set(0);
-                sendButton.setEnabled(false);
+            long totalBytes;
+            int lastPct = -1;
+
+            @Override public void onStart(long totalBytes) {
                 this.totalBytes = totalBytes;
-                log("totalBytes: " + totalBytes);
-                Main.sendStatus.set(SEND_STATUS.SEND_WAITING);
-
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setMaximum(100));
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> receiveProgressBar.setValue(0));
+                sentSoFar.set(0);
+                SwingUtilities.invokeLater(() -> {
+                    sendPanel.getSendButton().setEnabled(false);
+                    recvPanel.getLabel().setVisible(true);
+                    recvPanel.getProgressBar().setVisible(true);
+                    recvPanel.getProgressBar().setMaximum(100);
+                    recvPanel.getProgressBar().setValue(0);
+                });
+                logPanel.log("Total size: " + totalBytes + " bytes");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
-            @Override
-            public void onProgress(long bytesTransferred) {
+
+            @Override public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
-                SwingUtilities.invokeLater(() -> {
-                    int pct = (int)(cumul*100/totalBytes);
-                    receiveProgressBar.setValue(pct);
-                    if (pct % 10 == 0 && pct != lasPct) {
-                        lasPct = pct;
-                        log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
-                    }
-                });
+                int pct = (int)(cumul * 100 / totalBytes);
+                SwingUtilities.invokeLater(() -> recvPanel.getProgressBar().setValue(pct));
+                if (pct % 10 == 0 && pct != lastPct) {
+                    lastPct = pct;
+                    logPanel.log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                }
             }
-            @Override
-            public void onComplete() {
-                sendButton.setEnabled(false);
-                Main.sendStatus.set(SEND_STATUS.SEND_OK);
 
+            @Override public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
-                    log("File transfer complete.");
-                    sendButton.setEnabled(true);
-                    receiveProgressBar.setVisible(false);
-                });    
-            }
-            @Override
-            public void onError(Exception e) {
-                SwingUtilities.invokeLater(() -> {
-                    // 先印到 log 裡
-                    sendButton.setEnabled(false);
-                    Main.sendStatus.set(SEND_STATUS.SEND_OK);
-                    log("Error: " + e);              // 印 e.toString() 而不是 e.getMessage()
-                    StringWriter sw = new StringWriter();
-                    e.printStackTrace(new PrintWriter(sw));
-                    log(sw.toString());               // 把 stack‐trace 也印進 log
-                    sendButton.setEnabled(true);
-                    receiveProgressBar.setVisible(false);
+                    recvPanel.getProgressBar().setVisible(false);
+                    sendPanel.getSendButton().setEnabled(true);
                 });
+                logPanel.log("File transfer complete.");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
+            }
+
+            @Override public void onError(Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    recvPanel.getProgressBar().setVisible(false);
+                    sendPanel.getSendButton().setEnabled(true);
+                });
+                logPanel.log("Error: " + e);
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                logPanel.log(sw.toString());
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
         };
         new Thread(() -> {
-            FileSender sender = new FileSender(
-                target.getIPAddr(),
-                target.getTCPPort(),
-                fatherDir.getAbsolutePath()
-            );
             try {
-                sender.sendFiles(
-                    selectedFiles,
-                    Main.getClient().getUserName(),
-                    folderName,
-                    callback
+                FileSender sender = new FileSender(
+                    target.getIPAddr(),
+                    target.getTCPPort(),
+                    fatherDir.getAbsolutePath()
                 );
-            } catch (Exception e) {
-                callback.onError(e);
+                sender.sendFiles(files,
+                                 Main.getClient().getUserName(),
+                                 folderName,
+                                 callback);
+            } catch (Exception ex) {
+                callback.onError(ex);
             }
-            Main.sendStatus.set(SEND_STATUS.SEND_OK);
-
         }, "send-thread").start();
     }
 
-    private void updateSendButtonState() {
-        boolean ok = clientList.getSelectedValue()!=null
-                  && selectedFiles!=null && selectedFiles.length>0;
-        sendButton.setEnabled(ok);
-    }
-
+    /** 供 Main.java 调用：写入日志面板 */
     public void log(String msg) {
-        String t = new SimpleDateFormat("HH:mm:ss").format(new Date());
-        logArea.append("\r[" + t + "] " + msg + "\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
+        if (logPanel != null) {
+            logPanel.log(msg);
+        } else {
+            System.out.println("[LOG EARLY] " + msg); 
+        }
     }
 
     public static String formatFileSize(long size) {
         String[] units = {"B","KB","MB","GB"};
-        int idx = 0;
         double val = size;
-        while (val>1024 && idx<units.length-1) {
+        int idx = 0;
+        while (val > 1024 && idx < units.length-1) {
             val /= 1024;
             idx++;
         }
         return String.format("%.2f %s", val, units[idx]);
     }
 
-    public static void receiveFileProgress(int percent) {
-        SwingUtilities.invokeLater(() -> {
-            textOfReceive.setVisible(true);
-            receiveProgressBar.setVisible(true);
-            receiveProgressBar.setValue(percent);
-        });
+    public ClientPanel getClientPanel() { // Add this getter
+        return clientPanel;
     }
 
-    private class ClientCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list,
-                                                      Object value,
-                                                      int index,
-                                                      boolean isSelected,
-                                                      boolean cellHasFocus) {
-            JPanel panel = new JPanel(new BorderLayout(10,0));
-            panel.setOpaque(true);
-            if (isSelected) {
-                panel.setBackground(PRIMARY_COLOR);
-            } else {
-                panel.setBackground(list.getBackground());
-            }
-            Client c = (Client)value;
-            JLabel name = new JLabel(c.getUserName());
-            name.setFont(new Font("Microsoft JhengHei", Font.BOLD, 13));
-            JLabel details = new JLabel(c.getIPAddr() + " (" + c.getOS() + ")");
-            details.setFont(new Font("Microsoft JhengHei", Font.PLAIN, 10));
-            JPanel texts = new JPanel(new GridLayout(2,1));
-            texts.setOpaque(false);
-            texts.add(name);
-            texts.add(details);
-            panel.add(texts, BorderLayout.CENTER);
-
-            JLabel icon;
-            try {
-                icon = new JLabel(new ImageIcon(getClass().getResource("/asset/user.png")));
-            } catch (Exception e) {
-                icon = new JLabel("👤");
-            }
-            panel.add(icon, BorderLayout.WEST);
-            panel.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
-            return panel;
-        }
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(SendFileGUI::new);
     }
 }
