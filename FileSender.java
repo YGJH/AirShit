@@ -36,7 +36,7 @@ public class FileSender {
         StringBuilder sb = new StringBuilder();
         long originalTotalSize = 0;
         int threadCount = Runtime.getRuntime().availableProcessors();
-        boolean isSingleFileOriginally = filesToProcess.length == 1 && (subFolderName == null || subFolderName.isEmpty());
+        boolean isSingleFileOriginally = filesToProcess.length == 1 ;
 
         if (isSingleFileOriginally) {
             sb.append("isSingle|");
@@ -111,8 +111,8 @@ public class FileSender {
         String loopBasePath = currentBasePath; // 迴圈中使用的基礎路徑
         long currentTotalSizeForCallback = originalTotalSize; // callback.onStart 使用的大小
 
-        // 嘗試壓縮: 原始總大小小於 600KB 且原始檔案數量大於 1
-        if (originalTotalSize < 600 * 1024 && filesToProcess.length > 1 && !isSingleFileOriginally) {
+        // 嘗試壓縮: 原始總大小小於 150 MB 且原始檔案數量大於 1
+        if (originalTotalSize < 150 * 1024 * 1024 && filesToProcess.length > 1 && !isSingleFileOriginally) {
             // println("Total size " + originalTotalSizeFormatted + " with " + filesToProcess.length + " files. Attempting compression...");
             try {
                 // Compresser.compressFile 期望 filesToProcess 中的路徑是相對於 currentBasePath 的
