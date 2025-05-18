@@ -239,6 +239,7 @@ public class FileReceiver {
 
                         if(isCompressed) {
                             // println("開始解壓縮檔案：" + fileName);
+                            cb.onProgress(totalSize);
                             Decompresseser decompressor = new Decompresseser();
                             if(decompressor.decompressFile(outPutPath + "\\" + fileName, outPutPath)) {
                                 // println("解壓縮完成：" + fileName);

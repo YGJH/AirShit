@@ -85,6 +85,7 @@ public class FileSender {
                 // files 陣列中的路徑是相對於 currentBaseDir 的
                 String compressedArchiveName = Compresser.compressFile(fatherDir, files, "AirShit_Archive");
                 isCompressed = true;
+                totalSize = new File(fatherDir+"\\"+compressedArchiveName).length(); // 更新總大小
                 if (compressedArchiveName != null) {
                     files = new String[]{compressedArchiveName}; // 更新要傳送的檔案列表為單一壓縮檔
                     // println("壓縮成功。新的傳送檔案: " + compressedArchiveName);
