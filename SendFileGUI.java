@@ -53,7 +53,7 @@ public class SendFileGUI extends JFrame {
 
     private ClientPanel          clientPanel;
     private FileSelectionPanel   filePanel;
-    private SendControlPanel     sendPanel;
+    public  SendControlPanel     sendPanel;
     private ReceiveProgressPanel recvPanel;
     private LogPanel             logPanel;
     private JToggleButton        themeToggleButton;
@@ -62,15 +62,15 @@ public class SendFileGUI extends JFrame {
     public SendFileGUI() {
         super("AirShit File Transfer");
         INSTANCE = this;
-        applyTheme(isDarkMode); // Apply initial theme
-
+        
         setSize(750, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-
+        
         initComponents();
         layoutComponents();
         bindEvents();
+        applyTheme(isDarkMode); // Apply initial theme
 
         log("Welcome to AirShit File Transfer");
         SwingUtilities.invokeLater(() -> setVisible(true));

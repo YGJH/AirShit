@@ -8,6 +8,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
@@ -128,6 +130,7 @@ public class FileReceiver {
                 }
 
                 // get output file path
+                boolean isCompressed = false;
                 String outputFilePath = FolderSelector.selectFolder();
                 if (outputFilePath == null) {
                     // System.out.println("使用者取消選擇資料夾。");
@@ -152,6 +155,7 @@ public class FileReceiver {
                 final String outPutPath = outputFilePath;
                 
                 cb.onStart(totalSize); // 開始接收檔案
+
                 // notify sender to start sending the file
                 // System.out.println("開始接收檔案：" + fileCount + " 個檔案，總大小：" + totalSize + " bytes");
                 for (int i = 0; i < fileCount; i++) {
@@ -163,8 +167,9 @@ public class FileReceiver {
                         String[] pp = res.split("\\|");
                         final String fileName = pp[0];
                         long fileSize = Long.parseLong(pp[1]);
-                        // println("接收檔案：" + fileName + "，大小：" + fileSize + " bytes");
-                        // notify sender to start sending the file
+                        if(pp.length > 2) {
+                            isCompressed = Boolean.parseBoolean(pp[2]);
+                        }
                         File tmp = new File(outPutPath + "\\" + fileName);
                         if(tmp.exists()) {
                             tmp.delete();
@@ -231,6 +236,17 @@ public class FileReceiver {
                             fileDos.writeUTF("ERROR");
                             fileDos.flush();
                         }
+
+                        if(isCompressed) {
+                            // println("開始解壓縮檔案：" + fileName);
+                            Decompresseser decompressor = new Decompresseser();
+                            if(decompressor.decompressFile(outPutPath + "\\" + fileName, outPutPath)) {
+                                // println("解壓縮完成：" + fileName);
+                                tmp.delete();
+                            } else {
+                                // System.err.println("解壓縮失敗：" + fileName);
+                            }
+                        }
                     } catch (IOException e) {
                         socket.close();
                     }
@@ -246,4 +262,63 @@ public class FileReceiver {
         }
     }
     
+    private class Decompresseser {
+    
+    
+        private boolean decompressFile(String zipFilePath, String destDirectory) {
+            File destDir = new File(destDirectory);
+            if (!destDir.exists()) {
+                destDir.mkdirs();
+            }
+    
+            byte[] buffer = new byte[4096];
+            try (FileInputStream fis = new FileInputStream(zipFilePath);
+                 BufferedInputStream bis = new BufferedInputStream(fis);
+                 ZipInputStream zis = new ZipInputStream(bis)) {
+    
+                ZipEntry zipEntry = zis.getNextEntry();
+                while (zipEntry != null) {
+                    File newFile = new File(destDirectory, zipEntry.getName());
+    
+                    // Security check to prevent Zip Slip vulnerability
+                    if (!newFile.getCanonicalPath().startsWith(new File(destDirectory).getCanonicalPath() + File.separator)) {
+                        LogPanel.log("Error: Attempt to write file outside target directory (Zip Slip): " + newFile.getAbsolutePath());
+                        return false;
+                    }
+    
+                    if (zipEntry.isDirectory()) {
+                        if (!newFile.isDirectory() && !newFile.mkdirs()) {
+                            LogPanel.log("Error: Failed to create directory " + newFile.getAbsolutePath());
+                            return false;
+                        }
+                    } else {
+                        // Ensure parent directory exists
+                        File parent = newFile.getParentFile();
+                        if (!parent.isDirectory() && !parent.mkdirs()) {
+                            LogPanel.log("Error: Failed to create parent directory " + parent.getAbsolutePath());
+                            return false;
+                        }
+    
+                        // Write file content
+                        try (FileOutputStream fos = new FileOutputStream(newFile);
+                             BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+                            int len;
+                            while ((len = zis.read(buffer)) > 0) {
+                                bos.write(buffer, 0, len);
+                            }
+                        }
+                    }
+                    zis.closeEntry();
+                    zipEntry = zis.getNextEntry();
+                }
+                LogPanel.log("Successfully decompressed " + zipFilePath + " to " + destDirectory);
+                return true;
+            } catch (IOException e) {
+                LogPanel.log("Error decompressing file " + zipFilePath + ": " + e.getMessage());
+                e.printStackTrace(); // For more detailed debugging
+                return false;
+            }
+        }
+    
+    }
 }

@@ -30,7 +30,7 @@ public class FolderSelector {
         chooser.setDialogTitle("請選擇一個資料夾或檔案");
 
         int result = chooser.showOpenDialog(parentComponent);
-        System.out.println(result);
+        // System.out.println(result);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFileOrFolder = chooser.getSelectedFile();
             if(selectedFileOrFolder != null) {

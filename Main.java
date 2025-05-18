@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
 import java.util.concurrent.ConcurrentHashMap; // 引入 ConcurrentHashMap
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
+
+import AirShit.SendFile;
+
 import java.awt.Font; // 引入 AWT Font類別
 
 public class Main { // 定義 Main 類別
@@ -307,9 +310,12 @@ public class Main { // 定義 Main 類別
                 totalReceived.set(0);
                 GUI.log("Receiving " + SendFileGUI.formatFileSize(totalBytes));
                 sendStatus.set(SEND_STATUS.SEND_WAITING);
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setVisible(true));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setMaximum((int) 100));
-                SwingUtilities.invokeLater(() -> SendFileGUI.receiveProgressBar.setValue((int) 0));
+                SwingUtilities.invokeLater(() -> {
+                    GUI.sendPanel.getSendButton().setEnabled(false);
+                    SendFileGUI.receiveProgressBar.setVisible(true);
+                    SendFileGUI.receiveProgressBar.setMaximum((int) 100);
+                    SendFileGUI.receiveProgressBar.setValue((int) 0);
+                });
             }
 
             @Override
@@ -328,8 +334,9 @@ public class Main { // 定義 Main 類別
             @Override
             public void onComplete() {
                 sendStatus.set(SEND_STATUS.SEND_OK);
-
+                
                 SwingUtilities.invokeLater(() -> {
+                    GUI.sendPanel.getSendButton().setEnabled(true);
                     GUI.log("Transfer complete");
                     SendFileGUI.receiveProgressBar.setVisible(false);
                     SendFileGUI.receiveProgressBar.setValue(0);
@@ -341,6 +348,7 @@ public class Main { // 定義 Main 類別
                 sendStatus.set(SEND_STATUS.SEND_OK);
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Error: " + e.getMessage());
+                    GUI.sendPanel.getSendButton().setEnabled(true);
                     SendFileGUI.receiveProgressBar.setVisible(false);
                     SendFileGUI.receiveProgressBar.setValue(0);
                 });
