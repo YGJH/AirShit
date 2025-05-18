@@ -2,6 +2,10 @@
  AirShit - Local Area Network P2P File Transfer Tool
 ================================================================================
 
+[中文](README_zh_tw.md)
+
+--------------------------------------------------------------------------------
+
 Version: 1.0.0 (Based on AppVersion in build.ps1)
 Author: AirShit Project (Based on VendorName in build.ps1)
 Last Updated: 2025-05-18
@@ -234,5 +238,14 @@ Assuming you are in the project root directory (`AirShit/`):
     and the classpath is set correctly.
 *   **jpackage (Packaging):** The `jpackage` tool is part of JDK 14 and later.
     The `packing` feature might not be available if using an older JDK.
+
+
+## Warning
+
+- build.sh
+- build_mac.sh
+- build.ps1
+
+**This three scripts will reset all of your modify which in your local file, and pull new commit to your local file. Please use it carefully.**
 
 ================================================================================
