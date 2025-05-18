@@ -75,7 +75,6 @@ public class FileSender {
         
         callback.onStart(totalSize);
         System.out.println(files.length + " 個檔案需要傳送。");
-        int cnt = files.length;
         for (String filePath : files) {
             // notify user
             File file = new File(fatherDir+"\\"+filePath);
