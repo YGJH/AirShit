@@ -1,7 +1,8 @@
 package AirShit;
 
 import AirShit.ui.*;
-import com.formdev.flatlaf.FlatLightLaf; // Import FlatLaf
+import com.formdev.flatlaf.FlatDarkLaf; // Import FlatDarkLaf
+import com.formdev.flatlaf.FlatLightLaf;
 
 import javax.swing.*;
 import java.awt.*;
@@ -15,16 +16,32 @@ public class SendFileGUI extends JFrame {
     public static SendFileGUI INSTANCE;
     public static JProgressBar receiveProgressBar;
 
-    // A more "gorgeous" and modern color palette
-    private static final Color APP_BACKGROUND = new Color(242, 245, 247); // Light, clean background
-    private static final Color PANEL_BACKGROUND = Color.WHITE; // Panels stand out
-    private static final Color TEXT_PRIMARY = new Color(45, 55, 72);    // Darker, more readable text
-    private static final Color TEXT_SECONDARY = new Color(100, 116, 139); // For less important text
-    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246); // A vibrant blue
-    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129); // A modern green
-    private static final Color BORDER_COLOR = new Color(226, 232, 240); // Subtle borders
+    // Light Theme Colors (Original)
+    private static final Color APP_BACKGROUND_LIGHT = new Color(242, 245, 247);
+    private static final Color PANEL_BACKGROUND_LIGHT = Color.WHITE;
+    private static final Color TEXT_PRIMARY_LIGHT = new Color(45, 55, 72);
+    private static final Color TEXT_SECONDARY_LIGHT = new Color(100, 116, 139);
+    private static final Color BORDER_COLOR_LIGHT = new Color(226, 232, 240);
 
-    // Modern Fonts (FlatLaf will use system's UI font, which is usually good)
+    // Dark Theme Colors
+    private static final Color APP_BACKGROUND_DARK = new Color(43, 43, 43); // Dark gray
+    private static final Color PANEL_BACKGROUND_DARK = new Color(60, 63, 65); // Slightly lighter dark gray
+    private static final Color TEXT_PRIMARY_DARK = new Color(204, 204, 204); // Light gray for text
+    private static final Color TEXT_SECONDARY_DARK = new Color(153, 153, 153); // Medium gray for secondary text
+    private static final Color BORDER_COLOR_DARK = new Color(81, 81, 81); // Darker border
+
+    // Accent colors can often remain the same or be slightly adjusted if needed
+    private static final Color ACCENT_PRIMARY = new Color(59, 130, 246); // Blue
+    private static final Color ACCENT_SUCCESS = new Color(16, 185, 129); // Green
+
+    // Current theme colors (non-final, will be updated)
+    public static Color APP_BACKGROUND;
+    public static Color PANEL_BACKGROUND;
+    public static Color TEXT_PRIMARY;
+    public static Color TEXT_SECONDARY;
+    public static Color BORDER_COLOR;
+
+    // Fonts remain the same
     public static final Font FONT_PRIMARY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 14);
     public static final Font FONT_PRIMARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
     public static final Font FONT_SECONDARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
@@ -36,22 +53,17 @@ public class SendFileGUI extends JFrame {
     private SendControlPanel     sendPanel;
     private ReceiveProgressPanel recvPanel;
     private LogPanel             logPanel;
+    private JToggleButton        themeToggleButton;
+    private boolean              isDarkMode = false;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
         INSTANCE = this;
 
-        // Apply FlatLaf
-        try {
-            UIManager.setLookAndFeel(new FlatLightLaf());
-        } catch (Exception ex) {
-            System.err.println("Failed to initialize LaF. Using default.");
-        }
-        // Re-apply font settings after L&F change if needed, or let FlatLaf handle it.
-        // UIManager.put("defaultFont", FONT_PRIMARY_PLAIN);
+        // Apply initial theme (Light) BEFORE initializing components
+        applyTheme(isDarkMode); // isDarkMode is initially false
 
-
-        setSize(750, 550); // Slightly larger for better spacing
+        setSize(750, 600); // Slightly taller to accommodate theme button
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
@@ -63,34 +75,78 @@ public class SendFileGUI extends JFrame {
         SwingUtilities.invokeLater(() -> setVisible(true));
     }
 
+    private void applyTheme(boolean dark) {
+        this.isDarkMode = dark;
+        try {
+            if (dark) {
+                UIManager.setLookAndFeel(new FlatDarkLaf());
+                APP_BACKGROUND = APP_BACKGROUND_DARK;
+                PANEL_BACKGROUND = PANEL_BACKGROUND_DARK;
+                TEXT_PRIMARY = TEXT_PRIMARY_DARK;
+                TEXT_SECONDARY = TEXT_SECONDARY_DARK;
+                BORDER_COLOR = BORDER_COLOR_DARK;
+            } else {
+                UIManager.setLookAndFeel(new FlatLightLaf());
+                APP_BACKGROUND = APP_BACKGROUND_LIGHT;
+                PANEL_BACKGROUND = PANEL_BACKGROUND_LIGHT;
+                TEXT_PRIMARY = TEXT_PRIMARY_LIGHT;
+                TEXT_SECONDARY = TEXT_SECONDARY_LIGHT;
+                BORDER_COLOR = BORDER_COLOR_LIGHT;
+            }
+        } catch (Exception ex) {
+            System.err.println("Failed to initialize LaF: " + ex.getMessage());
+        }
+
+        if (themeToggleButton != null) {
+            themeToggleButton.setText(dark ? "Switch to Light Mode" : "Switch to Dark Mode");
+        }
+        
+        // Update the entire UI tree
+        SwingUtilities.updateComponentTreeUI(this);
+        // Then tell custom panels to update their specific colors
+        updateUIsOfChildPanels();
+    }
+
     private void initComponents() {
-        // Pass the new theme colors and fonts to the panels
+        themeToggleButton = new JToggleButton("Switch to Dark Mode");
+        themeToggleButton.setSelected(isDarkMode); // Set initial selection state
+
+        // Panels are now initialized using the current theme colors set by applyTheme()
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         filePanel   = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
-        sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS); // Send button on app background
+        sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
         recvPanel   = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
         logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
 
-        // 把进度条暴露给 Main
         receiveProgressBar = recvPanel.getProgressBar();
-
-        // 初始时禁用发送按钮
         sendPanel.getSendButton().setEnabled(false);
         sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
     }
+    
+    private void updateUIsOfChildPanels() {
+        // These methods will be added to each panel class
+        if (clientPanel != null) clientPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (filePanel != null) filePanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (sendPanel != null) sendPanel.updateThemeColors(APP_BACKGROUND, ACCENT_SUCCESS);
+        if (recvPanel != null) recvPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        if (logPanel != null) logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+    }
+
 
     private void layoutComponents() {
-        JPanel main = new JPanel(new BorderLayout(15, 15)); // Increased gaps
-        main.setBackground(APP_BACKGROUND);
-        main.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15)); // More padding
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        topBar.setBackground(APP_BACKGROUND); // Match app background
+        topBar.add(themeToggleButton);
 
-        main.add(clientPanel, BorderLayout.WEST);
+        JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
+        mainContentPanel.setBackground(APP_BACKGROUND);
+        mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15)); // No top padding, handled by topBar
+
+        mainContentPanel.add(clientPanel, BorderLayout.WEST);
 
         JPanel right = new JPanel();
-        right.setBackground(APP_BACKGROUND); // Match main background
+        right.setBackground(APP_BACKGROUND);
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
-
-        // Add components with consistent spacing
         right.add(filePanel);
         right.add(Box.createVerticalStrut(15));
         right.add(sendPanel);
@@ -98,12 +154,22 @@ public class SendFileGUI extends JFrame {
         right.add(recvPanel);
         right.add(Box.createVerticalStrut(15));
         right.add(logPanel);
+        mainContentPanel.add(right, BorderLayout.CENTER);
 
-        main.add(right, BorderLayout.CENTER);
-        setContentPane(main);
+        // Main container for topBar and content
+        JPanel container = new JPanel(new BorderLayout());
+        container.setBackground(APP_BACKGROUND);
+        container.add(topBar, BorderLayout.NORTH);
+        container.add(mainContentPanel, BorderLayout.CENTER);
+        
+        setContentPane(container);
     }
 
     private void bindEvents() {
+        themeToggleButton.addActionListener(e -> {
+            applyTheme(themeToggleButton.isSelected());
+        });
+
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
         filePanel.addPropertyChangeListener("selectedFiles", ev -> updateSendState());
         sendPanel.getSendButton().addActionListener(e -> doSend());

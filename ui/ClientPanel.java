@@ -2,10 +2,9 @@ package AirShit.ui;
 
 import AirShit.Client;
 import AirShit.Main;
-import AirShit.SendFileGUI; // To access new Font constants
+import AirShit.SendFileGUI;
 
 import javax.swing.*;
-import javax.swing.border.Border;
 import java.awt.*;
 import java.util.Hashtable;
 
@@ -13,49 +12,90 @@ public class ClientPanel extends JPanel {
     private JList<Client> list;
     private DefaultListModel<Client> model;
     private JButton refreshButton;
+    private JLabel titleLabel; // Store label to update its color
+
+    // Store current colors to re-apply them
+    private Color currentPanelBg;
+    private Color currentTextPrimary;
+    private Color currentTextSecondary;
+    private Color currentAccentPrimary;
+    private Color currentBorderColor;
+
 
     public ClientPanel(Color panelBg, Color textPrimary, Color textSecondary, Color accentPrimary, Color borderColor) {
-        setLayout(new BorderLayout(10, 10)); // Increased gap
-        setBackground(panelBg);
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentTextSecondary = textSecondary;
+        this.currentAccentPrimary = accentPrimary;
+        this.currentBorderColor = borderColor;
+
+        setLayout(new BorderLayout(10, 10));
+        // Initial styling using passed colors
+        styleComponents();
+        
+        refresh(); // Initial data load
+    }
+
+    private void styleComponents() {
+        setBackground(currentPanelBg);
         setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(borderColor), // Outer border
-            BorderFactory.createEmptyBorder(10, 10, 10, 10) // Inner padding
+            BorderFactory.createLineBorder(currentBorderColor),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
         ));
 
-        JLabel lbl = new JLabel("Available Clients");
-        lbl.setFont(SendFileGUI.FONT_TITLE); // Use new font
-        lbl.setForeground(textPrimary);
-        lbl.setBorder(BorderFactory.createEmptyBorder(0,0,5,0)); // Padding below title
+        if (titleLabel == null) {
+            titleLabel = new JLabel("Available Clients");
+        }
+        titleLabel.setFont(SendFileGUI.FONT_TITLE);
+        titleLabel.setForeground(currentTextPrimary);
+        titleLabel.setBorder(BorderFactory.createEmptyBorder(0,0,5,0));
 
-        model = new DefaultListModel<>();
-        list  = new JList<>(model);
-        list.setCellRenderer(new ClientCellRenderer(accentPrimary, panelBg, textPrimary, textSecondary)); // Pass colors
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        // FlatLaf will style the scrollpane border, so explicit border on JList might not be needed
-        // list.setBorder(BorderFactory.createLineBorder(borderColor));
-        list.setBackground(panelBg);
+        if (model == null) model = new DefaultListModel<>();
+        if (list == null) {
+            list  = new JList<>(model);
+            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        }
+        // IMPORTANT: Re-create cell renderer with new theme colors
+        list.setCellRenderer(new ClientCellRenderer(currentAccentPrimary, currentPanelBg, currentTextPrimary, currentTextSecondary));
+        list.setBackground(currentPanelBg);
+
 
         JScrollPane scrollPane = new JScrollPane(list);
-        scrollPane.setBorder(BorderFactory.createLineBorder(borderColor)); // Border for scrollpane
+        scrollPane.setBorder(BorderFactory.createLineBorder(currentBorderColor));
+        scrollPane.getViewport().setBackground(currentPanelBg); // Ensure viewport matches
 
-        refreshButton = new JButton("Refresh");
-        // FlatLaf provides good default button styling. Custom properties can be set.
-        // refreshButton.putClientProperty("JButton.buttonType", "roundRect"); // Example FlatLaf property
+        if (refreshButton == null) {
+            refreshButton = new JButton("Refresh");
+            refreshButton.addActionListener(e -> refresh());
+        }
         refreshButton.setFont(SendFileGUI.FONT_PRIMARY_BOLD);
-        refreshButton.setBackground(accentPrimary);
-        refreshButton.setForeground(Color.WHITE);
-        refreshButton.setFocusPainted(false); // Good for modern look
-        refreshButton.addActionListener(e -> refresh());
+        refreshButton.setBackground(currentAccentPrimary);
+        refreshButton.setForeground(Color.WHITE); // Assuming white text on accent is always good
+        refreshButton.setFocusPainted(false);
 
-        add(lbl,    BorderLayout.NORTH);
+        // Remove old components before adding potentially new/restyled ones
+        removeAll(); 
+        add(titleLabel,    BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
         add(refreshButton, BorderLayout.SOUTH);
+        revalidate();
+        repaint();
+    }
 
-        refresh();
+    public void updateThemeColors(Color panelBg, Color textPrimary, Color textSecondary, Color accentPrimary, Color borderColor) {
+        this.currentPanelBg = panelBg;
+        this.currentTextPrimary = textPrimary;
+        this.currentTextSecondary = textSecondary;
+        this.currentAccentPrimary = accentPrimary;
+        this.currentBorderColor = borderColor;
+        
+        // Re-apply all styles
+        styleComponents();
     }
 
     public void refresh() {
         Main.clearClientList();
+        if (model == null) model = new DefaultListModel<>();
         model.clear();
         Main.multicastHello();
         try { Thread.sleep(500); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
