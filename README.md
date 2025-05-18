@@ -4,8 +4,7 @@
 
 =====================================================
 
-Version: 1.0.0 (Based on AppVersion in build.ps1)
-Author: AirShit Project (Based on VendorName in build.ps1)
+Version: 1.0.0
 Last Updated: 2025-05-18
 
 =====================================================
