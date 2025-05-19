@@ -105,6 +105,11 @@ AirShit/
 │           ├── ReceiveProgressPanel.class
 │           └── SendControlPanel.class
 │
+│
+│
+├──── 生成用來測試的資料
+│      └── GenerateTestFolder.java
+│
 ├── libs/                         # 存放外部函式庫 (例如 FlatLaf)
 │   └── flatlaf-3.4.1.jar         # FlatLaf Look and Feel 函式庫
 │
@@ -146,6 +151,7 @@ AirShit/
     `./build.sh pull`
 8.  **打包應用程式 (如果腳本支援 `wraping` 或類似參數):**
     `./build.sh wraping` (此參數在你的腳本中用於建立 JAR)
+
 
 #### Windows (使用 PowerShell)
 

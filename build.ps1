@@ -14,6 +14,10 @@ switch ($Action.ToLower()) {
         git pull
         break
     }
+    'gen' {
+        javac -d . GenerateTestFolder.java
+        java AirShit.GenerateTestFolder
+    }
     'packing' {
         $AppName = "AirShit"
         $AppVersion = "1.0.0" # 你可以根據需要修改版本號
