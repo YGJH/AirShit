@@ -67,6 +67,8 @@ public class ClientPanel extends JPanel {
         refreshButton.setBackground(currentAccentPrimary);
         refreshButton.setForeground(Color.WHITE);
         refreshButton.setFocusPainted(false);
+        refreshButton.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
+        refreshButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         removeAll(); 
         add(titleLabel,    BorderLayout.NORTH);

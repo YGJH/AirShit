@@ -32,6 +32,7 @@ public class SendControlPanel extends JPanel {
         sendButton.setFocusPainted(false);
         sendButton.setPreferredSize(new Dimension(150, 40));
         sendButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        sendButton.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
 
         // Ensure button is added (it might be removed if panel structure changes, though not here)
         removeAll(); // Good practice if structure could change

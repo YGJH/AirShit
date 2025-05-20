@@ -87,6 +87,8 @@ public class FileSelectionPanel extends JPanel {
         browseBtn.setBackground(currentAccentPrimary);
         browseBtn.setForeground(Color.WHITE); // Assuming white text on accent is always good
         browseBtn.setFocusPainted(false);
+        browseBtn.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); 
+        browseBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonPanel.setBackground(currentPanelBg);
