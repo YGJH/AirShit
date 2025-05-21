@@ -179,6 +179,11 @@ public class FileReceiver {
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
                                 receiver.start(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, len, threadCount, callback);
+
+                                if(outPutFileName.endsWith(".tar.lz4")) {
+                                    LZ4FileDecompressor.decompressTarLz4Folder(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, outPutFileName.substring(0, len-8));
+                                }
+
                             } catch (Exception e) {
                                 callback.onError(new Exception("transfer fail", e));
                                 continue;

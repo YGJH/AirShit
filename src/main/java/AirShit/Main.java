@@ -166,7 +166,7 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8); // Specify
                                                                                                                   // UTF-8
-                    System.out.println("Received multicast: " + message); // Log received message
+                    // System.out.println("Received multicast: " + message); // Log received message
 
                     boolean listChanged = false;
 
@@ -203,7 +203,7 @@ public class Main { // 定義 Main 類別
                                 // It's our own HELLO message
                             } else if (!clientList.containsKey(tempClient.getUserName())) {
                                 clientList.put(tempClient.getUserName(), tempClient);
-                                System.out.println("Main: Added new client from HELLO: " + tempClient.getUserName());
+                                // System.out.println("Main: Added new client from HELLO: " + tempClient.getUserName());
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 responseNewClient(packet.getAddress(), packet.getPort());
@@ -214,7 +214,7 @@ public class Main { // 定義 Main 類別
                     if (listChanged) {
                         if (GUI != null && SendFileGUI.INSTANCE != null
                                 && SendFileGUI.INSTANCE.getClientPanel() != null) {
-                            System.out.println("Main: Client list changed, requesting GUI refresh.");
+                            // System.out.println("Main: Client list changed, requesting GUI refresh.");
                             SwingUtilities
                                     .invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
                         }
