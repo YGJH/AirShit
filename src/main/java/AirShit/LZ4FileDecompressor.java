@@ -120,7 +120,7 @@ public class LZ4FileDecompressor {
     // public static void main(String[] args) {
     //     System.out.println("Java LZ4 資料夾解壓縮測試開始...");
 
-    //     String compressedArchiveName = "test_compress_folder.tar.lz4"; // 假設這個檔案由 LZ4FileCompressor 產生
+    //     String compressedArchiveName = "C:\\Users\\charless\\Downloads\\YoutubeDownloader.Bare.win-x64.tar.lz4"; // 假設這個檔案由 LZ4FileCompressor 產生
     //     String decompressedOutputFolderName = "test_decompress_output";
 
     //     // 執行解壓縮
@@ -162,11 +162,11 @@ public class LZ4FileDecompressor {
     //         System.out.println("\n檔案解壓縮失敗。");
     //     }
 
-    //     // (可選) 清理解壓縮的資料夾
-    //     // System.out.println("\n清理解壓縮的測試資料...");
-    //     // if (outputDir.exists()) {
-    //     //     deleteDirectory(outputDir);
-    //     // }
+        // (可選) 清理解壓縮的資料夾
+        // System.out.println("\n清理解壓縮的測試資料...");
+        // if (outputDir.exists()) {
+        //     deleteDirectory(outputDir);
+        // }
     //     System.out.println("\nJava LZ4 資料夾解壓縮測試結束。");
     // }
 }

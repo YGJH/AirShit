@@ -73,7 +73,7 @@ public class SendFile {
                 try {
                     socketChannel.connect(new InetSocketAddress(host, port));
                     channels.add(socketChannel);
-                    LogPanel.log("SendFile: Worker " + i + " connected to " + host + ":" + port);
+                    LogPanel.log("SendFile: Worker " + i + " connected to " + host + ":" + port); // Already there
                     pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, callback, activeWorkers));
                 } catch (IOException e) {
                     LogPanel.log("SendFile: Worker " + i + " failed to connect or start: " + e.getMessage());
@@ -87,7 +87,7 @@ public class SendFile {
                     // For this example, we'll let it try with fewer workers if some fail to connect.
                 }
             }
-
+                LogPanel.log("SendFile: Number of successfully connected sender workers: " + channels.size()); // ADD THIS
             if (channels.isEmpty() && fileLength > 0) {
                 LogPanel.log("SendFile: No sender workers could connect. Aborting.");
                 if (callback != null) callback.onError(new IOException("All sender workers failed to connect."));
@@ -140,6 +140,8 @@ public class SendFile {
                     break;
                 }
                 long actualChunkLengthForThread;
+
+
                 if (j == threadCount - 1) {
                     actualChunkLengthForThread = (bytesSubmittedSoFar + currentBaseChunkActualSize) - chunkOffsetInFile;
                 } else {
@@ -147,7 +149,12 @@ public class SendFile {
                 }
                 if (actualChunkLengthForThread > 0) {
                     chunkQueue.offer(new ChunkInfo(chunkOffsetInFile, actualChunkLengthForThread));
+                    ChunkInfo chunk = new ChunkInfo(chunkOffsetInFile, actualChunkLengthForThread);
+                    LogPanel.log("SendFile.populateChunkQueue: Adding chunk: " + chunk); // ADD THIS
+                    chunkQueue.offer(chunk);
+
                 }
+                LogPanel.log("SendFile: Populated chunk queue with " + chunkQueue.size() + " chunks."); // Already there
             }
             bytesSubmittedSoFar += currentBaseChunkActualSize;
         }

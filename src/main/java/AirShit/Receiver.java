@@ -50,28 +50,27 @@ public class Receiver {
 
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         List<Future<?>> futures = new ArrayList<>();
-        List<Socket> dataSockets = new ArrayList<>(); // To close them later
+        List<Socket> dataSockets = new ArrayList<>();
 
         AtomicLong totalBytesActuallyReceived = new AtomicLong(0);
 
-
         try (RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-            if (fileLength > 0) { // Pre-allocate space only for non-empty files
+            // if (fileLength > 0) { // Pre-allocate space only for non-empty files
                  // raf.setLength(fileLength); // Optional: pre-allocate, can be slow for large files on some OS
-            }
+            // }
 
             for (int i = 0; i < threadCount; i++) {
                 Socket dataSock = null;
                 try {
-                    // LogPanel.log("Receiver: Worker " + i + " waiting to accept connection...");
-                    dataSock = serverSocket.accept();
-                    dataSockets.add(dataSock); // Add to list for later cleanup
-                    // LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
+                    LogPanel.log("Receiver: Worker " + i + " waiting to accept connection on " + serverSocket.getLocalSocketAddress() + "..."); // UNCOMMENT/ADD
+                    dataSock = serverSocket.accept(); // This is where it might block
+                    dataSockets.add(dataSock);
+                    LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress()); // UNCOMMENT/ADD
                     dataSock.setSoTimeout(60 * 1000); // 60 seconds timeout for inactivity on a chunk read
 
                     futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceived, fileLength)));
                 } catch (IOException e) {
-                    LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
+                    LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage()); // Already there
                     if (dataSock != null && !dataSock.isClosed()) dataSock.close();
                     // If a connection accept fails, we might not receive all data.
                     // Propagate error or decide how to handle partial reception.
@@ -81,23 +80,16 @@ public class Receiver {
                     // For this example, we continue, which might lead to incomplete file.
                 }
             }
-
-            if (futures.isEmpty() && fileLength > 0) {
-                 LogPanel.log("Receiver: No receiver workers started. Aborting.");
-                 if (cb != null) cb.onError(new IOException("No receiver workers started."));
-                 pool.shutdownNow(); // Ensure pool is shutdown
-                 return false;
-            }
-
-
+            LogPanel.log("Receiver: All connection accept loops finished. Number of futures: " + futures.size()); // ADD
             pool.shutdown();
+            LogPanel.log("Receiver: Pool shutdown initiated. Waiting for termination..."); // ADD
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Long timeout
                 LogPanel.log("Receiver: Pool termination timeout.");
                 pool.shutdownNow();
                 if (cb != null) cb.onError(new IOException("Receiver tasks timed out."));
                 return false; // Indicate failure
             }
-            LogPanel.log("Receiver: All receiver worker tasks have been submitted and pool has shut down.");
+            LogPanel.log("Receiver: Pool terminated."); // Already there (as "All receiver worker tasks have been submitted and pool has shut down.")
 
             // Validate all futures completed without exceptions
             boolean allTasksOk = true;
@@ -160,13 +152,15 @@ public class Receiver {
 
         @Override
         public void run() {
+            LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): Started."); // ADD THIS
             try (InputStream socketInputStream = dataSocket.getInputStream();
                  ReadableByteChannel rbc = Channels.newChannel(socketInputStream)) {
 
                 ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
-                byte[] dataBuffer = new byte[64 * 1024]; // 64KB data buffer
+                byte[] dataBuffer = new byte[64 * 1024]; 
 
-                while (true) {
+                while (true) { // This loop reads multiple chunks from one connection
+                    LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): Top of chunk read loop. Waiting for header."); // ADD
                     headerBuffer.clear();
                     int headerBytesRead = 0;
                     try {
@@ -188,8 +182,12 @@ public class Receiver {
                              // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOF on header read (no bytes), worker finishing.");
                              return;
                         }
-                        LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException reading header: " + e.getMessage());
-                        throw e; // Propagate to mark task as failed
+                        LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException, likely clean termination by sender for this channel. Message: " + e.getMessage()); // MODIFY
+                        // return; // This was inside the header read loop, now handled by try-catch exiting run()
+                        // } else {
+                        //    LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException reading header: " + e.getMessage());
+                        //    throw e;
+                        // }
                     }
 
 
@@ -197,7 +195,7 @@ public class Receiver {
                     long offset = headerBuffer.getLong();
                     long length = headerBuffer.getLong();
 
-                    // LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d", Thread.currentThread().getName(), offset, length));
+                    LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d", Thread.currentThread().getName(), offset, length)); // UNCOMMENT/MODIFY
 
                     if (length < 0) {
                         throw new IOException("Received invalid chunk length: " + length);
@@ -237,8 +235,7 @@ public class Receiver {
                         }
                     }
                     // LogPanel.log(String.format("ReceiverWorker (%s): Finished receiving chunk: offset=%d, length=%d", Thread.currentThread().getName(), offset, length));
-                }
-
+                } // End of while(true) for reading chunks
             } catch (SocketTimeoutException e) {
                 LogPanel.log("Error in ReceiverWorker ("+Thread.currentThread().getName()+"): Socket timeout - " + e.getMessage());
                 if (callback != null) callback.onError(e);
@@ -251,8 +248,7 @@ public class Receiver {
                 }
                 throw new RuntimeException("IOException in ReceiverWorker", e); // Propagate to mark Future as failed
             } finally {
-                // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+") finishing run method.");
-                // The dataSocket is closed by the main Receiver.start() method's finally block.
+                LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+") finishing run method."); // UNCOMMENT/ADD
             }
         }
     }
