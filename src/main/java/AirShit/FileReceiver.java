@@ -97,7 +97,11 @@ public class FileReceiver {
                             int threadCount = Math.min(threads, ITHREADS);
                             
                             File selectedSavePath = null; // To store the chosen save directory
+                            
 
+
+
+                            // 選擇存放路徑
                             if (accepted) {
                                 // User accepted the transfer, now ask for save location
                                 JFileChooser saveLocationChooser = new JFileChooser();
@@ -125,6 +129,8 @@ public class FileReceiver {
                                 }
                             }
 
+
+                            // 回復客戶選擇
                             if (accepted && selectedSavePath != null) { // Must be accepted AND have a save path
                                 message = "OK@" + Integer.toString(threadCount);
                             } else {
@@ -135,21 +141,24 @@ public class FileReceiver {
                             boolean isFine = false;
                             dos.writeUTF(message); // Send OK@threads or REJECT
                             dos.flush();
-
-                            if (accepted) { // Only wait for ACK if we sent "OK@"
+                            
+                            while (accepted && !isFine) { // Only wait for ACK if we sent "OK@"
                                 LogPanel.log("Waiting for ACK from sender...");
                                 // Timeout for ACK read is already set by socket.setSoTimeout()
                                 try {
                                     String res = dis.readUTF(); // Wait for ACK
-                                    
+
                                     LogPanel.log("Received from sender: " + res);
                                     if (res.equals("ACK")) {
                                         isFine = true; // Handshake fully completed
                                         LogPanel.log("ACK received. Ready for file data.");
+                                        break;
                                     } else {
                                         LogPanel.log("Error: Expected ACK, but received: " + res);
                                         // isFine remains false
+                                        continue;
                                     }
+
                                 } catch (SocketTimeoutException e) {
                                     LogPanel.log("Error: Timeout waiting for ACK from sender.");
                                     // isFine remains false
