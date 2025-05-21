@@ -76,7 +76,6 @@ public class FileSender {
         }
         
         // send handshake
-        boolean handshakeAccepted = false;
         try (Socket socket = new Socket(host, port);
         DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
         DataInputStream dis = new DataInputStream(socket.getInputStream())) {
@@ -98,15 +97,16 @@ public class FileSender {
                     System.out.println("收到回應: " + response);
                     if (response.startsWith("ACK")) {
                         sentSuccess = true;
+                        break;
                     } else {
-                        LogPanel.log("收到無效的握手回應: " + response);
+                        System.out.println("收到無效的握手回應: " + response);
                         // 視為超時或錯誤，將會重試
                     }
                 } catch (SocketTimeoutException e) {
-                    LogPanel.log("握手超時 (讀取回應超時)。準備重試...");
+                    System.out.println("握手超時 (讀取回應超時)。準備重試...");
                     // handshakeAccepted 仍然是 false，會進入下一次重試
                 } catch (IOException e) {
-                    LogPanel.log("握手時發生 IO 錯誤: " + e.getMessage());
+                    System.out.println("握手時發生 IO 錯誤: " + e.getMessage());
                     // e.printStackTrace(); // 可選
                     // handshakeAccepted 仍然是 false，會進入下一次重試
                     if (retries >= MAX_HANDSHAKE_RETRIES -1 && callback != null) { // 如果是最後一次重試失敗
@@ -124,39 +124,59 @@ public class FileSender {
                 if (!sentSuccess) {
                     retries++;
                     if (retries < MAX_HANDSHAKE_RETRIES) {
-                        LogPanel.log("等待 " + HANDSHAKE_TIMEOUT_SECONDS / 2 + " 秒後重試...");
+                        System.out.println("等待 " + HANDSHAKE_TIMEOUT_SECONDS / 2 + " 秒後重試...");
                         TimeUnit.SECONDS.sleep(HANDSHAKE_TIMEOUT_SECONDS / 2); // 重試前稍作等待
                     }
                 }
             } // end while for retries
 
+            String receiverDecision = dis.readUTF(); // 讀取 "OK@threads" 或 "REJECT"
+            LogPanel.log("接收端決定: " + receiverDecision);
 
-            String response = dis.readUTF(); // 這裡可能會拋出 SocketTimeoutException
-            LogPanel.log("收到回應: " + response);
-            if (response.startsWith("OK@")) {
-                handshakeAccepted = true;
+            boolean handshakeAccepted = false;
+            int negotiatedThreadCount = 1; // Default
+
+            if (receiverDecision.startsWith("OK@")) {
                 try {
-                    int t = Integer.parseInt(response.split("@")[1]);
-                    threadCount = Math.min(ITHREADS, t);
-                    LogPanel.log("握手成功。協商執行緒數: " + threadCount);
+                    int t = Integer.parseInt(receiverDecision.split("@")[1]);
+                    negotiatedThreadCount = Math.min(ITHREADS, t); // ITHREADS 是 FileSender 的常數
+                    LogPanel.log("握手成功。協商執行緒數: " + negotiatedThreadCount);
+                    handshakeAccepted = true;
+                    // 回覆 ACK 給接收端的 "OK@"
                     dos.writeUTF("ACK");
+                    dos.flush();
+                    LogPanel.log("已傳送 ACK 給接收端的 OK@。");
+
+                    // 現在，根據 FileReceiver 的協定，它會在收到這個 ACK 後，
+                    // 再為先前傳送的 archiveToSend.getName() 回覆一個 ACK
+                    String ackForFileName = dis.readUTF(); // <--- 這是第 135 行附近，現在應該能收到 ACK
+                    if ("ACK".equals(ackForFileName)) {
+                        LogPanel.log("接收端已確認檔案名稱。準備開始傳輸。");
+                    } else {
+                        throw new IOException("接收端未確認檔案名稱，回應: " + ackForFileName);
+                    }
+
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
-                    LogPanel.log("錯誤：解析伺服器回應中的執行緒數失敗 - " + response);
-                    handshakeAccepted = false; // 解析失敗，視為握手失敗
-                    if (callback != null) callback.onError(new IOException("無效的回應格式: " + response, e));
-                    // 不需要 return，會進入下一次重試或結束迴圈
+                    LogPanel.log("錯誤：解析伺服器回應中的執行緒數失敗 - " + receiverDecision);
+                    if (callback != null) callback.onError(new IOException("無效的回應格式: " + receiverDecision, e));
+                    // 這裡可以選擇關閉 socket 或 return
+                    socket.close(); // 主動關閉
+                    return;
                 }
-            } else if (response.equals("REJECT")) {
+            } else if (receiverDecision.equals("REJECT")) {
                 LogPanel.log("接收端拒絕連線。");
                 if (callback != null) callback.onError(new IOException("接收端拒絕握手"));
+                // socket 會在 try-with-resources 結束時關閉
                 return; // 直接返回，不再重試
+            } else {
+                LogPanel.log("錯誤：來自接收端的未知決定: " + receiverDecision);
+                if (callback != null) callback.onError(new IOException("未知的接收端決定: " + receiverDecision));
+                socket.close(); // 主動關閉
+                return;
             }
 
             File sentFile = new File(archFile);
             if(handshakeAccepted) {
-                dos.writeUTF(sentFile.getName());
-                String rs = dis.readUTF();
-                if(rs.equals("ACK")) {
 
                     callback.onStart(total_files_size);
                     boolean isFine = true;
@@ -171,52 +191,20 @@ public class FileSender {
                     }
                     if(isFine) {
                         callback.onComplete();
+                        return ;
                     }
-                    if(isCompress)
-                            sentFile.delete();
-                } else {
-                    callback.onError(new Exception("Error"));
-                    if(isCompress) {
-                        sentFile.delete();
-                    }
-                }
-            } else {
-                if(isCompress)
-                    sentFile.delete();
             }
-        } catch (Exception e) {
-            if(isCompress) {
-                new File(archFile).delete();
-            }
+            if(isCompress)
+                sentFile.delete();
+        } catch(Exception e) {
             callback.onError(e);
+            if(isCompress)
+                new File(archFile).delete();
             return;
         }
-    }
-    // ate void dfs(File now) {
-    // totalSize = 0;
-    // tmp = 0 , curFileSize = 0;
-    // cnt = 0 ;
-    // ng currentFolderName = now.getParent();
-    // = "";
-    // now.listFile()) {
-    // tory()) {
-    //
-    // fs(f , cc);
-    // = Compress_file_size && cc > 1) {
-    // ) + ".tar.lz4";
-    // essor.compressFolderToTarLz4(f.getName() , S);
-    //
-    //
-    //
-    // = f.length();
-    //
-    // tName();
-    //
-    // d(S);
-    // es[fileCount++] = f.getAbsolutePath();
-    // curFileSize;
-    // curFileSize > Compress_file_size && cnt > 1) {
-    // LZ4FileCompressor.compressFolderToTarLz4(f.getParent() , ())
-    //
+        if(isCompress) {
+            new File(archFile).delete();
+        }
 
+    }
 }
