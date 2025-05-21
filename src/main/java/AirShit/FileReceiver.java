@@ -211,7 +211,21 @@ public class FileReceiver {
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
             JLabel iconLabel = new JLabel();
             // You can customize this icon path
-            iconLabel.setIcon(new ImageIcon(this.getClass().getResource("/asset/data-transfer.png")));
+            Icon dataIcon = new ImageIcon(this.getClass().getResource("/asset/data-transfer.png");
+            if (dataIcon instanceof ImageIcon) {
+                Image image = ((ImageIcon) dataIcon).getImage();
+                // 確保 lblIcon 已初始化
+                if (iconLabel != null) {
+                    Image scaled = image.getScaledInstance(Math.min(iconLabel.getPreferredSize().width - 10, 30), Math.min(iconLabel.getPreferredSize().height - 10, 30), Image.SCALE_SMOOTH);
+                    iconLabel.setIcon(new ImageIcon(scaled));
+                }
+            } else {
+                if (iconLabel != null) {
+                    iconLabel.setIcon(dataIcon);
+                }
+            }
+
+
             topPanel.add(iconLabel, BorderLayout.WEST);
             JPanel infoPanel = new JPanel(new GridLayout(2, 1));
             infoPanel.add(new JLabel("Sender: " + senderName));

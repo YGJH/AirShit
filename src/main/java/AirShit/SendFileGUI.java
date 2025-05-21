@@ -220,7 +220,7 @@ public class SendFileGUI extends JFrame {
         } 
         if (target == null || file == null) return;
 
-        logPanel.log("Sending files to " + target.getUserName() + "...");
+        LogPanel.log("Sending files to " + target.getUserName() + "...");
 
         TransferCallback callback = new TransferCallback() {
             AtomicLong sentSoFar = new AtomicLong(0);
@@ -237,7 +237,7 @@ public class SendFileGUI extends JFrame {
                     recvPanel.getProgressBar().setMaximum(100);
                     recvPanel.getProgressBar().setValue(0);
                 });
-                logPanel.log("Total size: " + totalBytes + " bytes");
+                LogPanel.log("Total size: " + totalBytes + " bytes");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
 
@@ -247,7 +247,7 @@ public class SendFileGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> recvPanel.getProgressBar().setValue(pct));
                 if (pct % 10 == 0 && pct != lastPct) {
                     lastPct = pct;
-                    logPanel.log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
+                    LogPanel.log("Progress: " + pct + "% (" + formatFileSize(cumul) + ")");
                 }
             }
 
@@ -257,7 +257,7 @@ public class SendFileGUI extends JFrame {
                     recvPanel.getProgressBar().setVisible(false);
                     sendPanel.getSendButton().setEnabled(true);
                 });
-                logPanel.log("File transfer complete.");
+                LogPanel.log("File transfer complete.");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
             
@@ -268,10 +268,10 @@ public class SendFileGUI extends JFrame {
                     sendPanel.getSendButton().setEnabled(true);
                     
                 });
-                logPanel.log("Error: " + e);
+                LogPanel.log("Error: " + e);
                 StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
-                logPanel.log(sw.toString());
+                LogPanel.log(sw.toString());
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
         };
@@ -293,7 +293,7 @@ public class SendFileGUI extends JFrame {
     /** 供 Main.java 调用：写入日志面板 */
     public void log(String msg) {
         if (logPanel != null) {
-            logPanel.log(msg);
+            LogPanel.log(msg);
         } else {
             System.out.println("[LOG EARLY] " + msg); 
         }
