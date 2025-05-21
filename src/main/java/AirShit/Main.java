@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
-import java.util.concurrent.ConcurrentHashMap; // 引入 ConcurrentHashMap
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
 
@@ -167,7 +166,7 @@ public class Main { // 定義 Main 類別
 
                     String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8); // Specify
                                                                                                                   // UTF-8
-                    // System.out.println("Received multicast: " + message); // Log received message
+                    System.out.println("Received multicast: " + message); // Log received message
 
                     boolean listChanged = false;
 
@@ -232,7 +231,7 @@ public class Main { // 定義 Main 類別
         try (
                 DatagramSocket socket = new DatagramSocket();) {
 
-            // System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
@@ -240,7 +239,7 @@ public class Main { // 定義 Main 類別
                 DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
                 socket.send(sendPacket);
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(10);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }

@@ -87,14 +87,15 @@ public class FileSender {
             int retries = 0;
 
             boolean sentSuccess = false;
-            while (!handshakeAccepted && retries < MAX_HANDSHAKE_RETRIES) {
+            while (retries < MAX_HANDSHAKE_RETRIES) {
+                
                 try {
                     LogPanel.log("傳送握手訊息: " + handshakeString);
                     dos.writeUTF(handshakeString);
                     dos.flush();
 
                     String response = dis.readUTF(); // 這裡可能會拋出 SocketTimeoutException
-                    LogPanel.log("收到回應: " + response);
+                    System.out.println("收到回應: " + response);
                     if (response.startsWith("ACK")) {
                         sentSuccess = true;
                     } else {

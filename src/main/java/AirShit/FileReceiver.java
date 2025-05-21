@@ -69,6 +69,13 @@ public class FileReceiver {
                             String[] parts = handShake.split("@");
                             StringBuilder sb = new StringBuilder();
                             int len = parts.length;
+                            
+                            if (len < 3) {
+                                LogPanel.log("Error: Invalid handshake format - not enough parts. Received: " + handShake);
+                                dos.writeUTF("ERROR_HANDSHAKE_FORMAT");
+                                dos.flush();
+                                continue;
+                            }
                             SenderName = parts[0];
                             total_size = Long.parseLong(parts[len - 1]);
                             int threads = Integer.parseInt(parts[len - 2]);
@@ -80,6 +87,10 @@ public class FileReceiver {
                             }
                             // 如果有收到，先回ACK
                             dos.writeUTF("ACK");
+
+
+
+
                             // show pannel
                             FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI ,  sb ,  SenderName,  Long.toString(total_size));
                             boolean accepted = dialog.showDialog();
@@ -134,6 +145,7 @@ public class FileReceiver {
                                 // Timeout for ACK read is already set by socket.setSoTimeout()
                                 try {
                                     String res = dis.readUTF(); // Wait for ACK
+
                                     LogPanel.log("Received from sender: " + res);
                                     if (res.equals("ACK")) {
                                         isFine = true; // Handshake fully completed
@@ -209,7 +221,7 @@ public class FileReceiver {
 
             // Top: Sender info and icon
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
-JLabel iconLabel = new JLabel();
+            JLabel iconLabel = new JLabel();
             // You can customize this icon path
             java.net.URL iconUrl = this.getClass().getResource("/asset/data-transfer.png");
 
