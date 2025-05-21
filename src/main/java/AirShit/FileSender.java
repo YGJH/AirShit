@@ -16,19 +16,14 @@ import AirShit.ui.LogPanel;
 public class FileSender {
     private String host;
     private int port;
-    // private int Compress_file_size = 5 * 1024; // Unused
-    // private int Single_thread = 1 * 1024 * 1024; // Unused
-    // private StringBuilder sb; // Re-initialize per call
-    // private long total_files_size = 0; // Re-initialize per call
-    // private File[] pSendFiles; // Unused
-    // private int filesCount; // Unused
-    // private int threadCount = 0; // Determined by negotiation
-    private SendFile senderInstance; // Renamed from sender
+    private SendFile senderInstance;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors();
     private final String THREADS_STR = Integer.toString(ITHREADS);
 
-    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10;
-    private static final int MAX_HANDSHAKE_RETRIES = 3;
+    private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // Default for most operations
+    private static final int USER_INTERACTION_TIMEOUT_MINUTES = 5; // Timeout when waiting for user dialog on receiver
+    private static final int MAX_INITIAL_HANDSHAKE_RETRIES = 3;
+
 
     public FileSender(String host, int port) {
         this.host = host;
@@ -39,7 +34,7 @@ public class FileSender {
         LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
-    public void sendFiles(File file, String senderUserName, TransferCallback callback) throws InterruptedException { // Removed IOException from signature, handle internally
+    public void sendFiles(File file, String senderUserName, TransferCallback callback) throws InterruptedException {
         if (file == null) {
             LogPanel.log("FileSender: File to send is null. Aborting.");
             if (callback != null) callback.onError(new IllegalArgumentException("File to send cannot be null."));
@@ -48,53 +43,68 @@ public class FileSender {
 
         long currentTotalFileSize = 0;
         StringBuilder handshakeBuilder = new StringBuilder();
-        String archFile = null; // Path to the file that will actually be sent (original or compressed)
-        boolean isCompress = false;
+        String actualFilePathToSend = null;
+        boolean isCompressed = false;
+        File fileToSend;
 
-        handshakeBuilder.append(senderUserName).append("@");
         try {
             if (file.isDirectory()) {
-                isCompress = true;
-                String baseName = file.getAbsolutePath();
-                // Ensure .tar.lz4 is appended correctly, even if original folder name has dots
-                String compressedFileName = baseName.endsWith(File.separator) ? baseName.substring(0, baseName.length() -1) + ".tar.lz4" : baseName + ".tar.lz4";
+                isCompressed = true;
+                String baseName = file.getName(); // Use just the folder name for the archive
+                // Place temporary archive in temp directory or a defined local app temp space
+                Path tempDir = Files.createTempDirectory("airshit_send_temp");
+                String compressedFileName = baseName + ".tar.lz4";
+                actualFilePathToSend = Paths.get(tempDir.toString(), compressedFileName).toString();
                 
-                LogPanel.log("FileSender: Compressing folder " + file.getAbsolutePath() + " to " + compressedFileName);
-                archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), compressedFileName);
-                LogPanel.log("FileSender: Compressed archive path: " + archFile);
-                if (archFile == null || !new File(archFile).exists()) {
-                    throw new IOException("Compression failed or compressed file not found: " + compressedFileName);
+                LogPanel.log("FileSender: Compressing folder " + file.getAbsolutePath() + " to temporary file " + actualFilePathToSend);
+                LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), actualFilePathToSend); // This should return void or throw
+                
+                fileToSend = new File(actualFilePathToSend);
+                if (!fileToSend.exists() || fileToSend.length() == 0) {
+                    throw new IOException("Compression failed or resulted in an empty file: " + actualFilePathToSend);
                 }
-                currentTotalFileSize = new File(archFile).length();
-                // For initial handshake, send the original directory name for user display,
-                // but the actual file to be sent later will be archFile.getName()
-                handshakeBuilder.append(file.getName()).append(".tar.lz4@"); // Announce the .tar.lz4 name
+                currentTotalFileSize = fileToSend.length();
+                // Announce the name that the receiver should use for saving (e.g., originalFolderName.tar.lz4)
+                handshakeBuilder.append(senderUserName).append("@");
+                handshakeBuilder.append(baseName + ".tar.lz4@"); // Name for receiver's dialog & final save name hint
             } else {
-                archFile = file.getAbsolutePath();
-                currentTotalFileSize = file.length();
-                handshakeBuilder.append(file.getName()).append("@");
+                actualFilePathToSend = file.getAbsolutePath();
+                fileToSend = file;
+                currentTotalFileSize = fileToSend.length();
+                handshakeBuilder.append(senderUserName).append("@");
+                handshakeBuilder.append(fileToSend.getName()).append("@");
             }
-            handshakeBuilder.append(THREADS_STR).append("@").append(Long.toString(currentTotalFileSize));
+            handshakeBuilder.append(THREADS_STR).append("@").append(currentTotalFileSize);
         } catch (IOException e) {
-            LogPanel.log("FileSender: Error during file preparation or compression: " + e.getMessage());
+            LogPanel.log("FileSender: Error during file preparation or compression: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            // e.printStackTrace();
             if (callback != null) callback.onError(e);
-            if (isCompress && archFile != null) { // Clean up partially compressed file
-                new File(archFile).delete();
+            if (isCompressed && actualFilePathToSend != null) {
+                try {
+                    Files.deleteIfExists(Paths.get(actualFilePathToSend));
+                    if (Paths.get(actualFilePathToSend).getParent() != null && Files.isDirectory(Paths.get(actualFilePathToSend).getParent()) && Paths.get(actualFilePathToSend).getParent().getFileName().toString().startsWith("airshit_send_temp")) {
+                         Files.deleteIfExists(Paths.get(actualFilePathToSend).getParent()); // Clean up temp dir
+                    }
+                } catch (IOException ex) {
+                    LogPanel.log("FileSender: Error deleting temporary compressed file: " + ex.getMessage());
+                }
             }
             return;
         }
 
-        File sentFile = new File(archFile); // This is the file that will be transferred
+        String initialHandshakeString = handshakeBuilder.toString();
+        LogPanel.log("FileSender: Prepared initial handshake: " + initialHandshakeString);
+        LogPanel.log("FileSender: Actual file to send: " + fileToSend.getAbsolutePath() + ", size: " + currentTotalFileSize);
+
 
         try (Socket socket = new Socket(host, port);
              DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
              DataInputStream dis = new DataInputStream(socket.getInputStream())) {
 
-            socket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000);
-            String initialHandshakeString = handshakeBuilder.toString();
+            socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
             
             boolean initialAckReceived = false;
-            for (int retries = 0; retries < MAX_HANDSHAKE_RETRIES; retries++) {
+            for (int retries = 0; retries < MAX_INITIAL_HANDSHAKE_RETRIES; retries++) {
                 try {
                     LogPanel.log("FileSender: Attempt " + (retries + 1) + ": Sending initial handshake: " + initialHandshakeString);
                     dos.writeUTF(initialHandshakeString);
@@ -106,26 +116,38 @@ public class FileSender {
                         initialAckReceived = true;
                         break;
                     } else {
-                        LogPanel.log("FileSender: Invalid ACK received for initial handshake: " + response);
+                        LogPanel.log("FileSender: Invalid ACK received for initial handshake: " + response + ". Retrying if possible...");
                     }
                 } catch (SocketTimeoutException e) {
-                    LogPanel.log("FileSender: Timeout receiving ACK for initial handshake (attempt " + (retries + 1) + ").");
+                    LogPanel.log("FileSender: Timeout receiving ACK for initial handshake (attempt " + (retries + 1) + "). Retrying if possible...");
                 } catch (IOException e) {
                     LogPanel.log("FileSender: IOException during initial handshake (attempt " + (retries + 1) + "): " + e.getMessage());
-                    if (retries == MAX_HANDSHAKE_RETRIES - 1) throw e; // Rethrow on last attempt
+                    if (retries == MAX_INITIAL_HANDSHAKE_RETRIES - 1) throw e; 
                 }
-                if (!initialAckReceived && retries < MAX_HANDSHAKE_RETRIES - 1) {
-                    LogPanel.log("FileSender: Waiting " + HANDSHAKE_TIMEOUT_SECONDS / 2 + "s before retry...");
-                    TimeUnit.SECONDS.sleep(HANDSHAKE_TIMEOUT_SECONDS / 2);
+                if (!initialAckReceived && retries < MAX_INITIAL_HANDSHAKE_RETRIES - 1) {
+                    LogPanel.log("FileSender: Waiting " + DEFAULT_SOCKET_TIMEOUT_SECONDS / 2 + "s before retry...");
+                    TimeUnit.SECONDS.sleep(DEFAULT_SOCKET_TIMEOUT_SECONDS / 2);
                 }
             }
 
             if (!initialAckReceived) {
-                throw new IOException("FileSender: Initial handshake failed after " + MAX_HANDSHAKE_RETRIES + " attempts. Receiver did not ACK.");
+                throw new IOException("FileSender: Initial handshake failed after " + MAX_INITIAL_HANDSHAKE_RETRIES + " attempts. Receiver did not ACK.");
             }
             LogPanel.log("FileSender: Initial handshake ACKed by receiver.");
 
-            String receiverDecision = dis.readUTF();
+            // Set a longer timeout for waiting for the receiver's decision (OK@ or REJECT)
+            int originalTimeoutMillis = socket.getSoTimeout();
+            socket.setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000); 
+            LogPanel.log("FileSender: Set timeout to " + USER_INTERACTION_TIMEOUT_MINUTES + " minutes waiting for receiver's decision (OK@/REJECT).");
+
+            String receiverDecision;
+            try {
+                receiverDecision = dis.readUTF(); // Wait for "OK@..." or "REJECT"
+            } finally {
+                socket.setSoTimeout(originalTimeoutMillis); // Restore original timeout
+                LogPanel.log("FileSender: Restored timeout to " + originalTimeoutMillis / 1000 + "s.");
+            }
+            
             LogPanel.log("FileSender: Received decision from receiver: " + receiverDecision);
 
             int negotiatedThreadCount = 1;
@@ -133,7 +155,7 @@ public class FileSender {
 
             if (receiverDecision.startsWith("OK@")) {
                 try {
-                    negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3)); // Get count after "OK@"
+                    negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3));
                     negotiatedThreadCount = Math.min(ITHREADS, Math.max(1, negotiatedThreadCount));
                     LogPanel.log("FileSender: Transfer accepted by receiver. Negotiated threads: " + negotiatedThreadCount);
                     
@@ -147,63 +169,87 @@ public class FileSender {
             } else if ("REJECT".equals(receiverDecision)) {
                 LogPanel.log("FileSender: Transfer rejected by receiver.");
                 if (callback != null) callback.onError(new IOException("Transfer rejected by receiver."));
-                // Cleanup and return handled by finally block / end of method
             } else {
                 throw new IOException("FileSender: Unknown decision from receiver: " + receiverDecision);
             }
 
             if (transferAcceptedByReceiver) {
-                LogPanel.log("FileSender: Sending final filename to receiver: " + sentFile.getName());
-                dos.writeUTF(sentFile.getName()); // Send the name of the actual file being transferred
+                // Send the name of the file that is ACTUALLY being sent (e.g., the .tar.lz4 name if compressed)
+                String finalFileNameToSend = fileToSend.getName();
+                LogPanel.log("FileSender: Sending final filename to receiver: " + finalFileNameToSend);
+                dos.writeUTF(finalFileNameToSend); 
                 dos.flush();
 
                 LogPanel.log("FileSender: Waiting for receiver's ACK for the filename...");
-                String filenameAck = dis.readUTF(); // This is where the original EOFException occurred (line 168)
+                String filenameAck = dis.readUTF(); 
                 if (!"ACK".equals(filenameAck)) {
                     throw new IOException("FileSender: Receiver did not ACK filename. Received: " + filenameAck);
                 }
                 LogPanel.log("FileSender: Receiver ACKed filename. Handshake complete. Starting data transfer.");
 
                 if (callback != null) callback.onStart(currentTotalFileSize);
-                senderInstance = new SendFile(this.host, this.port, sentFile, negotiatedThreadCount, callback);
+                senderInstance = new SendFile(this.host, this.port, fileToSend, negotiatedThreadCount, callback);
                 
                 Thread senderOperationThread = new Thread(() -> {
                     try {
                         senderInstance.start();
-                        // If SendFile.start() completes without throwing an error,
-                        // onComplete or onError on the originalCallback should be handled by SendFile itself.
                     } catch (Exception e) {
-                        LogPanel.log("FileSender: Exception in SendFile operation thread: " + e.getMessage());
+                        LogPanel.log("FileSender: Exception in SendFile operation thread: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                        // e.printStackTrace();
                         if (callback != null) {
                             callback.onError(e);
+                        }
+                    } finally {
+                        if (isCompressed && actualFilePathToSend != null) {
+                            LogPanel.log("FileSender: Deleting temporary compressed file: " + actualFilePathToSend);
+                            try {
+                                Files.deleteIfExists(Paths.get(actualFilePathToSend));
+                                Path parentDir = Paths.get(actualFilePathToSend).getParent();
+                                if (parentDir != null && Files.isDirectory(parentDir) && parentDir.getFileName().toString().startsWith("airshit_send_temp")) {
+                                     Files.deleteIfExists(parentDir); // Clean up temp dir if it's ours
+                                     LogPanel.log("FileSender: Deleted temporary directory: " + parentDir);
+                                }
+                            } catch (IOException ex) {
+                                LogPanel.log("FileSender: Error deleting temporary compressed file/dir: " + ex.getMessage());
+                            }
                         }
                     }
                 });
                 senderOperationThread.setName("FileSender-SendFile-Operation-Thread");
-                senderOperationThread.start(); // Correctly start the thread
-
-                // Note: The original callback.onComplete() was here. It should now be called by SendFile
-                // when it truly completes, or onError if SendFile fails.
-                // The deletion of the compressed file should happen after senderOperationThread joins,
-                // or be handled by a more robust cleanup mechanism if the app can exit before thread completion.
-                // For simplicity now, we assume SendFile's callback handles completion/error.
+                senderOperationThread.start();
             }
         } catch (IOException e) {
-            LogPanel.log("FileSender: IOException during sendFiles: " + e.getMessage());
+            LogPanel.log("FileSender: IOException during sendFiles: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             // e.printStackTrace();
             if (callback != null) callback.onError(e);
+            // Ensure temp compressed file is cleaned up on outer error too
+            if (isCompressed && actualFilePathToSend != null) {
+                 LogPanel.log("FileSender: Cleaning up temporary compressed file due to error: " + actualFilePathToSend);
+                 try {
+                     Files.deleteIfExists(Paths.get(actualFilePathToSend));
+                     Path parentDir = Paths.get(actualFilePathToSend).getParent();
+                     if (parentDir != null && Files.isDirectory(parentDir) && parentDir.getFileName().toString().startsWith("airshit_send_temp")) {
+                          Files.deleteIfExists(parentDir);
+                     }
+                 } catch (IOException ex) {
+                     LogPanel.log("FileSender: Error deleting temporary compressed file on error: " + ex.getMessage());
+                 }
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LogPanel.log("FileSender: sendFiles interrupted: " + e.getMessage());
             if (callback != null) callback.onError(e);
-        } finally {
-            if (isCompress && sentFile != null && sentFile.exists() && sentFile.getName().endsWith(".tar.lz4")) {
-                // Consider when to delete: if transfer failed, or always after attempting?
-                // If SendFile runs in a separate thread, deleting here might be premature.
-                // For now, let's assume if an error occurred before SendFile started, we delete.
-                // Proper cleanup of temp files often requires more sophisticated state management or shutdown hooks.
-                LogPanel.log("FileSender: Cleanup: Compressed file " + sentFile.getAbsolutePath() + " might need deletion depending on transfer status (not deleting automatically here).");
-                // new File(archFile).delete(); // Be cautious with auto-deletion if SendFile is async
+            if (isCompressed && actualFilePathToSend != null) {
+                 LogPanel.log("FileSender: Cleaning up temporary compressed file due to interruption: " + actualFilePathToSend);
+                 try {
+                     Files.deleteIfExists(Paths.get(actualFilePathToSend));
+                     Path parentDir = Paths.get(actualFilePathToSend).getParent();
+                     if (parentDir != null && Files.isDirectory(parentDir) && parentDir.getFileName().toString().startsWith("airshit_send_temp")) {
+                          Files.deleteIfExists(parentDir);
+                     }
+                 } catch (IOException ex) {
+                     LogPanel.log("FileSender: Error deleting temporary compressed file on interruption: " + ex.getMessage());
+                 }
             }
         }
     }
