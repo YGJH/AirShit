@@ -127,41 +127,34 @@ public class SendFile {
 
     private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
         if (fileLength == 0) {
-            // LogPanel.log("SendFile.populateChunkQueue: File length is 0, handled by start()."); // Already handled in start()
+            // Handled by start() which adds a (0,0) chunk if queue is empty
             return;
         }
         LogPanel.log("SendFile.populateChunkQueue: Calculating chunks for fileLength=" + fileLength + ", SendFile.this.threadCount=" + this.threadCount);
 
-        // If threadCount is 1, we should send the whole file as one chunk.
-        if (this.threadCount == 1) {
+        if (this.threadCount <= 0) { // Should have been caught by Math.max(1, threadCount) in constructor
+            LogPanel.log("SendFile.populateChunkQueue: Error - threadCount is " + this.threadCount + ". Defaulting to 1 chunk.");
+            chunkQueue.offer(new ChunkInfo(0, fileLength));
+        } else if (this.threadCount == 1) {
             ChunkInfo singleChunk = new ChunkInfo(0, fileLength);
-            LogPanel.log("SendFile.populateChunkQueue: Single thread mode, adding one chunk: " + singleChunk);
+            LogPanel.log("SendFile.populateChunkQueue: Single thread mode (this.threadCount=1), adding one chunk: " + singleChunk);
             chunkQueue.offer(singleChunk);
         } else {
-            // Original logic for multi-threading, ensure it correctly divides the file
-            // The existing logic for baseChunkSize etc. seems okay for distributing work if threadCount > 1
-            // Let's re-verify the chunk calculation for multiple threads.
-            // The goal is for each SenderWorker to get roughly fileLength / threadCount work,
-            // but they all pull from a common queue. The queue should contain distinct parts of the file.
-
-            // Corrected logic for multi-threaded chunking:
-            // Divide the file into 'this.threadCount' pieces.
-            // Each piece will be a chunk.
+            // Multi-threaded chunking
             long chunkSize = (fileLength + this.threadCount - 1) / this.threadCount; // Ceiling division
             for (int i = 0; i < this.threadCount; i++) {
                 long offset = i * chunkSize;
                 if (offset >= fileLength) {
-                    break; // No more data to chunk
+                    break; 
                 }
                 long length = Math.min(chunkSize, fileLength - offset);
                 if (length > 0) {
                     ChunkInfo chunk = new ChunkInfo(offset, length);
-                    LogPanel.log("SendFile.populateChunkQueue: Adding chunk: " + chunk);
-                    chunkQueue.offer(chunk); // Offer ONCE
+                    LogPanel.log("SendFile.populateChunkQueue: Adding chunk " + (i+1) + "/" + this.threadCount + ": " + chunk);
+                    chunkQueue.offer(chunk); 
                 }
             }
         }
-        // This log should be at the very end of the method
         LogPanel.log("SendFile.populateChunkQueue: Finished. Final chunk queue size: " + chunkQueue.size());
     }
 
@@ -184,27 +177,32 @@ public class SendFile {
 
         @Override
         public void run() {
+            LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + ") started for socket: " + socketChannel.socket().getLocalPort() + " -> " + socketChannel.socket().getRemoteSocketAddress());
             try {
                 ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
                 ChunkInfo chunk;
                 while ((chunk = chunkQueue.poll()) != null) {
-                    if (chunk.length < 0) continue; // Should not happen with current logic
+                    LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Polled chunk " + chunk + " from queue. Remaining in queue (approx): " + chunkQueue.size());
+                    if (chunk.length < 0) {
+                        LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Skipped invalid chunk with negative length: " + chunk);
+                        continue;
+                    }
 
-                    // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sending chunk " + chunk);
                     headerBuffer.clear();
                     headerBuffer.putLong(chunk.offset);
                     headerBuffer.putLong(chunk.length);
                     headerBuffer.flip();
-
+                    LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sending header for " + chunk);
                     while (headerBuffer.hasRemaining()) {
                         socketChannel.write(headerBuffer);
                     }
                     
-                    if (chunk.length == 0) { // For zero-byte file signal
-                        // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sent zero-length chunk header.");
-                        continue; // No data to send
+                    if (chunk.length == 0) {
+                        LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sent zero-length chunk header for " + chunk + ". No data to send.");
+                        continue; 
                     }
 
+                    LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sending data for " + chunk);
                     long bytesTransferredForThisChunk = 0;
                     while (bytesTransferredForThisChunk < chunk.length) {
                         long transferredThisCall = fileChannel.transferTo(
@@ -220,19 +218,16 @@ public class SendFile {
                             callback.onProgress(transferredThisCall);
                         }
                     }
-                    // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Finished sending chunk " + chunk);
+                    LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Finished sending data for chunk " + chunk + ". Total sent for this chunk: " + bytesTransferredForThisChunk);
                 }
+                LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): No more chunks in queue. Worker finishing.");
             } catch (IOException e) {
                 LogPanel.log("Error in SenderWorker (" + Thread.currentThread().getName() + "): " + e.getMessage());
                 if (callback != null) {
                     callback.onError(e); // Report error
                 }
             } finally {
-                // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + ") finishing.");
-                // The socketChannel itself will be closed by the main SendFile.start() method's finally block.
-                // This worker just finishes its task.
-                // If we need to signal individual worker completion for more complex logic:
-                // activeWorkers.decrementAndGet();
+                LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + ") run method finished.");
             }
         }
     }
