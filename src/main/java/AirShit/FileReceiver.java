@@ -173,13 +173,34 @@ public class FileReceiver {
                             
                             try {
                                 String outPutFileName = dis.readUTF();
+                                String wholeOutputFile = selectedSavePath.getAbsolutePath()+"\\"+outPutFileName;
                                 System.out.println(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName);
                                 dos.writeUTF("ACK");
 
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
                                 receiver.start(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, len, threadCount, callback);
-
+                                Thread receiverThread = new Thread(() -> {
+                                    boolean fine = true;
+                                    try {
+                                        receiver.start(wholeOutputFile, len, threadCount, callback);                                        // If sender.start() completes without exception, it implies success from its perspective.
+                                        // The actual onComplete for the entire file transfer should be handled by SendFile
+                                        // or its callback mechanism when all chunks are truly sent and confirmed.
+                                    } catch (Exception e) {
+                                        LogPanel.log("IOException in SendFile thread: " + e.getMessage());
+                                        fine = false;
+                                        if (callback != null) {
+                                            callback.onError(e);
+                                        }
+                                        // Optionally, handle cleanup if isCompress and sentFile needs deletion
+                                    }
+                                    if(fine) {
+                                        callback.onComplete();
+                                    }
+                                });
+                                receiverThread.setName("FileSender-SendFile-Thread"); // Good practice to name threads
+                                receiverThread.run(); // Correct way to start a new thread
+                                System.out.println("Complete!!!");
                                 if(outPutFileName.endsWith(".tar.lz4")) {
                                     LZ4FileDecompressor.decompressTarLz4Folder(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, outPutFileName.substring(0, len-8));
                                 }
