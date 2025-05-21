@@ -84,7 +84,7 @@ public class FileSender {
             dos.flush();
             String handshakeString = sb.toString();
             int retries = 0;
-
+            
             boolean sentSuccess = false;
             while (retries < MAX_HANDSHAKE_RETRIES) {
                 
@@ -113,12 +113,6 @@ public class FileSender {
                         callback.onError(new IOException("握手失敗，已達最大重試次數", e));
                     }
                     new File(archFile).delete();
-                } finally {
-                    // 確保在每次嘗試後關閉資源
-                    if (dos != null) try { dos.close(); } catch (IOException e) { /* ignore */ }
-                    if (dis != null) try { dis.close(); } catch (IOException e) { /* ignore */ }
-                    if (socket != null) try { socket.close(); } catch (IOException e) { /* ignore */ }
-                
                 }
 
                 if (!sentSuccess) {
@@ -131,7 +125,7 @@ public class FileSender {
             } // end while for retries
 
             String receiverDecision = dis.readUTF(); // 讀取 "OK@threads" 或 "REJECT"
-            LogPanel.log("接收端決定: " + receiverDecision);
+            System.out.println("接收端決定: " + receiverDecision);
 
             boolean handshakeAccepted = false;
             int negotiatedThreadCount = 1; // Default
@@ -146,15 +140,6 @@ public class FileSender {
                     dos.writeUTF("ACK");
                     dos.flush();
                     LogPanel.log("已傳送 ACK 給接收端的 OK@。");
-
-                    // 現在，根據 FileReceiver 的協定，它會在收到這個 ACK 後，
-                    // 再為先前傳送的 archiveToSend.getName() 回覆一個 ACK
-                    String ackForFileName = dis.readUTF(); // <--- 這是第 135 行附近，現在應該能收到 ACK
-                    if ("ACK".equals(ackForFileName)) {
-                        LogPanel.log("接收端已確認檔案名稱。準備開始傳輸。");
-                    } else {
-                        throw new IOException("接收端未確認檔案名稱，回應: " + ackForFileName);
-                    }
 
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
                     LogPanel.log("錯誤：解析伺服器回應中的執行緒數失敗 - " + receiverDecision);
@@ -178,6 +163,10 @@ public class FileSender {
             File sentFile = new File(archFile);
             if(handshakeAccepted) {
 
+                dos.writeUTF(sentFile.getName());
+                String rs = dis.readUTF();
+
+                if(rs.equals("ACK")) {
                     callback.onStart(total_files_size);
                     boolean isFine = true;
                     try { 
@@ -188,23 +177,27 @@ public class FileSender {
                         if(isCompress)
                             sentFile.delete();
                         callback.onError(e);
+                        return;
                     }
                     if(isFine) {
                         callback.onComplete();
+                        if(isCompress) {
+                            sentFile.delete();
+                        }
                         return ;
                     }
+                }
+            } else {
+                if(isCompress) {
+                    sentFile.delete();
+                }
             }
-            if(isCompress)
-                sentFile.delete();
+        
         } catch(Exception e) {
             callback.onError(e);
             if(isCompress)
                 new File(archFile).delete();
             return;
         }
-        if(isCompress) {
-            new File(archFile).delete();
-        }
-
     }
 }

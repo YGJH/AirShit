@@ -89,23 +89,12 @@ public class FileReceiver {
                             dos.writeUTF("ACK");
                             dos.flush();
 
-                            String actualArchiveFileName = dis.readUTF(); // 4. 讀取實際封存檔案名稱
-                            LogPanel.log("Received actual archive file name: " + actualArchiveFileName);
-
-                            // ***新增: 立即對 actualArchiveFileName 回覆 ACK***
-                            dos.writeUTF("ACK");
-                            dos.flush();
-                            LogPanel.log("Sent ACK for actual archive file name: " + actualArchiveFileName);
-
-
                             // show pannel
                             FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI ,  sb ,  SenderName,  Long.toString(total_size));
                             boolean accepted = dialog.showDialog();
                             
                             String message;
                             int threadCount = Math.min(threads, ITHREADS);
-
-
                             
                             File selectedSavePath = null; // To store the chosen save directory
 
