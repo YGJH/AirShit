@@ -87,6 +87,34 @@ public class FileReceiver {
 
 
                             
+                            File selectedSavePath = null; // To store the chosen save directory
+
+                            if (accepted) {
+                                // User accepted the transfer, now ask for save location
+                                JFileChooser saveLocationChooser = new JFileChooser();
+                                saveLocationChooser.setDialogTitle("Select Save Location for files from " + SenderName);
+                                saveLocationChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                                saveLocationChooser.setAcceptAllFileFilterUsed(false); // Don't allow "All Files" filter
+
+                                // Set a default directory (e.g., user's Downloads or home directory)
+                                File defaultSaveDir = new File(System.getProperty("user.home") + File.separator + "Downloads");
+                                if (!defaultSaveDir.exists()) {
+                                    defaultSaveDir.mkdirs(); // Create if it doesn't exist
+                                }
+                                saveLocationChooser.setCurrentDirectory(defaultSaveDir);
+
+                                // Show the dialog. Main.GUI should be the parent JFrame.
+                                int chooserResult = saveLocationChooser.showDialog(Main.GUI, "Select Folder");
+
+                                if (chooserResult == JFileChooser.APPROVE_OPTION) {
+                                    selectedSavePath = saveLocationChooser.getSelectedFile();
+                                    LogPanel.log("User selected save path: " + selectedSavePath.getAbsolutePath());
+                                    // 'accepted' remains true
+                                } else {
+                                    LogPanel.log("User cancelled save location selection.");
+                                    accepted = false; // Treat as rejection if no save path is chosen
+                                }
+                            }
 
 
 
@@ -94,38 +122,45 @@ public class FileReceiver {
 
 
 
-
-
-
-                            if(accepted) {
+                            String message;
+                            int threadCount = Math.min(threads, ITHREADS); // Negotiate thread count
+                            if (accepted && selectedSavePath != null) { // Must be accepted AND have a save path
                                 message = "OK@" + Integer.toString(threadCount);
                             } else {
                                 message = "REJECT";
+                                accepted = false; // Ensure accepted is false if we are rejecting
                             }
-                            ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+                            int ackRetries = 0;
                             boolean isFine = false;
-                            while(retries < MAX_HANDSHAKE_RETRIES) {
+                            dos.writeUTF(message); // Send OK@threads or REJECT
+                            dos.flush();
+
+                            if (accepted) { // Only wait for ACK if we sent "OK@"
+                                LogPanel.log("Waiting for ACK from sender...");
+                                // Timeout for ACK read is already set by socket.setSoTimeout()
                                 try {
-                                    dos.writeUTF(message);
-                                    dos.flush();
-                                    String res = dis.readUTF();
-                                    if(res.equals("ACK")) {
-                                        accepted = true;
-                                        isFine = true;
-                                        break;
+                                    String res = dis.readUTF(); // Wait for ACK
+                                    LogPanel.log("Received from sender: " + res);
+                                    if (res.equals("ACK")) {
+                                        isFine = true; // Handshake fully completed
+                                        LogPanel.log("ACK received. Ready for file data.");
+                                    } else {
+                                        LogPanel.log("Error: Expected ACK, but received: " + res);
+                                        // isFine remains false
                                     }
                                 } catch (SocketTimeoutException e) {
-                                    continue;
+                                    LogPanel.log("Error: Timeout waiting for ACK from sender.");
+                                    // isFine remains false
                                 } catch (IOException e) {
-                                    // e.printStackTrace(); // 可選
-                                    // handshakeAccepted 仍然是 false，會進入下一次重試
-                                    if (retries >= MAX_HANDSHAKE_RETRIES -1 && callback != null) { // 如果是最後一次重試失敗
-                                        callback.onError(new IOException("握手失敗，已達最大重試次數", e));
-                                    }
-                                } finally {
-                                    retries++;
+                                    LogPanel.log("Error: IOException waiting for ACK: " + e.getMessage());
+                                    // isFine remains false
                                 }
+                            } else { // If we sent "REJECT" (accepted was false)
+                                isFine = false; // No further action needed for this connection
+                                LogPanel.log("REJECT sent. Closing connection for this attempt.");
                             }
+
                             if(!isFine || !accepted) continue;
                             
                             try {
