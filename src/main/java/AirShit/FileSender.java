@@ -57,6 +57,7 @@ public class FileSender {
         String archFile = "";
         
         // add handshake information
+        boolean isCompress = false;
         sb.append(senderUserName+"@");
         if(file.isDirectory()) {
             for(File f : file.listFiles()) {
@@ -64,11 +65,11 @@ public class FileSender {
                 sb.append(f.getName() + "@");
             }
             sb.append(THREADS_STR+"@"+Long.toString(total_files_size));
-
+            isCompress = true;
             archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getName() + "tar.lz4");
             
         } else {
-            archFile = file.getName();
+            archFile = file.getAbsolutePath();
             total_files_size = file.length();
             sb.append(file.getName() + "@" + THREADS_STR + "@" + Long.toString(total_files_size));
         }
@@ -145,25 +146,44 @@ public class FileSender {
 
             scheduler.shutdown(); // 關閉排程器
 
+            File sentFile = new File(archFile);
+            if(handshakeAccepted) {
+                dos.writeUTF(sentFile.getName());
+                String rs = dis.readUTF();
+                if(rs.equals("ACK")) {
 
+                    callback.onStart(total_files_size);
+                    boolean isFine = true;
+                    try { 
+                        sender = new SendFile(this.host , this.port , sentFile , threadCount , callback); 
+                    }
+                    catch (Exception e) {
+                        isFine = false;
+                        if(isCompress)
+                            sentFile.delete();
+                        callback.onError(e);
+                    }
+                    if(isFine) {
+                        callback.onComplete();
+                    }
+                    if(isCompress)
+                            sentFile.delete();
+                } else {
+                    callback.onError(new Exception("Error"));
+                    if(isCompress) {
+                        sentFile.delete();
+                    }
+                }
+            } else {
+                if(isCompress)
+                    sentFile.delete();
+            }
         } catch (Exception e) {
+            if(isCompress) {
+                new File(archFile).delete();
+            }
             callback.onError(e);
             return;
-        }
-        File SentFile = new File(archFile);
-
-        if(handshakeAccepted) {
-            // SendFile(String host, int port, File file, int threadCount, TransferCallback callback) {
-            callback.onStart(total_files_size);
-            boolean isFine = true;
-            try { sender = new SendFile(this.host , this.port , SentFile , threadCount , callback); }
-            catch (Exception e) {
-                isFine = false;
-                callback.onError(e);
-            }
-            if(isFine) {
-                callback.onComplete();
-            }
         }
     }
     // ate void dfs(File now) {

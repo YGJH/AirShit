@@ -116,14 +116,6 @@ public class FileReceiver {
                                 }
                             }
 
-
-
-
-
-
-
-                            String message;
-                            int threadCount = Math.min(threads, ITHREADS); // Negotiate thread count
                             if (accepted && selectedSavePath != null) { // Must be accepted AND have a save path
                                 message = "OK@" + Integer.toString(threadCount);
                             } else {
@@ -164,9 +156,12 @@ public class FileReceiver {
                             if(!isFine || !accepted) continue;
                             
                             try {
+                                String outPutFileName = dis.readUTF();
+                                dos.writeUTF("ACK");
+
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
-                                
+                                receiver.start(selectedSavePath.getAbsolutePath()+outPutFileName, len, threadCount, callback);
                             } catch (Exception e) {
                                 callback.onError(new Exception("transfer fail", e));
                                 continue;

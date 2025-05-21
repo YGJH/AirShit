@@ -129,7 +129,7 @@ public class Main { // 定義 Main 類別
             socket.setNetworkInterface(findCorrectNetworkInterface());
             socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
 
-            socket.setOption(StandardSocketOptions.IP_MULTICAST_LOOP, false);
+            socket.setLoopbackMode(true); // true to disable loopback, equivalent to IP_MULTICAST_LOOP = false
             // println(sendData.length + " bytes sent to multicast group " +
             // group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
