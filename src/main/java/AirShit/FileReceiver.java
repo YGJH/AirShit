@@ -100,7 +100,6 @@ public class FileReceiver {
                             
 
 
-
                             // 選擇存放路徑
                             if (accepted) {
                                 // User accepted the transfer, now ask for save location
@@ -141,8 +140,9 @@ public class FileReceiver {
                             boolean isFine = false;
                             dos.writeUTF(message); // Send OK@threads or REJECT
                             dos.flush();
-                            
-                            while (accepted && !isFine) { // Only wait for ACK if we sent "OK@"
+                            int retries = 0;
+
+                            while (accepted && !isFine && (retries < MAX_HANDSHAKE_RETRIES + 2)) { // Only wait for ACK if we sent "OK@"
                                 LogPanel.log("Waiting for ACK from sender...");
                                 // Timeout for ACK read is already set by socket.setSoTimeout()
                                 try {
@@ -166,9 +166,7 @@ public class FileReceiver {
                                     LogPanel.log("Error: IOException waiting for ACK: " + e.getMessage());
                                     // isFine remains false
                                 }
-                            } else { // If we sent "REJECT" (accepted was false)
-                                isFine = false; // No further action needed for this connection
-                                LogPanel.log("REJECT sent. Closing connection for this attempt.");
+                                retries++;
                             }
 
                             if(!isFine || !accepted) continue;
