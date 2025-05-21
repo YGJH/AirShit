@@ -5,4 +5,4 @@ dist/**
 AirShit-1/**
 GeneratedTestFiles/**
 target/**
-*.tar.lz4
+*.lz4
