@@ -179,7 +179,6 @@ public class FileReceiver {
 
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
-                                receiver.start(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, len, threadCount, callback);
                                 Thread receiverThread = new Thread(() -> {
                                     boolean fine = true;
                                     try {
@@ -195,15 +194,16 @@ public class FileReceiver {
                                         // Optionally, handle cleanup if isCompress and sentFile needs deletion
                                     }
                                     if(fine) {
+                                        System.out.println("Complete!!!");
+                                        if(outPutFileName.endsWith(".tar.lz4")) {
+                                            LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFile, outPutFileName.substring(0, len-8));
+                                        }
+
                                         callback.onComplete();
                                     }
                                 });
                                 receiverThread.setName("FileSender-SendFile-Thread"); // Good practice to name threads
                                 receiverThread.run(); // Correct way to start a new thread
-                                System.out.println("Complete!!!");
-                                if(outPutFileName.endsWith(".tar.lz4")) {
-                                    LZ4FileDecompressor.decompressTarLz4Folder(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, outPutFileName.substring(0, len-8));
-                                }
 
                             } catch (Exception e) {
                                 callback.onError(new Exception("transfer fail", e));
