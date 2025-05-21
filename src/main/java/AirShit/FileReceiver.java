@@ -209,22 +209,28 @@ public class FileReceiver {
 
             // Top: Sender info and icon
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
-            JLabel iconLabel = new JLabel();
+JLabel iconLabel = new JLabel();
             // You can customize this icon path
-            Icon dataIcon = new ImageIcon(this.getClass().getResource("/asset/data-transfer.png"));
-            if (dataIcon instanceof ImageIcon) {
-                Image image = ((ImageIcon) dataIcon).getImage();
-                // 確保 lblIcon 已初始化
-                if (iconLabel != null) {
-                    Image scaled = image.getScaledInstance(Math.min(iconLabel.getPreferredSize().width - 10, 30), Math.min(iconLabel.getPreferredSize().height - 10, 30), Image.SCALE_SMOOTH);
+            java.net.URL iconUrl = this.getClass().getResource("/asset/data-transfer.png");
+
+            if (iconUrl != null) { // 先檢查 URL 是否為 null
+                ImageIcon dataIcon = new ImageIcon(iconUrl);
+                // 可以進一步檢查圖片是否真的載入成功 (例如 dataIcon.getImageLoadStatus())
+                if (dataIcon.getImageLoadStatus() == MediaTracker.COMPLETE) {
+                    Image image = dataIcon.getImage();
+                    int targetSize = 30; // 設定目標圖示大小
+                    Image scaled = image.getScaledInstance(targetSize, targetSize, Image.SCALE_SMOOTH);
                     iconLabel.setIcon(new ImageIcon(scaled));
+                } else {
+                    // 圖片載入失敗的處理 (例如，設定預設圖示或文字)
+                    System.err.println("Failed to load image: /asset/data-transfer.png");
+                    iconLabel.setText("[X]"); // 示意圖示載入失敗
                 }
             } else {
-                if (iconLabel != null) {
-                    iconLabel.setIcon(dataIcon);
-                }
+                // 資源 URL 為 null 的處理 (圖片檔案找不到)
+                System.err.println("Could not find resource: /asset/data-transfer.png. Place it in src/main/resources/asset/");
+                iconLabel.setText("[?]"); // 示意找不到資源
             }
-
 
             topPanel.add(iconLabel, BorderLayout.WEST);
             JPanel infoPanel = new JPanel(new GridLayout(2, 1));
