@@ -173,7 +173,7 @@ public class FileReceiver {
                             
                             try {
                                 String outPutFileName = dis.readUTF();
-                                System.out.println(outPutFileName);
+                                System.out.println(selectedSavePath.getAbsolutePath()+outPutFileName);
                                 dos.writeUTF("ACK");
 
                                 callback.onStart(total_size);
