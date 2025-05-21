@@ -20,81 +20,75 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 
-import AirShit.Main.SEND_STATUS;
+import AirShit.Main.SEND_STATUS; // Assuming this import is correct for your project structure
 import AirShit.ui.LogPanel;
 
 public class FileReceiver {
 
     public int port;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors();
-    // private final String THREADS_STR = Integer.toString(ITHREADS); // Renamed from THREADS to avoid conflict if used as variable
-    // private Receiver receiverInstance; // Changed from 'receiver' to avoid conflict with local var
-    public String currentSenderName; // Renamed from SenderName
-    public Long currentTotalSize;   // Renamed from total_size
+    public String currentSenderName;
+    public Long currentTotalSize;
 
-    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10;
-    private static final int MAX_HANDSHAKE_RETRIES = 3;
+    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10; // Timeout for individual read operations
+    private static final int MAX_HANDSHAKE_ATTEMPTS = 1; // How many times to retry the whole handshake accept if it fails early
 
     FileReceiver(int port) {
         this.port = port;
     }
 
-    public static void println(String str) {
+    public static void println(String str) { // Utility, consider removing if LogPanel is always used
         LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
     public void start(TransferCallback callback) throws IOException {
-        // ServerSocket is created once and used for the lifetime of FileReceiver
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             LogPanel.log("FileReceiver started on port: " + port + ". Waiting for senders...");
 
-            while (true) { // Main loop to handle one sender completely before the next
-                Socket handshakeSocket = null; // Socket for the current sender's handshake
+            while (true) {
+                Socket handshakeSocket = null;
                 String outPutFileName = null;
                 String wholeOutputFile = null;
-                String decompressedOutputFile = null; // Renamed from OutputFile
-                int negotiatedThreadCount = 1; // Default
+                String decompressedOutputFile = null;
+                int negotiatedThreadCount = 1;
+
+                // Reset per-sender state
+                currentSenderName = null;
+                currentTotalSize = null;
 
                 try {
                     LogPanel.log("FileReceiver: Waiting for a new sender to connect for handshake...");
-                    handshakeSocket = serverSocket.accept(); // Blocks here for a new client's initial connection
+                    handshakeSocket = serverSocket.accept();
                     LogPanel.log("FileReceiver: Accepted handshake connection from " + handshakeSocket.getRemoteSocketAddress());
+                    handshakeSocket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000); // Timeout for read operations on this socket
 
-                    // Use try-with-resources for handshake streams
                     try (DataInputStream dis = new DataInputStream(handshakeSocket.getInputStream());
                          DataOutputStream dos = new DataOutputStream(handshakeSocket.getOutputStream())) {
-
-                        handshakeSocket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000 * (MAX_HANDSHAKE_RETRIES + 2)); // Generous timeout for entire handshake sequence
 
                         String handShakeMsg = dis.readUTF();
                         LogPanel.log("FileReceiver: Received handshake message: " + handShakeMsg);
 
                         if (handShakeMsg.contains("@")) {
                             String[] parts = handShakeMsg.split("@");
-                            // Expected: senderUserName@fileName(s)@clientAnnouncedThreads@totalFileSize
                             if (parts.length < 4) {
                                 LogPanel.log("Error: Invalid handshake format - not enough parts. Received: " + handShakeMsg);
                                 dos.writeUTF("ERROR_HANDSHAKE_FORMAT");
                                 dos.flush();
-                                continue; // Go to finally, then next iteration of while(true)
+                                continue;
                             }
 
                             currentSenderName = parts[0];
-                            // parts[1] is the filename as sent by sender (could be original or .tar.lz4)
-                            // parts[len-2] is clientAnnouncedThreads
-                            // parts[len-1] is totalFileSize
-                            String clientAnnouncedFileName = parts[1]; // This is what sender initially thinks it's sending
+                            String clientAnnouncedFileName = parts[1];
                             int clientAnnouncedThreads = Integer.parseInt(parts[parts.length - 2]);
                             currentTotalSize = Long.parseLong(parts[parts.length - 1]);
 
                             LogPanel.log(String.format("FileReceiver: Parsed Handshake: Sender=%s, File(s)=%s, Threads=%d, Size=%d",
                                     currentSenderName, clientAnnouncedFileName, clientAnnouncedThreads, currentTotalSize));
 
-                            dos.writeUTF("ACK"); // ACK the initial handshake string
+                            dos.writeUTF("ACK");
                             dos.flush();
                             LogPanel.log("FileReceiver: Sent ACK for initial handshake.");
 
-                            // Show dialog to user
                             FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI, new StringBuilder(clientAnnouncedFileName), currentSenderName, SendFileGUI.formatFileSize(currentTotalSize));
                             boolean userAccepted = dialog.showDialog();
                             File selectedSavePath = null;
@@ -122,7 +116,7 @@ public class FileReceiver {
 
                             if (userAccepted && selectedSavePath != null) {
                                 negotiatedThreadCount = Math.min(clientAnnouncedThreads, ITHREADS);
-                                negotiatedThreadCount = Math.max(1, negotiatedThreadCount); // Ensure at least 1
+                                negotiatedThreadCount = Math.max(1, negotiatedThreadCount);
                                 decisionMessage = "OK@" + negotiatedThreadCount;
                                 proceedWithTransfer = true;
                                 LogPanel.log("FileReceiver: User accepted. Sending " + decisionMessage);
@@ -134,21 +128,21 @@ public class FileReceiver {
                             dos.flush();
 
                             if (proceedWithTransfer) {
-                                LogPanel.log("FileReceiver: Waiting for sender's ACK to our " + decisionMessage + "...");
+                                LogPanel.log("FileReceiver: Waiting for sender's ACK to our '" + decisionMessage + "' message...");
                                 String senderAckToOk = dis.readUTF(); // Expect "ACK" from sender
                                 if (!senderAckToOk.equals("ACK")) {
-                                    LogPanel.log("Error: Sender did not ACK our OK@. Received: " + senderAckToOk + ". Aborting this transfer.");
-                                    proceedWithTransfer = false;
+                                    LogPanel.log("Error: Sender did not ACK our OK@ message. Received: '" + senderAckToOk + "'. Aborting this transfer.");
+                                    proceedWithTransfer = false; // Critical: if sender doesn't ACK, we don't proceed
                                 } else {
-                                    LogPanel.log("FileReceiver: Sender ACKed our OK@. Ready for actual filename.");
-                                    outPutFileName = dis.readUTF(); // Sender now sends the final filename (e.g., .tar.lz4 name)
+                                    LogPanel.log("FileReceiver: Sender ACKed our OK@ message. Ready for actual filename.");
+                                    outPutFileName = dis.readUTF();
                                     LogPanel.log("FileReceiver: Received final filename from sender: " + outPutFileName);
 
                                     wholeOutputFile = selectedSavePath.getAbsolutePath() + File.separator + outPutFileName;
                                     if (outPutFileName.endsWith(".tar.lz4") && outPutFileName.length() > 8) {
                                         decompressedOutputFile = selectedSavePath.getAbsolutePath() + File.separator + outPutFileName.substring(0, outPutFileName.length() - 8);
                                     } else {
-                                        decompressedOutputFile = wholeOutputFile; // No decompression or simple file
+                                        decompressedOutputFile = wholeOutputFile;
                                     }
                                     dos.writeUTF("ACK"); // ACK the filename
                                     dos.flush();
@@ -157,19 +151,14 @@ public class FileReceiver {
                             }
 
                             if (proceedWithTransfer) {
-                                // Handshake on 'handshakeSocket' is complete.
-                                // 'serverSocket' (main one) will now be used by Receiver to accept 'negotiatedThreadCount' data connections.
                                 LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
                                 if (callback != null) callback.onStart(currentTotalSize);
 
-                                Receiver dataReceiver = new Receiver(serverSocket); // Pass the main ServerSocket
-
+                                Receiver dataReceiver = new Receiver(serverSocket);
                                 LogPanel.log("FileReceiver: Starting data reception process for " + wholeOutputFile + "...");
                                 boolean receptionWasSuccessful = false;
                                 try {
-                                    // This call is now BLOCKING until receiver.start() completes or throws.
                                     receptionWasSuccessful = dataReceiver.start(wholeOutputFile, currentTotalSize, negotiatedThreadCount, callback);
-
                                     if (receptionWasSuccessful) {
                                         LogPanel.log("FileReceiver: Data reception successful for: " + wholeOutputFile);
                                         if (outPutFileName.endsWith(".tar.lz4")) {
@@ -180,66 +169,54 @@ public class FileReceiver {
                                         if (callback != null) callback.onComplete();
                                     } else {
                                         LogPanel.log("FileReceiver: Data reception process reported failure for " + outPutFileName);
-                                        // callback.onError would have been called by Receiver or its workers
                                     }
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                     LogPanel.log("FileReceiver: Data reception interrupted for " + outPutFileName + ": " + e.getMessage());
                                     if (callback != null) callback.onError(e);
-                                } catch (Exception e) { // Catch any other unexpected exceptions from receiver.start or decompression
+                                } catch (Exception e) {
                                     LogPanel.log("FileReceiver: Error during data reception/decompression for " + outPutFileName + ": " + e.getClass().getName() + " - " + e.getMessage());
-                                    // e.printStackTrace(); // For detailed debugging
-                                    if (callback != null) {
-                                        callback.onError(e);
-                                    }
+                                    if (callback != null) callback.onError(e);
                                 }
                                 LogPanel.log("FileReceiver: Finished handling current sender (" + currentSenderName + "). Ready for next handshake.");
-                            } else { // proceedWithTransfer is false
+                            } else {
                                 LogPanel.log("FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
+                                // If proceedWithTransfer is false here, the sender (waiting for filename ACK) will get EOF.
                             }
-                        } else { // Not a handshake string we recognize (no "@")
+                        } else {
                             LogPanel.log("Error: Invalid handshake string received (no '@'): " + handShakeMsg);
                             dos.writeUTF("ERROR_INVALID_HANDSHAKE");
                             dos.flush();
                         }
-                    } // End of try-with-resources for handshakeSocket's dis/dos (streams are closed)
-                    // handshakeSocket itself will be closed by the outer try-with-resources if this was the structure,
-                    // but we are closing it explicitly in the finally block of the outer try.
+                    } // Streams dis/dos are closed here. If proceedWithTransfer was false, sender might get EOF.
                 } catch (SocketTimeoutException e) {
                     LogPanel.log("FileReceiver: Timeout during handshake phase with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getMessage());
-                    if (callback != null && currentTotalSize != null && currentTotalSize > 0) callback.onError(e);
+                    if (callback != null && currentTotalSize != null) callback.onError(e);
                 } catch (EOFException e) {
-                    LogPanel.log("FileReceiver: EOF during handshake with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ". Client may have disconnected. " + e.getMessage());
-                    if (callback != null && currentTotalSize != null && currentTotalSize > 0) callback.onError(e);
+                    LogPanel.log("FileReceiver: EOF during handshake with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ". Client likely disconnected. " + e.getMessage());
+                    if (callback != null && currentTotalSize != null) callback.onError(e);
                 } catch (IOException e) {
                     LogPanel.log("FileReceiver: IOException during handshake phase with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getMessage());
-                    // e.printStackTrace(); // For detailed debug
-                    if (callback != null && currentTotalSize != null && currentTotalSize > 0) callback.onError(e);
-                } catch (Exception e) { // Catch other handshake parsing errors etc.
+                    if (callback != null && currentTotalSize != null) callback.onError(e);
+                } catch (Exception e) {
                     LogPanel.log("FileReceiver: General error during handshake processing with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                    // e.printStackTrace(); // For detailed debug
-                    if (callback != null && currentTotalSize != null && currentTotalSize > 0) callback.onError(e);
+                    if (callback != null && currentTotalSize != null) callback.onError(e);
                 } finally {
                     if (handshakeSocket != null && !handshakeSocket.isClosed()) {
                         try {
                             handshakeSocket.close();
-                            LogPanel.log("FileReceiver: Handshake socket with " + handshakeSocket.getRemoteSocketAddress() + " closed.");
+                            LogPanel.log("FileReceiver: Handshake socket with " + (handshakeSocket.getRemoteSocketAddress() != null ? handshakeSocket.getRemoteSocketAddress() : "previous client") + " closed.");
                         } catch (IOException ex) {
                             LogPanel.log("FileReceiver: Error closing handshake socket: " + ex.getMessage());
                         }
                     }
-                    // Reset for next iteration
-                    currentSenderName = null;
-                    currentTotalSize = null;
                 }
-                // After handling one client (successfully or with error), the main while(true) loop will iterate
-                // and serverSocket.accept() will wait for the next new client's handshake.
-            } // End of while(true) loop for accepting new senders
-        } // End of try-with-resources for the main ServerSocket (closes if loop exits, which it doesn't in this design)
+            }
+        }
         // LogPanel.log("FileReceiver: Main start method is exiting (should not happen in continuous server).");
     }
 
-    // FileReceiveDialog class remains the same
+    // FileReceiveDialog class (assuming it's correct and as provided before)
     private class FileReceiveDialog extends JDialog {
         private boolean accepted = false;
         public FileReceiveDialog(JFrame owner, StringBuilder fileListBuilder, String senderName, String totalSize) {
@@ -277,7 +254,9 @@ public class FileReceiver {
             DefaultListModel<String> listModel = new DefaultListModel<>();
             String[] files = fileListBuilder.toString().split("\\r?\\n");
             for (String file : files) {
-                listModel.addElement(file);
+                if (file != null && !file.trim().isEmpty()) { // Avoid adding empty strings
+                    listModel.addElement(file);
+                }
             }
             JList<String> fileList = new JList<>(listModel);
             fileList.setBorder(BorderFactory.createTitledBorder("Files to Receive"));
