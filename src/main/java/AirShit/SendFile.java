@@ -29,7 +29,10 @@ public class SendFile {
         this.host = host;
         this.port = port;
         this.file = file;
+        // Log the passed threadCount before Math.max
+        LogPanel.log("SendFile Constructor: Received threadCount=" + threadCount);
         this.threadCount = Math.max(1, threadCount); // Ensure at least one thread
+        LogPanel.log("SendFile Constructor: Set SendFile.this.threadCount=" + this.threadCount);
     }
 
     public void start() throws IOException, InterruptedException {
@@ -124,41 +127,42 @@ public class SendFile {
 
     private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
         if (fileLength == 0) {
-            return; // Handled by adding a single zero-length chunk in start()
+            // LogPanel.log("SendFile.populateChunkQueue: File length is 0, handled by start()."); // Already handled in start()
+            return;
         }
+        LogPanel.log("SendFile.populateChunkQueue: Calculating chunks for fileLength=" + fileLength + ", SendFile.this.threadCount=" + this.threadCount);
 
-        long baseChunkSize = Math.min(fileLength, 1024L * 1024 * 1024); // 1GB conceptual processing block
-        long workerCountForChunkCalc = (long) Math.ceil((double) fileLength / baseChunkSize);
-        long subChunkSizePerThread = (baseChunkSize + threadCount - 1) / threadCount; // Ideal size per thread within a baseChunk
+        // If threadCount is 1, we should send the whole file as one chunk.
+        if (this.threadCount == 1) {
+            ChunkInfo singleChunk = new ChunkInfo(0, fileLength);
+            LogPanel.log("SendFile.populateChunkQueue: Single thread mode, adding one chunk: " + singleChunk);
+            chunkQueue.offer(singleChunk);
+        } else {
+            // Original logic for multi-threading, ensure it correctly divides the file
+            // The existing logic for baseChunkSize etc. seems okay for distributing work if threadCount > 1
+            // Let's re-verify the chunk calculation for multiple threads.
+            // The goal is for each SenderWorker to get roughly fileLength / threadCount work,
+            // but they all pull from a common queue. The queue should contain distinct parts of the file.
 
-        long bytesSubmittedSoFar = 0;
-        for (int i = 0; i < workerCountForChunkCalc; i++) {
-            long currentBaseChunkActualSize = Math.min(baseChunkSize, fileLength - bytesSubmittedSoFar);
-            for (int j = 0; j < threadCount; j++) {
-                long chunkOffsetInFile = (j * subChunkSizePerThread) + bytesSubmittedSoFar;
-                if (chunkOffsetInFile >= bytesSubmittedSoFar + currentBaseChunkActualSize) {
-                    break;
+            // Corrected logic for multi-threaded chunking:
+            // Divide the file into 'this.threadCount' pieces.
+            // Each piece will be a chunk.
+            long chunkSize = (fileLength + this.threadCount - 1) / this.threadCount; // Ceiling division
+            for (int i = 0; i < this.threadCount; i++) {
+                long offset = i * chunkSize;
+                if (offset >= fileLength) {
+                    break; // No more data to chunk
                 }
-                long actualChunkLengthForThread;
-
-
-                if (j == threadCount - 1) {
-                    actualChunkLengthForThread = (bytesSubmittedSoFar + currentBaseChunkActualSize) - chunkOffsetInFile;
-                } else {
-                    actualChunkLengthForThread = Math.min(subChunkSizePerThread, (bytesSubmittedSoFar + currentBaseChunkActualSize) - chunkOffsetInFile);
+                long length = Math.min(chunkSize, fileLength - offset);
+                if (length > 0) {
+                    ChunkInfo chunk = new ChunkInfo(offset, length);
+                    LogPanel.log("SendFile.populateChunkQueue: Adding chunk: " + chunk);
+                    chunkQueue.offer(chunk); // Offer ONCE
                 }
-                if (actualChunkLengthForThread > 0) {
-                    chunkQueue.offer(new ChunkInfo(chunkOffsetInFile, actualChunkLengthForThread));
-                    ChunkInfo chunk = new ChunkInfo(chunkOffsetInFile, actualChunkLengthForThread);
-                    LogPanel.log("SendFile.populateChunkQueue: Adding chunk: " + chunk); // ADD THIS
-                    chunkQueue.offer(chunk);
-
-                }
-                LogPanel.log("SendFile: Populated chunk queue with " + chunkQueue.size() + " chunks."); // Already there
             }
-            bytesSubmittedSoFar += currentBaseChunkActualSize;
         }
-        LogPanel.log("SendFile: Populated chunk queue with " + chunkQueue.size() + " chunks.");
+        // This log should be at the very end of the method
+        LogPanel.log("SendFile.populateChunkQueue: Finished. Final chunk queue size: " + chunkQueue.size());
     }
 
     private static class SenderWorker implements Runnable {
