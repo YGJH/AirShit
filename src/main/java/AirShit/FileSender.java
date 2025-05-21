@@ -165,7 +165,7 @@ public class FileSender {
                 String rs = dis.readUTF();
                 if(rs.equals("ACK")) {
                     callback.onStart(total_files_size);
-                    sender = new SendFile(this.host , this.port , sentFile , threadCount , callback); 
+                    sender = new SendFile(this.host , this.port , sentFile , negotiatedThreadCount , callback); 
                     Thread senderThread = new Thread(() -> {
                         boolean isFine = true;
                         try {

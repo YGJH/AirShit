@@ -167,27 +167,22 @@ public class Receiver {
                         while (headerBuffer.hasRemaining()) {
                             int bytesReadThisCall = rbc.read(headerBuffer);
                             if (bytesReadThisCall == -1) {
-                                if (headerBytesRead == 0) { // Clean EOF, sender closed connection
-                                    // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): Clean EOF detected on header read. Assuming sender finished for this channel.");
-                                    return; // End of chunks for this worker
+                                if (headerBytesRead == 0) {
+                                    LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): Clean EOF detected on header read (0 bytes). Worker finishing as sender closed connection.");
+                                    return; // Correct: End of chunks for this worker
                                 }
                                 throw new EOFException("Socket closed prematurely while reading chunk header. Read " + headerBytesRead + " header bytes.");
                             }
                             headerBytesRead += bytesReadThisCall;
                         }
                     } catch (EOFException e) {
-                        // This can happen if sender closes connection after sending some chunks.
-                        // If no header bytes were read at all, it's a clean termination for this worker.
-                        if (headerBytesRead == 0) {
-                             // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOF on header read (no bytes), worker finishing.");
+                        if (headerBytesRead == 0) { // Double check if this path is reachable given the above
+                             LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOF on header read (no bytes read), worker finishing. Message: " + e.getMessage());
                              return;
                         }
-                        LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException, likely clean termination by sender for this channel. Message: " + e.getMessage()); // MODIFY
-                        // return; // This was inside the header read loop, now handled by try-catch exiting run()
-                        // } else {
-                        //    LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException reading header: " + e.getMessage());
-                        //    throw e;
-                        // }
+                        // If some header bytes were read before EOF, it's an error.
+                        LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException after reading " + headerBytesRead + " header bytes: " + e.getMessage());
+                        throw e; // Propagate as it's an incomplete header
                     }
 
 

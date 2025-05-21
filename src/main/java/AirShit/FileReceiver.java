@@ -77,15 +77,10 @@ public class FileReceiver {
                                 continue;
                             }
                             SenderName = parts[0];
-                            
-                            total_size = Long.parseLong(parts[len - 1]);
-                            int threads = Integer.parseInt(parts[len - 2]);
-                            for(int i = 1 ; i < len - 2 ; i++) {
-                                sb.append(parts[i]);
-                                if (i < len - 3) { // 如果不是倒數第二個檔名，則加換行符
-                                    sb.append("\n");
-                                }                            
-                            }
+                            sb.append(parts[1]);
+                            total_size = Long.parseLong(parts[2]);
+                            int threads = Integer.parseInt(parts[3]);
+
                             // 如果有收到，先回ACK
                             dos.writeUTF("ACK");
                             dos.flush();
@@ -175,7 +170,7 @@ public class FileReceiver {
                             try {
                                 String outPutFileName = dis.readUTF();
                                 String wholeOutputFile = selectedSavePath.getAbsolutePath()+"\\"+outPutFileName;
-                                String OutputFile = selectedSavePath.getAbsolutePath()+"\\"+outPutFileName.substring(0, outPutFileName.length()-8);
+                                String OutputFile = selectedSavePath.getAbsolutePath()+"\\"+outPutFileName.substring(0 , outPutFileName.length() - 8);
                                 // System.out.println(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName);
                                 dos.writeUTF("ACK");
 
@@ -184,50 +179,15 @@ public class FileReceiver {
                                 Thread receiverThread = new Thread(() -> {
                                     boolean receptionWasSuccessful = false;
                                     try {
-                                        LogPanel.log("ReceiverThread: Starting file reception for: " + wholeOutputFile);
-                                        LogPanel.log("ReceiverThread: Expected total size: " + total_size);
-                                        LogPanel.log("ReceiverThread: Negotiated thread count: " + threadCount);
-                                        
-                                        // CRITICAL FIX 1: Use total_size for fileLength
                                         receptionWasSuccessful = receiver.start(wholeOutputFile, total_size, threadCount, callback);
 
                                         if (receptionWasSuccessful) {
-                                            LogPanel.log("ReceiverThread: File reception successful: " + wholeOutputFile);
-
-                                            if (outPutFileName.endsWith(".tar.lz4")) {
-                                                LogPanel.log("ReceiverThread: Attempting to decompress '" + wholeOutputFile + "' into '" + OutputFile + "'");
-                                                
-                                                boolean decompress_success = LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFile, OutputFile);
-                                                
-                                                if (decompress_success) {
-                                                    LogPanel.log("ReceiverThread: Decompression successful!");
-                                                    // Optionally delete the archive after successful decompression
-                                                    // if (new File(wholeOutputFile).delete()) {
-                                                    //     LogPanel.log("ReceiverThread: Deleted archive " + wholeOutputFile);
-                                                    // } else {
-                                                    //     LogPanel.log("ReceiverThread: Failed to delete archive " + wholeOutputFile);
-                                                    // }
-                                                } else {
-                                                    LogPanel.log("ReceiverThread: Decompression failed for " + wholeOutputFile);
-                                                    // Consider this an error state for the overall transfer
-                                                    // callback.onError(new IOException("Decompression failed for " + outPutFileName));
-                                                    // To prevent calling onComplete if decompress fails, set receptionWasSuccessful to false or handle differently
-                                                }
-                                            } else {
-                                                LogPanel.log("ReceiverThread: File '" + outPutFileName + "' does not end with .tar.lz4, skipping decompression.");
+                                            if (outPutFileName.endsWith(".tar.lz4")) {                                                
+                                                LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFile, OutputFile);
                                             }
-                                            
-                                            // Only call onComplete if everything, including desired decompression, was successful
-                                            // This depends on whether failed decompression is a total failure or not.
-                                            // For now, assuming onComplete is for successful reception.
                                             LogPanel.log("ReceiverThread: Processing finished for " + outPutFileName);
                                             callback.onComplete();
-
-                                        } else {
-                                            LogPanel.log("ReceiverThread: File reception failed for " + wholeOutputFile + " (receiver.start returned false). Decompression skipped.");
-                                            // callback.onError() should have been called by receiver.start()
                                         }
-
                                     } catch (IOException | InterruptedException e) {
                                         LogPanel.log("ReceiverThread: Error during file reception/decompression: " + e.getMessage());
                                         if (callback != null) {
