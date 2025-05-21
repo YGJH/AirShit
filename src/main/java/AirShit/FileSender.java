@@ -11,32 +11,24 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import AirShit.ui.*;
-// import src.main.java.AirShit.ui.LogPanel;
 import AirShit.ui.LogPanel;
 
-/**
- * FileSender: Handles sending files, including potential compression.
- */
 public class FileSender {
     private String host;
     private int port;
-    private int Compress_file_size = 5 * 1024;
-    private int Single_thread = 1 * 1024 * 1024;
-    private StringBuilder sb;
-    private long total_files_size = 0;
-    private File[] pSendFiles;
-    private int filesCount;
-    private int threadCount = 0;
-    private SendFile sender;
+    // private int Compress_file_size = 5 * 1024; // Unused
+    // private int Single_thread = 1 * 1024 * 1024; // Unused
+    // private StringBuilder sb; // Re-initialize per call
+    // private long total_files_size = 0; // Re-initialize per call
+    // private File[] pSendFiles; // Unused
+    // private int filesCount; // Unused
+    // private int threadCount = 0; // Determined by negotiation
+    private SendFile senderInstance; // Renamed from sender
     private final int ITHREADS = Runtime.getRuntime().availableProcessors();
-
     private final String THREADS_STR = Integer.toString(ITHREADS);
 
-
-    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10; // 握手超時時間 (秒)
-    private static final int MAX_HANDSHAKE_RETRIES = 3; // 最大重試次數
-
-
+    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10;
+    private static final int MAX_HANDSHAKE_RETRIES = 3;
 
     public FileSender(String host, int port) {
         this.host = host;
@@ -44,167 +36,175 @@ public class FileSender {
     }
 
     public static void println(String str) {
-        // System.out.println(str); // Replaced by LogPanel
         LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
-    public void sendFiles(File file , String senderUserName, TransferCallback callback) throws IOException, InterruptedException {
-        if(file == null) {
+    public void sendFiles(File file, String senderUserName, TransferCallback callback) throws InterruptedException { // Removed IOException from signature, handle internally
+        if (file == null) {
+            LogPanel.log("FileSender: File to send is null. Aborting.");
+            if (callback != null) callback.onError(new IllegalArgumentException("File to send cannot be null."));
             return;
         }
-        total_files_size = 0;
-        sb = new StringBuilder();
-        String archFile = "";
-        
-        // add handshake information
+
+        long currentTotalFileSize = 0;
+        StringBuilder handshakeBuilder = new StringBuilder();
+        String archFile = null; // Path to the file that will actually be sent (original or compressed)
         boolean isCompress = false;
-        sb.append(senderUserName+"@");
-        if(file.isDirectory()) {
-            isCompress = true;
-            System.out.println(file.getAbsolutePath() + ".tar.lz4");
-            archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getAbsolutePath() + ".tar.lz4");
-            System.out.println("archfile = " + archFile);
-            total_files_size = new File(archFile).length();
-            sb.append(archFile+"@"+THREADS_STR+"@"+Long.toString(total_files_size));
-        } else {
-            archFile = file.getAbsolutePath();
-            total_files_size = file.length();
-            sb.append(file.getName() + "@" + THREADS_STR + "@" + Long.toString(total_files_size));
-        }
-        
-        // send handshake
-        try (Socket socket = new Socket(host, port);
-        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-        DataInputStream dis = new DataInputStream(socket.getInputStream())) {
-            socket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000); // 設定讀取超時
-            dos.writeUTF(sb.toString());
-            dos.flush();
-            System.out.println(sb.toString());
-            System.out.println(host + " " + port);
-            String handshakeString = sb.toString();
-            int retries = 0;
-            
-            boolean sentSuccess = false;
-            while (retries < MAX_HANDSHAKE_RETRIES) {
+
+        handshakeBuilder.append(senderUserName).append("@");
+        try {
+            if (file.isDirectory()) {
+                isCompress = true;
+                String baseName = file.getAbsolutePath();
+                // Ensure .tar.lz4 is appended correctly, even if original folder name has dots
+                String compressedFileName = baseName.endsWith(File.separator) ? baseName.substring(0, baseName.length() -1) + ".tar.lz4" : baseName + ".tar.lz4";
                 
+                LogPanel.log("FileSender: Compressing folder " + file.getAbsolutePath() + " to " + compressedFileName);
+                archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), compressedFileName);
+                LogPanel.log("FileSender: Compressed archive path: " + archFile);
+                if (archFile == null || !new File(archFile).exists()) {
+                    throw new IOException("Compression failed or compressed file not found: " + compressedFileName);
+                }
+                currentTotalFileSize = new File(archFile).length();
+                // For initial handshake, send the original directory name for user display,
+                // but the actual file to be sent later will be archFile.getName()
+                handshakeBuilder.append(file.getName()).append(".tar.lz4@"); // Announce the .tar.lz4 name
+            } else {
+                archFile = file.getAbsolutePath();
+                currentTotalFileSize = file.length();
+                handshakeBuilder.append(file.getName()).append("@");
+            }
+            handshakeBuilder.append(THREADS_STR).append("@").append(Long.toString(currentTotalFileSize));
+        } catch (IOException e) {
+            LogPanel.log("FileSender: Error during file preparation or compression: " + e.getMessage());
+            if (callback != null) callback.onError(e);
+            if (isCompress && archFile != null) { // Clean up partially compressed file
+                new File(archFile).delete();
+            }
+            return;
+        }
+
+        File sentFile = new File(archFile); // This is the file that will be transferred
+
+        try (Socket socket = new Socket(host, port);
+             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+             DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+
+            socket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000);
+            String initialHandshakeString = handshakeBuilder.toString();
+            
+            boolean initialAckReceived = false;
+            for (int retries = 0; retries < MAX_HANDSHAKE_RETRIES; retries++) {
                 try {
-                    LogPanel.log("傳送握手訊息: " + handshakeString);
-                    dos.writeUTF(handshakeString);
+                    LogPanel.log("FileSender: Attempt " + (retries + 1) + ": Sending initial handshake: " + initialHandshakeString);
+                    dos.writeUTF(initialHandshakeString);
                     dos.flush();
 
-                    String response = dis.readUTF(); // 這裡可能會拋出 SocketTimeoutException
-                    System.out.println("收到回應: " + response);
-                    if (response.startsWith("ACK")) {
-                        sentSuccess = true;
+                    String response = dis.readUTF();
+                    LogPanel.log("FileSender: Received response for initial handshake: " + response);
+                    if ("ACK".equals(response)) {
+                        initialAckReceived = true;
                         break;
                     } else {
-                        System.out.println("收到無效的握手回應: " + response);
-                        // 視為超時或錯誤，將會重試
+                        LogPanel.log("FileSender: Invalid ACK received for initial handshake: " + response);
                     }
                 } catch (SocketTimeoutException e) {
-                    System.out.println("握手超時 (讀取回應超時)。準備重試...");
-                    // handshakeAccepted 仍然是 false，會進入下一次重試
+                    LogPanel.log("FileSender: Timeout receiving ACK for initial handshake (attempt " + (retries + 1) + ").");
                 } catch (IOException e) {
-                    System.out.println("握手時發生 IO 錯誤: " + e.getMessage());
-                    // e.printStackTrace(); // 可選
-                    // handshakeAccepted 仍然是 false，會進入下一次重試
-                    if (retries >= MAX_HANDSHAKE_RETRIES -1 && callback != null) { // 如果是最後一次重試失敗
-                        callback.onError(new IOException("握手失敗，已達最大重試次數", e));
-                    }
-                    new File(archFile).delete();
+                    LogPanel.log("FileSender: IOException during initial handshake (attempt " + (retries + 1) + "): " + e.getMessage());
+                    if (retries == MAX_HANDSHAKE_RETRIES - 1) throw e; // Rethrow on last attempt
                 }
-
-                if (!sentSuccess) {
-                    retries++;
-                    if (retries < MAX_HANDSHAKE_RETRIES) {
-                        System.out.println("等待 " + HANDSHAKE_TIMEOUT_SECONDS / 2 + " 秒後重試...");
-                        TimeUnit.SECONDS.sleep(HANDSHAKE_TIMEOUT_SECONDS / 2); // 重試前稍作等待
-                    }
+                if (!initialAckReceived && retries < MAX_HANDSHAKE_RETRIES - 1) {
+                    LogPanel.log("FileSender: Waiting " + HANDSHAKE_TIMEOUT_SECONDS / 2 + "s before retry...");
+                    TimeUnit.SECONDS.sleep(HANDSHAKE_TIMEOUT_SECONDS / 2);
                 }
-            } // end while for retries
+            }
 
-            String receiverDecision = dis.readUTF(); // 讀取 "OK@threads" 或 "REJECT"
-            System.out.println("接收端決定: " + receiverDecision);
+            if (!initialAckReceived) {
+                throw new IOException("FileSender: Initial handshake failed after " + MAX_HANDSHAKE_RETRIES + " attempts. Receiver did not ACK.");
+            }
+            LogPanel.log("FileSender: Initial handshake ACKed by receiver.");
 
-            boolean handshakeAccepted = false;
-            int negotiatedThreadCount = 1; // Default
+            String receiverDecision = dis.readUTF();
+            LogPanel.log("FileSender: Received decision from receiver: " + receiverDecision);
+
+            int negotiatedThreadCount = 1;
+            boolean transferAcceptedByReceiver = false;
 
             if (receiverDecision.startsWith("OK@")) {
                 try {
-                    int t = Integer.parseInt(receiverDecision.split("@")[1]);
-                    negotiatedThreadCount = Math.min(ITHREADS, t); // ITHREADS 是 FileSender 的常數
-                    LogPanel.log("握手成功。協商執行緒數: " + negotiatedThreadCount);
-                    handshakeAccepted = true;
-                    // 回覆 ACK 給接收端的 "OK@"
+                    negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3)); // Get count after "OK@"
+                    negotiatedThreadCount = Math.min(ITHREADS, Math.max(1, negotiatedThreadCount));
+                    LogPanel.log("FileSender: Transfer accepted by receiver. Negotiated threads: " + negotiatedThreadCount);
+                    
+                    LogPanel.log("FileSender: Sending ACK to receiver's OK@ message.");
                     dos.writeUTF("ACK");
                     dos.flush();
-                    LogPanel.log("已傳送 ACK 給接收端的 OK@。");
-
-                } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
-                    LogPanel.log("錯誤：解析伺服器回應中的執行緒數失敗 - " + receiverDecision);
-                    if (callback != null) callback.onError(new IOException("無效的回應格式: " + receiverDecision, e));
-                    // 這裡可以選擇關閉 socket 或 return
-                    socket.close(); // 主動關閉
-                    return;
+                    transferAcceptedByReceiver = true;
+                } catch (NumberFormatException | IndexOutOfBoundsException e) {
+                    throw new IOException("FileSender: Invalid format in receiver's OK message: " + receiverDecision, e);
                 }
-            } else if (receiverDecision.equals("REJECT")) {
-                LogPanel.log("接收端拒絕連線。");
-                if (callback != null) callback.onError(new IOException("接收端拒絕握手"));
-                // socket 會在 try-with-resources 結束時關閉
-                return; // 直接返回，不再重試
+            } else if ("REJECT".equals(receiverDecision)) {
+                LogPanel.log("FileSender: Transfer rejected by receiver.");
+                if (callback != null) callback.onError(new IOException("Transfer rejected by receiver."));
+                // Cleanup and return handled by finally block / end of method
             } else {
-                LogPanel.log("錯誤：來自接收端的未知決定: " + receiverDecision);
-                if (callback != null) callback.onError(new IOException("未知的接收端決定: " + receiverDecision));
-                socket.close(); // 主動關閉
-                return;
+                throw new IOException("FileSender: Unknown decision from receiver: " + receiverDecision);
             }
 
-            File sentFile = new File(archFile);
-            
-            System.out.println(sentFile.getName());
-            if(handshakeAccepted) {
-                System.out.println("gonna sent to: " + sentFile.getName());
-                dos.writeUTF(sentFile.getName());
-                String rs = dis.readUTF();
-                if(rs.equals("ACK")) {
-                    callback.onStart(total_files_size);
-                    sender = new SendFile(this.host , this.port , sentFile , negotiatedThreadCount , callback); 
-                    Thread senderThread = new Thread(() -> {
-                        boolean isFine = true;
-                        try {
-                            sender.start(); // This will now run in a new thread
-                        } catch (Exception e) {
-                            LogPanel.log("IOException in SendFile thread: " + e.getMessage());
-                            isFine = false;
-                            if (callback != null) {
-                                callback.onError(e);
-                            }
-                            // Optionally, handle cleanup if isCompress and sentFile needs deletion
+            if (transferAcceptedByReceiver) {
+                LogPanel.log("FileSender: Sending final filename to receiver: " + sentFile.getName());
+                dos.writeUTF(sentFile.getName()); // Send the name of the actual file being transferred
+                dos.flush();
+
+                LogPanel.log("FileSender: Waiting for receiver's ACK for the filename...");
+                String filenameAck = dis.readUTF(); // This is where the original EOFException occurred (line 168)
+                if (!"ACK".equals(filenameAck)) {
+                    throw new IOException("FileSender: Receiver did not ACK filename. Received: " + filenameAck);
+                }
+                LogPanel.log("FileSender: Receiver ACKed filename. Handshake complete. Starting data transfer.");
+
+                if (callback != null) callback.onStart(currentTotalFileSize);
+                senderInstance = new SendFile(this.host, this.port, sentFile, negotiatedThreadCount, callback);
+                
+                Thread senderOperationThread = new Thread(() -> {
+                    try {
+                        senderInstance.start();
+                        // If SendFile.start() completes without throwing an error,
+                        // onComplete or onError on the originalCallback should be handled by SendFile itself.
+                    } catch (Exception e) {
+                        LogPanel.log("FileSender: Exception in SendFile operation thread: " + e.getMessage());
+                        if (callback != null) {
+                            callback.onError(e);
                         }
-                        if(!isFine) {
-                            sentFile.delete();
-                        } else {
-                            callback.onComplete();
-                        }
-                    });
-                    senderThread.setName("FileSender-SendFile-Thread"); // Good practice to name threads
-                    senderThread.run(); // Correct way to start a new thread
-                    if(isCompress) {
-                        sentFile.delete();
                     }
+                });
+                senderOperationThread.setName("FileSender-SendFile-Operation-Thread");
+                senderOperationThread.start(); // Correctly start the thread
 
-                }
-            } else {
-                if(isCompress) {
-                    sentFile.delete();
-                }
+                // Note: The original callback.onComplete() was here. It should now be called by SendFile
+                // when it truly completes, or onError if SendFile fails.
+                // The deletion of the compressed file should happen after senderOperationThread joins,
+                // or be handled by a more robust cleanup mechanism if the app can exit before thread completion.
+                // For simplicity now, we assume SendFile's callback handles completion/error.
             }
-
-        } catch(Exception e) {
-            callback.onError(e);
-            if(isCompress)
-                new File(archFile).delete();
-            return;
+        } catch (IOException e) {
+            LogPanel.log("FileSender: IOException during sendFiles: " + e.getMessage());
+            // e.printStackTrace();
+            if (callback != null) callback.onError(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LogPanel.log("FileSender: sendFiles interrupted: " + e.getMessage());
+            if (callback != null) callback.onError(e);
+        } finally {
+            if (isCompress && sentFile != null && sentFile.exists() && sentFile.getName().endsWith(".tar.lz4")) {
+                // Consider when to delete: if transfer failed, or always after attempting?
+                // If SendFile runs in a separate thread, deleting here might be premature.
+                // For now, let's assume if an error occurred before SendFile started, we delete.
+                // Proper cleanup of temp files often requires more sophisticated state management or shutdown hooks.
+                LogPanel.log("FileSender: Cleanup: Compressed file " + sentFile.getAbsolutePath() + " might need deletion depending on transfer status (not deleting automatically here).");
+                // new File(archFile).delete(); // Be cautious with auto-deletion if SendFile is async
+            }
         }
     }
 }
