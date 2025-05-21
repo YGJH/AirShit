@@ -189,11 +189,6 @@ public class FileReceiver {
                                             LogPanel.log("ReceiverThread: Processing finished for " + outPutFileName);
                                             callback.onComplete();
                                         }
-                                    } catch (IOException | InterruptedException e) {
-                                        LogPanel.log("ReceiverThread: Error during file reception/decompression: " + e.getMessage());
-                                        if (callback != null) {
-                                            callback.onError(e);
-                                        }
                                     } catch (Exception e) { // Catch any other unexpected exceptions
                                         LogPanel.log("ReceiverThread: Unexpected error: " + e.getClass().getName() + " - " + e.getMessage());
                                         e.printStackTrace(); // Good for debugging
