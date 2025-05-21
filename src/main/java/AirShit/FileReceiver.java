@@ -84,6 +84,19 @@ public class FileReceiver {
                             int retries = 0;
                             String message;
                             int threadCount = Math.min(threads, ITHREADS);
+
+
+                            
+
+
+
+
+
+
+
+
+
+
                             if(accepted) {
                                 message = "OK@" + Integer.toString(threadCount);
                             } else {
@@ -118,6 +131,7 @@ public class FileReceiver {
                             try {
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
+                                
                             } catch (Exception e) {
                                 callback.onError(new Exception("transfer fail", e));
                                 continue;
