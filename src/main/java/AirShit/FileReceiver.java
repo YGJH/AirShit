@@ -141,7 +141,7 @@ public class FileReceiver {
                                 // Timeout for ACK read is already set by socket.setSoTimeout()
                                 try {
                                     String res = dis.readUTF(); // Wait for ACK
-
+                                    
                                     LogPanel.log("Received from sender: " + res);
                                     if (res.equals("ACK")) {
                                         isFine = true; // Handshake fully completed
@@ -166,6 +166,7 @@ public class FileReceiver {
                             
                             try {
                                 String outPutFileName = dis.readUTF();
+                                System.out.println(outPutFileName);
                                 dos.writeUTF("ACK");
 
                                 callback.onStart(total_size);

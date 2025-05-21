@@ -161,11 +161,12 @@ public class FileSender {
             }
 
             File sentFile = new File(archFile);
+            
+            System.out.println(sentFile.getName());
             if(handshakeAccepted) {
-
+                System.out.println("gonna sent to: " + sentFile.getName());
                 dos.writeUTF(sentFile.getName());
                 String rs = dis.readUTF();
-
                 if(rs.equals("ACK")) {
                     callback.onStart(total_files_size);
                     boolean isFine = true;
@@ -192,7 +193,16 @@ public class FileSender {
                     sentFile.delete();
                 }
             }
-        
+        [00:04:35] Error: java.io.EOFException
+[00:04:35] java.io.EOFException
+	at java.base/java.io.DataInputStream.readFully(DataInputStream.java:210)
+	at java.base/java.io.DataInputStream.readUnsignedShort(DataInputStream.java:341)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:575)
+	at java.base/java.io.DataInputStream.readUTF(DataInputStream.java:550)
+	at AirShit.FileSender.sendFiles(FileSender.java:167)
+	at AirShit.SendFileGUI.lambda$5(SendFileGUI.java:284)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
         } catch(Exception e) {
             callback.onError(e);
             if(isCompress)
