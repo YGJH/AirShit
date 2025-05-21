@@ -12,7 +12,7 @@ import java.awt.Font; // 引入 AWT Font類別
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
-    static SendFileGUI GUI;
+    public static SendFileGUI GUI;
 
     static void println(String s) {
         System.out.println(s);

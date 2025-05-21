@@ -1,6 +1,7 @@
 package AirShit;
 
 import AirShit.ui.*;
+
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 
@@ -9,6 +10,7 @@ import java.awt.*;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.NoSuchFileException;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SendFileGUI extends JFrame {
@@ -208,11 +210,15 @@ public class SendFileGUI extends JFrame {
     }
 
     private void doSend() {
-        Client target       = clientPanel.getList().getSelectedValue();
-        String[] files      = filePanel.getSelectedFiles();
-        File   fatherDir    = filePanel.getFolder();
-        String folderName   = filePanel.getFolderName();
-        if (target == null || files == null) return;
+        Client target = clientPanel.getList().getSelectedValue();
+        File file;
+        try {
+            file = filePanel.getSelectedFiles();
+        } catch (NoSuchFieldError e) {
+            LogPanel.log(e.toString());
+            return;
+        } 
+        if (target == null || file == null) return;
 
         logPanel.log("Sending files to " + target.getUserName() + "...");
 
@@ -273,12 +279,10 @@ public class SendFileGUI extends JFrame {
             try {
                 FileSender sender = new FileSender(
                     target.getIPAddr(),
-                    target.getTCPPort(),
-                    fatherDir.getAbsolutePath()
+                    target.getTCPPort()
                 );
-                sender.sendFiles(files,
+                sender.sendFiles(file,
                                  Main.getClient().getUserName(),
-                                 folderName,
                                  callback);
             } catch (Exception ex) {
                 callback.onError(ex);

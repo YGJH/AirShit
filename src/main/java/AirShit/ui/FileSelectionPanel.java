@@ -2,6 +2,7 @@ package AirShit.ui;
 
 import AirShit.FolderSelector;
 import AirShit.SendFileGUI;
+import AirShit.NoFileSelectedException;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -9,12 +10,11 @@ import javax.swing.filechooser.FileSystemView;
 import java.awt.*;
 import java.io.File;
 
+
 public class FileSelectionPanel extends JPanel {
     private JLabel lblFiles;
     private JLabel lblIcon;
-    private String[] selected;
-    private File folder;
-    private String folderName;
+    private File selected;
     private JButton browseBtn; // Store button to restyle
 
     // Store current colors
@@ -81,7 +81,14 @@ public class FileSelectionPanel extends JPanel {
         // 初始化瀏覽按鈕
         if (browseBtn == null) {
             browseBtn = new JButton("Browse Files...");
-            browseBtn.addActionListener(e -> doSelect());
+            browseBtn.addActionListener(e -> {
+                try {
+                    doSelect();
+                } catch (NoFileSelectedException ex) {
+                    // Handle the exception (e.g., show a message dialog)
+                    JOptionPane.showMessageDialog(this, ex.getMessage(), "File Selection", JOptionPane.WARNING_MESSAGE);
+                }
+            });
         }
         browseBtn.setFont(SendFileGUI.FONT_PRIMARY_BOLD);
         browseBtn.setBackground(currentAccentPrimary);
@@ -101,57 +108,43 @@ public class FileSelectionPanel extends JPanel {
         repaint();
     }
 
-    private void doSelect() {
+    private void doSelect() throws NoFileSelectedException {
         File sel = FolderSelector.selectFolderOrFiles(this);
         if (sel == null) {
-            return;
+            // 如果使用者取消選擇，可以選擇不拋出例外，或者保持原樣
+            // 如果不拋出例外，則 selected 檔案不會改變
+            throw new NoFileSelectedException("No file selected");
         }
-        String oldSelected = (selected != null && selected.length > 0) ? selected[0] : null;
-        folder = sel.getParentFile();
-        folderName = sel.getName();
+
+        File oldSelectedValue = this.selected; // 1. 儲存舊的 selected 值
+
+        this.selected = sel; // 2. 更新成員變數 selected 為新的選擇
 
         // 取得系統圖標並嘗試放大
-        Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(sel);
+        Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(this.selected); // 使用 this.selected
         if (fileIcon instanceof ImageIcon) {
             Image image = ((ImageIcon) fileIcon).getImage();
-            Image scaled = image.getScaledInstance(30, 30, Image.SCALE_SMOOTH);
-            lblIcon.setIcon(new ImageIcon(scaled));
+            // 確保 lblIcon 已初始化
+            if (lblIcon != null) {
+                Image scaled = image.getScaledInstance(Math.min(lblIcon.getPreferredSize().width - 10, 30), Math.min(lblIcon.getPreferredSize().height - 10, 30), Image.SCALE_SMOOTH);
+                lblIcon.setIcon(new ImageIcon(scaled));
+            }
         } else {
-            lblIcon.setIcon(fileIcon);
+            if (lblIcon != null) {
+                lblIcon.setIcon(fileIcon);
+            }
         }
 
-        if (sel.isDirectory()) {
-            selected = FolderSelector.listFilesRecursivelyWithRelativePaths(sel);
-            StringBuilder sb = new StringBuilder("<html><b>Folder:</b> " + sel.getName() + "<br>");
-            int count = 0;
-            for (String f : selected) {
-                if (count < 5) {
-                    sb.append("&nbsp;&nbsp;- ").append(f).append("<br>");
-                }
-                count++;
-            }
-            if (count > 5) {
-                sb.append("&nbsp;&nbsp;...and ").append(count - 5).append(" more files.");
-            }
-            sb.append("</html>");
-            lblFiles.setText(sb.toString());
-        } else {
-            selected = new String[]{sel.getName()};
-            lblFiles.setText("<html><b>File:</b> " + sel.getName() + "<br><b>Path:</b> " + sel.getParent() + "</html>");
+        if (lblFiles != null) {
+            lblFiles.setText(this.selected.getName()); // 使用 this.selected
         }
-        firePropertyChange("selectedFiles", oldSelected, selected);
+
+        // 3. 使用儲存的舊值 (oldSelectedValue) 和新的 selected 值觸發事件
+        firePropertyChange("selectedFiles", oldSelectedValue, this.selected);
     }
 
-    public String[] getSelectedFiles() {
+    public File getSelectedFiles() {
         return selected;
-    }
-
-    public File getFolder() {
-        return folder;
-    }
-
-    public String getFolderName() {
-        return folderName;
     }
 
     public void updateThemeColors(Color panelBg, Color textPrimary, Color accentPrimary, Color borderColor) {

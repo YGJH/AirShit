@@ -1,282 +1,196 @@
 package AirShit;
+
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import AirShit.ui.*;
+// import src.main.java.AirShit.ui.LogPanel;
+import AirShit.ui.LogPanel;
 
 /**
  * FileSender: Handles sending files, including potential compression.
  */
 public class FileSender {
-    private  String host;
-    private  int port;
-    private  String initialFatherDir; // 初始的父資料夾，不會被修改
+    private String host;
+    private int port;
+    private int Compress_file_size = 5 * 1024;
+    private int Single_thread = 1 * 1024 * 1024;
+    private StringBuilder sb;
+    private long total_files_size = 0;
+    private File[] pSendFiles;
+    private int filesCount;
+    private int threadCount = 0;
+    private SendFile sender;
+    private final int ITHREADS = Runtime.getRuntime().availableProcessors();
 
-    public FileSender(String host, int port , String fatherDir) {
+    private final String THREADS_STR = Integer.toString(ITHREADS);
+
+
+    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10; // 握手超時時間 (秒)
+    private static final int MAX_HANDSHAKE_RETRIES = 3; // 最大重試次數
+
+
+
+    public FileSender(String host, int port) {
         this.host = host;
         this.port = port;
-        this.initialFatherDir = fatherDir; // 儲存初始的父目錄
     }
 
-    public void println (String str) {
-        // Consider using a proper logger or the LogPanel from your UI
-        System.out.println(str);
+    public static void println(String str) {
+        // System.out.println(str); // Replaced by LogPanel
+        LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
-    public void sendFiles(String[] relativeFilePaths, String senderUserName, String subFolderName, TransferCallback callback) throws IOException, InterruptedException {
-
-        // 使用局部變數來處理當前操作的基礎路徑，避免修改類別成員 initialFatherDir
-        String currentBasePath = this.initialFatherDir;
-        String[] filesToProcess = relativeFilePaths.clone(); // 複製一份檔案列表以供處理
-
-        // handshake
-        StringBuilder sb = new StringBuilder();
-        long originalTotalSize = 0;
-        int threadCount = Runtime.getRuntime().availableProcessors();
-        boolean isSingleFileOriginally = filesToProcess.length == 1 ;
-
-        if (isSingleFileOriginally) {
-            sb.append("isSingle|");
-            // 對於單一檔案，filesToProcess[0] 可能是完整路徑或相對路徑
-            // 我們需要確保它是相對於 initialFatherDir 的名稱
-            File singleFileObj = new File(filesToProcess[0]);
-            String singleFileName = singleFileObj.getName(); // 取得檔案名稱
-            filesToProcess[0] = singleFileName; // 更新 filesToProcess 陣列只包含檔案名稱
-
-            File actualFile = new File(currentBasePath, singleFileName);
-            sb.append(senderUserName).append("|").append(actualFile.getName());
-            if (actualFile.exists() && actualFile.isFile()) {
-                originalTotalSize = actualFile.length();
-            } else {
-                callback.onError(new FileNotFoundException("Single file not found or is a directory: " + actualFile.getAbsolutePath()));
-                return;
-            }
-        } else { // 多檔案或資料夾
-            // 如果有子資料夾名稱，更新 currentBasePath
-            if (subFolderName != null && !subFolderName.isEmpty()) {
-                // 安全性注意：subFolderName 應被清理以防止路徑遍歷
-                // 例如：subFolderName = sanitizePathSegment(subFolderName);
-                currentBasePath = new File(this.initialFatherDir, subFolderName).getAbsolutePath();
-            }
-            // filesToProcess 陣列中的路徑現在是相對於 currentBasePath 的
-
-            sb.append("isMulti|");
-            sb.append(senderUserName).append("|").append(subFolderName != null ? subFolderName : ""); // 傳送原始的 folderName
-            for (String relativePath : filesToProcess) {
-                // 安全性注意：relativePath 應被清理
-                File f = new File(currentBasePath, relativePath);
-                if (f.exists() && f.isFile()) {
-                    originalTotalSize += f.length();
-                    sb.append("|").append(relativePath); // 傳送相對於 folderName 的路徑
-                } else {
-                     println("Warning: File not found or is a directory, skipping: " + f.getAbsolutePath());
-                }
-            }
-            if (originalTotalSize == 0 && filesToProcess.length > 0) {
-                callback.onError(new FileNotFoundException("No valid files found in the selection for multi-file transfer."));
-                return;
-            }
-        }
-
-        sb.append("|").append(originalTotalSize);
-        String originalTotalSizeFormatted = SendFileGUI.formatFileSize(originalTotalSize);
-        sb.append("|").append(originalTotalSizeFormatted);
-        sb.append("|").append(threadCount);
-
-        // 連線到 Receiver 進行 handshake
-        try (Socket socket = new Socket(host, port);
-             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-             DataInputStream dis = new DataInputStream(socket.getInputStream())) {
-            dos.writeUTF(sb.toString());
-            dos.flush();
-            String response = dis.readUTF();
-            if (response.startsWith("ACK")) {
-                String serverThreadStr = response.split("\\|")[1];
-                int serverThreads = Integer.parseInt(serverThreadStr);
-                threadCount = Math.min(threadCount, serverThreads);
-            } else {
-                callback.onError(new IOException("Receiver rejected handshake: " + response));
-                return;
-            }
-        } catch (IOException e) {
-            callback.onError(new IOException("Handshake connection failed: " + e.getMessage(), e));
+    public void sendFiles(File file , String senderUserName, TransferCallback callback) throws IOException, InterruptedException {
+        if(file == null) {
             return;
         }
-
-        boolean isCompressedSuccessfully = false;
-        String[] filesToSendInLoop = filesToProcess; // 預設傳送處理後的檔案列表
-        String loopBasePath = currentBasePath; // 迴圈中使用的基礎路徑
-        long currentTotalSizeForCallback = originalTotalSize; // callback.onStart 使用的大小
-
-        // 嘗試壓縮: 原始總大小小於 700 KB 且原始檔案數量大於 1
-        if (originalTotalSize < 700 * 1024  && filesToProcess.length > 1 && !isSingleFileOriginally) {
-            // println("Total size " + originalTotalSizeFormatted + " with " + filesToProcess.length + " files. Attempting compression...");
-            try {
-                // Compresser.compressFile 期望 filesToProcess 中的路徑是相對於 currentBasePath 的
-                String compressedArchiveName = Compresser.compressFile(currentBasePath, filesToProcess, "AirShit_Archive");
-
-                if (compressedArchiveName != null) {
-                    File archiveFile = new File(currentBasePath, compressedArchiveName);
-                    if (archiveFile.exists() && archiveFile.isFile()) {
-                        isCompressedSuccessfully = true;
-                        filesToSendInLoop = new String[]{compressedArchiveName}; // 更新迴圈中要傳送的檔案列表
-                        // loopBasePath 保持為 currentBasePath，因為壓縮檔建立在那裡
-                        // currentTotalSizeForCallback 保持為 originalTotalSize，以與 handshake 一致
-                        // println("Compression successful. New file to send: " + compressedArchiveName);
-                    } else {
-                        println("Compression reported success, but archive file not found: " + archiveFile.getAbsolutePath());
-                    }
-                } else {
-                    println("Compression returned null, sending files individually.");
-                }
-            } catch (IOException e) {
-                // isCompressedSuccessfully 保持 false
-                callback.onError(new Exception("IOException during compression: " + e.getMessage() + ". Sending files individually.", e));
+        total_files_size = 0;
+        sb = new StringBuilder();
+        String archFile = "";
+        
+        // add handshake information
+        sb.append(senderUserName+"@");
+        if(file.isDirectory()) {
+            for(File f : file.listFiles()) {
+                total_files_size += f.length();
+                sb.append(f.getName() + "@");
             }
+            sb.append(THREADS_STR+"@"+Long.toString(total_files_size));
+
+            archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getName() + "tar.lz4");
+            
+        } else {
+            archFile = file.getName();
+            total_files_size = file.length();
+            sb.append(file.getName() + "@" + THREADS_STR + "@" + Long.toString(total_files_size));
         }
+        
+        // send handshake
+        boolean handshakeAccepted = false;
+        try (Socket socket = new Socket(host, port);
+        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+        DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            socket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000); // 設定讀取超時
+            dos.writeUTF(sb.toString());
+            dos.flush();
+            String handshakeString = sb.toString();
+            int retries = 0;
 
-        callback.onStart(currentTotalSizeForCallback); // 使用與 handshake 一致的 totalSize
+            ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-        for (String relativeFilePathInLoop : filesToSendInLoop) {
-            // relativeFilePathInLoop 是相對於 loopBasePath 的
-            // 如果壓縮了，它就是壓縮檔的名稱；如果沒壓縮，它就是原始檔案的相對路徑
-            File fileToSend = new File(loopBasePath, relativeFilePathInLoop);
+            while (!handshakeAccepted && retries < MAX_HANDSHAKE_RETRIES) {
+                try {
+                    LogPanel.log("傳送握手訊息: " + handshakeString);
+                    dos.writeUTF(handshakeString);
+                    dos.flush();
 
-            if (!fileToSend.exists() || !fileToSend.isFile()) {
-                callback.onError(new FileNotFoundException("File to send not found or is a directory: " + fileToSend.getAbsolutePath()));
-                // 決定是否要因為一個檔案失敗而中止整個傳輸
-                return; // 或者 continue; 嘗試傳送下一個
-            }
+                    String response = dis.readUTF(); // 這裡可能會拋出 SocketTimeoutException
+                    LogPanel.log("收到回應: " + response);
 
-            String fileNameForHeader = relativeFilePathInLoop; // 傳送相對路徑或壓縮檔名
-            String fileSizeForHeader = String.valueOf(fileToSend.length());
-
-            try (Socket socket2 = new Socket(host, port);
-                 DataOutputStream dos = new DataOutputStream(socket2.getOutputStream());
-                 DataInputStream dis = new DataInputStream(socket2.getInputStream())) {
-
-                // 1) send the file-name|size|isCompressed header
-                // isCompressedSuccessfully 標記這次傳輸的檔案是否為一個代表多檔案的壓縮包
-                dos.writeUTF(fileNameForHeader + "|" + fileSizeForHeader + "|" + isCompressedSuccessfully);
-                dos.flush();
-
-                String response = dis.readUTF();
-                if (!"ACK".equals(response)) {
-                    callback.onError(new IOException("Receiver did not ACK file metadata for: " + fileNameForHeader + ". Response: " + response));
-                    return;
-                }
-
-                SendFile sendFileTask;
-                if (fileToSend.length() < 6 * 1024 * 1024) { // 6MB
-                    sendFileTask = new SendFile(host, port, fileToSend, 1, callback);
-                } else {
-                    sendFileTask = new SendFile(host, port, fileToSend, threadCount, callback);
-                }
-                sendFileTask.start(); // 假設 SendFile.start() 是阻塞的或內部管理執行緒並等待完成
-
-                response = dis.readUTF(); // 等待 "OK"
-                if (!"OK".equals(response)) {
-                    callback.onError(new IOException("Receiver failed to confirm reception for: " + fileNameForHeader + ". Response: " + response));
-                    return;
-                }
-            } catch (IOException | InterruptedException e) {
-                callback.onError(new IOException("Error during transfer of " + fileNameForHeader + ": " + e.getMessage(), e));
-                Thread.currentThread().interrupt(); // 重新設定中斷狀態
-                return;
-            }
-        }
-
-        if (isCompressedSuccessfully && filesToSendInLoop.length == 1) {
-            // 刪除本地的壓縮檔案，filesToSendInLoop[0] 是壓縮檔名，loopBasePath 是其所在目錄
-            File archiveToDelete = new File(loopBasePath, filesToSendInLoop[0]);
-            try {
-                Files.deleteIfExists(archiveToDelete.toPath());
-                // println("Deleted temporary archive: " + archiveToDelete.getAbsolutePath());
-            } catch (IOException e) {
-                println("Warning: Failed to delete temporary archive " + archiveToDelete.getAbsolutePath() + ": " + e.getMessage());
-            }
-        }
-
-        callback.onComplete();
-    }
-
-
-    // 內部 Compresser 類別保持不變，但其呼叫者 (sendFiles) 提供了正確的 basePathForFiles
-    private static class Compresser {
-        public static String compressFile(String basePathForFiles, String[] relativeFilePaths, String archiveNamePrefix) throws IOException {
-            if (relativeFilePaths == null || relativeFilePaths.length == 0) {
-                return null;
-            }
-            // 安全性: 驗證 basePathForFiles 是否為有效且預期的目錄
-            Path baseP = Paths.get(basePathForFiles);
-            if (!Files.isDirectory(baseP)) {
-                throw new IOException("Base path for compression is not a valid directory: " + basePathForFiles);
-            }
-
-            String archiveFileName = archiveNamePrefix + System.currentTimeMillis() + ".zip";
-            File archiveFile = new File(basePathForFiles, archiveFileName);
-
-            try (FileOutputStream fos = new FileOutputStream(archiveFile);
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-                byte[] buffer = new byte[4096];
-
-                for (String relativePath : relativeFilePaths) {
-                    if (relativePath == null || relativePath.trim().isEmpty()) {
-                        continue;
-                    }
-                    // 安全性: 清理 relativePath 並確保它不會跳出 basePathForFiles
-                    // 例如: relativePath = sanitizeRelativePath(relativePath);
-                    File fileToZip = new File(basePathForFiles, relativePath);
-                    Path fileToZipPath = fileToZip.toPath().normalize();
-
-                    // 確保要壓縮的檔案在基礎路徑內 (防止路徑遍歷讀取)
-                    if (!fileToZipPath.startsWith(baseP.normalize())) {
-                        System.err.println("Path traversal attempt detected for compression, skipping: " + relativePath);
-                        continue;
-                    }
-
-                    if (!fileToZip.exists() || !fileToZip.isFile()) {
-                        System.err.println("File for zipping not found or is not a file, skipping: " + fileToZip.getAbsolutePath());
-                        continue;
-                    }
-
-                    // ZipEntry 的名稱使用相對路徑
-                    // 安全性: 確保 relativePath 用於 ZipEntry 時是安全的 (例如，不以 / 或 ../ 開頭)
-                    String entryName = Paths.get(relativePath).normalize().toString();
-                    // 移除任何可能的前導斜線，以確保是相對條目
-                    if (entryName.startsWith(File.separator) || entryName.startsWith("/")) {
-                        entryName = entryName.substring(1);
-                    }
-                    // 再次檢查 entryName 是否包含 ".."
-                    if (entryName.contains("..")) {
-                         System.err.println("Invalid entry name for zip (contains '..'), skipping: " + entryName);
-                         continue;
-                    }
-
-
-                    ZipEntry zipEntry = new ZipEntry(entryName);
-                    zos.putNextEntry(zipEntry);
-
-                    try (FileInputStream fis = new FileInputStream(fileToZip)) {
-                        int length;
-                        while ((length = fis.read(buffer)) > 0) {
-                            zos.write(buffer, 0, length);
+                    if (response.startsWith("OK@")) {
+                        handshakeAccepted = true;
+                        try {
+                            int t = Integer.parseInt(response.split("@")[1]);
+                            threadCount = Math.min(ITHREADS, t);
+                            LogPanel.log("握手成功。協商執行緒數: " + threadCount);
+                            dos.writeUTF("ACK");
+                        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+                            LogPanel.log("錯誤：解析伺服器回應中的執行緒數失敗 - " + response);
+                            handshakeAccepted = false; // 解析失敗，視為握手失敗
+                            if (callback != null) callback.onError(new IOException("無效的回應格式: " + response, e));
+                            // 不需要 return，會進入下一次重試或結束迴圈
                         }
+                    } else if (response.equals("REJECT")) {
+                        LogPanel.log("接收端拒絕連線。");
+                        if (callback != null) callback.onError(new IOException("接收端拒絕握手"));
+                        return; // 直接返回，不再重試
+                    } else {
+                        LogPanel.log("收到無效的握手回應: " + response);
+                        // 視為超時或錯誤，將會重試
                     }
-                    zos.closeEntry();
+
+                } catch (SocketTimeoutException e) {
+                    LogPanel.log("握手超時 (讀取回應超時)。準備重試...");
+                    // handshakeAccepted 仍然是 false，會進入下一次重試
+                } catch (IOException e) {
+                    LogPanel.log("握手時發生 IO 錯誤: " + e.getMessage());
+                    // e.printStackTrace(); // 可選
+                    // handshakeAccepted 仍然是 false，會進入下一次重試
+                    if (retries >= MAX_HANDSHAKE_RETRIES -1 && callback != null) { // 如果是最後一次重試失敗
+                        callback.onError(new IOException("握手失敗，已達最大重試次數", e));
+                    }
+                } finally {
+                    // 確保在每次嘗試後關閉資源
+                    if (dos != null) try { dos.close(); } catch (IOException e) { /* ignore */ }
+                    if (dis != null) try { dis.close(); } catch (IOException e) { /* ignore */ }
+                    if (socket != null) try { socket.close(); } catch (IOException e) { /* ignore */ }
                 }
-                return archiveFileName;
-            } catch (IOException e) {
-                Files.deleteIfExists(archiveFile.toPath()); // 嘗試刪除部分建立的檔案
-                throw e;
+
+                if (!handshakeAccepted) {
+                    retries++;
+                    if (retries < MAX_HANDSHAKE_RETRIES) {
+                        LogPanel.log("等待 " + HANDSHAKE_TIMEOUT_SECONDS / 2 + " 秒後重試...");
+                        TimeUnit.SECONDS.sleep(HANDSHAKE_TIMEOUT_SECONDS / 2); // 重試前稍作等待
+                    }
+                }
+            } // end while for retries
+
+            scheduler.shutdown(); // 關閉排程器
+
+
+        } catch (Exception e) {
+            callback.onError(e);
+            return;
+        }
+        File SentFile = new File(archFile);
+
+        if(handshakeAccepted) {
+            // SendFile(String host, int port, File file, int threadCount, TransferCallback callback) {
+            callback.onStart(total_files_size);
+            boolean isFine = true;
+            try { sender = new SendFile(this.host , this.port , SentFile , threadCount , callback); }
+            catch (Exception e) {
+                isFine = false;
+                callback.onError(e);
+            }
+            if(isFine) {
+                callback.onComplete();
             }
         }
     }
+    // ate void dfs(File now) {
+    // totalSize = 0;
+    // tmp = 0 , curFileSize = 0;
+    // cnt = 0 ;
+    // ng currentFolderName = now.getParent();
+    // = "";
+    // now.listFile()) {
+    // tory()) {
+    //
+    // fs(f , cc);
+    // = Compress_file_size && cc > 1) {
+    // ) + ".tar.lz4";
+    // essor.compressFolderToTarLz4(f.getName() , S);
+    //
+    //
+    //
+    // = f.length();
+    //
+    // tName();
+    //
+    // d(S);
+    // es[fileCount++] = f.getAbsolutePath();
+    // curFileSize;
+    // curFileSize > Compress_file_size && cnt > 1) {
+    // LZ4FileCompressor.compressFolderToTarLz4(f.getParent() , ())
+    //
 
-    // 輔助方法 (建議):
-    // private String sanitizePathSegment(String segment) { ... }
-    // private String sanitizeRelativePath(String relativePath) { ... }
 }
