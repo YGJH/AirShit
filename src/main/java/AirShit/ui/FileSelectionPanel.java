@@ -121,7 +121,8 @@ public class FileSelectionPanel extends JPanel {
         this.selected = sel; // 2. 更新成員變數 selected 為新的選擇
 
         // 取得系統圖標並嘗試放大
-        Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(this.selected); // 使用 this.selected
+        // Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(this.selected); // 使用 this.selected
+        Icon fileIcon = new ImageIcon(this.getClass().getResource("/asset/folder.png")); // 使用 this.selected
         if (fileIcon instanceof ImageIcon) {
             Image image = ((ImageIcon) fileIcon).getImage();
             // 確保 lblIcon 已初始化

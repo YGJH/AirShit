@@ -211,7 +211,7 @@ public class FileReceiver {
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
             JLabel iconLabel = new JLabel();
             // You can customize this icon path
-            iconLabel.setIcon(new ImageIcon(getClass().getResource("/resources/asset/data-trasfer.png")));
+            iconLabel.setIcon(new ImageIcon(this.getClass().getResource("/asset/data-transfer.png")));
             topPanel.add(iconLabel, BorderLayout.WEST);
             JPanel infoPanel = new JPanel(new GridLayout(2, 1));
             infoPanel.add(new JLabel("Sender: " + senderName));
