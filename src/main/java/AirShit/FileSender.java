@@ -63,6 +63,7 @@ public class FileSender {
             isCompress = true;
             System.out.println(file.getAbsolutePath() + ".tar.lz4");
             archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getAbsolutePath() + ".tar.lz4");
+            System.out.println("archfile = " + archFile);
             total_files_size = new File(archFile).length();
             sb.append(archFile+"@"+THREADS_STR+"@"+Long.toString(total_files_size));
         } else {
@@ -78,6 +79,8 @@ public class FileSender {
             socket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000); // 設定讀取超時
             dos.writeUTF(sb.toString());
             dos.flush();
+            System.out.println(sb.toString());
+            System.out.println(host + " " + port);
             String handshakeString = sb.toString();
             int retries = 0;
             

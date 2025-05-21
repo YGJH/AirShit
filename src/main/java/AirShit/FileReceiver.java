@@ -61,6 +61,8 @@ public class FileReceiver {
 
                 String handShake = dis.readUTF();
                 if(handShake.contains("@")) {
+                        System.out.println(handShake);
+
                         // is hand shake
                         // senderName@fileNames@threads@total_file_size 
                         // or 
@@ -94,7 +96,6 @@ public class FileReceiver {
                             
                             File selectedSavePath = null; // To store the chosen save directory
                             
-
 
                             // 選擇存放路徑
                             if (accepted) {

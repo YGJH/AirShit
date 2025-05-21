@@ -102,30 +102,30 @@ public class LZ4FileCompressor {
     // public static void main(String[] args) {
     //     System.out.println("Java LZ4 資料夾壓縮測試開始...");
 
-    //     String sourceFolderName = "test_compress_folder";
+    //     String sourceFolderName = "C:\\Users\\charless\\Desktop\\Youtube Downloader";
     //     String outputArchiveName = sourceFolderName + ".tar.lz4";
 
     //     // 建立測試資料夾和檔案結構
     //     File sourceFolder = new File(sourceFolderName);
-    //     File subFolder = new File(sourceFolder, "subdir");
-    //     File file1 = new File(sourceFolder, "file1.txt");
-    //     File file2 = new File(subFolder, "file2.txt");
-    //     File file3 = new File(sourceFolder, "another_file.log");
+    //     // File subFolder = new File(sourceFolder, "subdir");
+    //     // File file1 = new File(sourceFolder, "file1.txt");
+    //     // File file2 = new File(subFolder, "file2.txt");
+    //     // File file3 = new File(sourceFolder, "another_file.log");
 
     //     try {
     //         // 清理舊的測試資料 (如果存在)
-    //         if (sourceFolder.exists()) {
-    //             deleteDirectory(sourceFolder);
-    //         }
-    //         new File(outputArchiveName).delete();
+    //         // if (sourceFolder.exists()) {
+    //         //     deleteDirectory(sourceFolder);
+    //         // }
+    //         // new File(outputArchiveName).delete();
 
 
-    //         sourceFolder.mkdirs();
-    //         subFolder.mkdirs();
+    //         // sourceFolder.mkdirs();
+    //         // subFolder.mkdirs();
 
-    //         Files.write(file1.toPath(), "這是檔案1的內容。\nHello from file1.".getBytes());
-    //         Files.write(file2.toPath(), "這是子目錄中檔案2的內容。\nGreetings from file2!".getBytes());
-    //         Files.write(file3.toPath(), "日誌檔案內容。\nLog entry 1\nLog entry 2".getBytes());
+    //         // Files.write(file1.toPath(), "這是檔案1的內容。\nHello from file1.".getBytes());
+    //         // Files.write(file2.toPath(), "這是子目錄中檔案2的內容。\nGreetings from file2!".getBytes());
+    //         // Files.write(file3.toPath(), "日誌檔案內容。\nLog entry 1\nLog entry 2".getBytes());
 
     //         System.out.println("測試資料夾結構已建立於: " + sourceFolder.getAbsolutePath());
 
@@ -142,15 +142,15 @@ public class LZ4FileCompressor {
     //             System.out.println("\n資料夾壓縮失敗。");
     //         }
 
-    //     } catch (IOException e) {
+    //     } catch (Exception e) {
     //         System.err.println("測試過程中發生錯誤: " + e.getMessage());
     //         e.printStackTrace();
     //     } finally {
     //         // (可選) 清理測試資料夾和壓縮檔
     //         System.out.println("\n清理測試資料...");
-    //         if (sourceFolder.exists()) {
-    //             deleteDirectory(sourceFolder);
-    //         }
+    //         // if (sourceFolder.exists()) {
+    //             // deleteDirectory(sourceFolder);
+    //         // }
     //         // new File(outputArchiveName).delete(); // 如果壓縮成功，可能希望保留壓縮檔
     //         System.out.println("\nJava LZ4 資料夾壓縮測試結束。");
     //     }
@@ -170,6 +170,6 @@ public class LZ4FileCompressor {
                 }
             }
         }
-        directory.delete();
+        directory.delete(); 
     }
 }
