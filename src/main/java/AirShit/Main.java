@@ -344,10 +344,10 @@ public class Main { // 定義 Main 類別
                 sendStatus.set(SEND_STATUS.SEND_OK);
                 
                 SwingUtilities.invokeLater(() -> {
+                    GUI.recvPanel.getProgressBar().setValue(100);
                     GUI.sendPanel.getSendButton().setEnabled(true);
                     GUI.log("Transfer complete");
                     GUI.recvPanel.getProgressBar().setVisible(false);
-                    GUI.recvPanel.getProgressBar().setValue(0);
                     GUI.recvPanel.getLabel().setVisible(false);
                 });
             }

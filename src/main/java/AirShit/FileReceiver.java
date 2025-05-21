@@ -209,7 +209,6 @@ public class FileReceiver {
                                 callback.onError(new Exception("transfer fail", e));
                                 continue;
                             }
-                            callback.onComplete();
                             
                         } catch (Exception e) {
                             println(e.toString());

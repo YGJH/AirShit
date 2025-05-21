@@ -1,20 +1,21 @@
 package AirShit;
 
-import AirShit.ui.*;
+import AirShit.ui.LogPanel; // Assuming LogPanel is accessible
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.ByteBuffer; // Import ByteBuffer
-import java.nio.channels.Channels; // Import Channels
-import java.nio.channels.ReadableByteChannel; // Import ReadableByteChannel
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-// It seems you are not using FileReceiver's TransferCallback directly in Receiver,
-// but a generic TransferCallback. Ensure it's the correct one.
+import java.util.concurrent.atomic.AtomicLong;
 
 public class Receiver {
     private final ServerSocket serverSocket; // This is the ServerSocket passed from FileReceiver
@@ -23,220 +24,236 @@ public class Receiver {
         this.serverSocket = ss;
     }
 
-    /**
-     * Starts receiving file chunks.
-     *
-     * @param outputFile  The path to save the received file.
-     * @param fileLength  The total expected length of the file.
-     * @param threadCount The number of concurrent threads/connections expected from the sender.
-     * @param cb          Callback for progress and errors.
-     * @return true if all chunks are received successfully, false otherwise.
-     * @throws IOException          If an I/O error occurs.
-     * @throws InterruptedException If the thread is interrupted while waiting.
-     */
     public boolean start(String outputFile,
                          long fileLength,
                          int threadCount, // This is the negotiated thread count
                          TransferCallback cb) throws IOException, InterruptedException {
+
         File out = new File(outputFile);
         if (out.getParentFile() != null) {
             out.getParentFile().mkdirs();
         }
-        // It's good practice to delete a potentially incomplete file from a previous attempt
         if (out.exists()) {
             out.delete();
         }
-        // Create the file for RandomAccessFile
-        // RandomAccessFile will create it if it doesn't exist, but creating it explicitly is fine.
-        // out.createNewFile(); // Not strictly necessary if using "rw" in RAF
-
-        // Calculate the total number of chunks the sender will send.
-        // This logic must exactly match SendFile.java's chunk calculation.
-        long baseChunkSizeSender = Math.min(fileLength, 5L * 1024 * 1024 * 1024);
-        long workerCountSender = (long) Math.ceil((double) fileLength / (double) baseChunkSizeSender);
         
-        int totalChunksExpected = 0;
-        long alreadyCalculatedBytes = 0;
-        long chunkSizeSender = (baseChunkSizeSender + threadCount - 1) / threadCount;
-
-
-        for (int i = 0; i < workerCountSender; i++) {
-            long processingForBaseChunk = Math.min(baseChunkSizeSender, fileLength - alreadyCalculatedBytes);
-            for (int j = 0; j < threadCount; j++) {
-                long offsetInFile = (j * chunkSizeSender) + alreadyCalculatedBytes;
-                if (offsetInFile >= alreadyCalculatedBytes + processingForBaseChunk) {
-                    break;
-                }
-                long tempChunkSizeForSender;
-                if (j == threadCount - 1) {
-                    tempChunkSizeForSender = (alreadyCalculatedBytes + processingForBaseChunk) - offsetInFile;
-                } else {
-                    tempChunkSizeForSender = Math.min(chunkSizeSender, (alreadyCalculatedBytes + processingForBaseChunk) - offsetInFile);
-                }
-                if (tempChunkSizeForSender > 0) {
-                    totalChunksExpected++;
-                }
+        // Create an empty file if fileLength is 0, otherwise RandomAccessFile will handle creation
+        if (fileLength == 0) {
+            LogPanel.log("Receiver: Expecting a zero-byte file: " + outputFile);
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                // Empty file created
             }
-            alreadyCalculatedBytes += processingForBaseChunk;
-        }
-        
-        if (fileLength == 0 && totalChunksExpected == 0) { // Handle zero-byte files
-             LogPanel.log("Receiving a zero-byte file: " + outputFile);
-             try (FileOutputStream fos = new FileOutputStream(out)) {
-                 // Create an empty file
-             }
-             if (cb != null) cb.onComplete();
-             return true;
-        }
-        
-        if (totalChunksExpected == 0 && fileLength > 0) {
-            LogPanel.log("Error: Calculated 0 chunks for a non-zero file length. FileLength: " + fileLength);
-            if (cb != null) cb.onError(new IOException("Calculated 0 chunks for a non-zero file."));
-            return false;
+            // The sender will send one "zero-length" chunk. We need to accept one connection for it.
         }
 
-
-        LogPanel.log("Receiver expecting " + totalChunksExpected + " chunks for file: " + outputFile);
+        LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
 
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         List<Future<?>> futures = new ArrayList<>();
-        long totalBytesReceived = 0; // To track overall progress for onComplete
+        List<Socket> dataSockets = new ArrayList<>(); // To close them later
+
+        AtomicLong totalBytesActuallyReceived = new AtomicLong(0);
+
 
         try (RandomAccessFile raf = new RandomAccessFile(out, "rw")) {
-            // Pre-allocate file space if possible and desired (optional, can improve performance)
-            // raf.setLength(fileLength); // Be cautious with this if fileLength is very large
+            if (fileLength > 0) { // Pre-allocate space only for non-empty files
+                 // raf.setLength(fileLength); // Optional: pre-allocate, can be slow for large files on some OS
+            }
 
-            for (int i = 0; i < totalChunksExpected; i++) {
+            for (int i = 0; i < threadCount; i++) {
                 Socket dataSock = null;
                 try {
-                    // LogPanel.log("Receiver waiting to accept connection for chunk " + (i + 1) + "/" + totalChunksExpected);
-                    dataSock = serverSocket.accept(); // Accept a new connection for each chunk
-                    // LogPanel.log("Receiver accepted connection for chunk " + (i + 1) + " from " + dataSock.getRemoteSocketAddress());
-                    
-                    // It's good to set a timeout for read operations on the data socket
-                    dataSock.setSoTimeout(30 * 1000); // 30 seconds timeout for reading a chunk
+                    // LogPanel.log("Receiver: Worker " + i + " waiting to accept connection...");
+                    dataSock = serverSocket.accept();
+                    dataSockets.add(dataSock); // Add to list for later cleanup
+                    // LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
+                    dataSock.setSoTimeout(60 * 1000); // 60 seconds timeout for inactivity on a chunk read
 
-                    Socket finalDataSock = dataSock; // Effectively final for lambda
-                    futures.add(pool.submit(() -> {
-                        try (InputStream socketInputStream = finalDataSock.getInputStream()) {
-                            // Use ReadableByteChannel for more efficient header reading with ByteBuffer
-                            ReadableByteChannel rbc = Channels.newChannel(socketInputStream);
-                            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
-
-                            // Read the header (long offset, long length)
-                            while (headerBuffer.hasRemaining()) {
-                                int bytesRead = rbc.read(headerBuffer);
-                                if (bytesRead == -1) {
-                                    throw new EOFException("Socket closed prematurely while reading chunk header.");
-                                }
-                            }
-                            headerBuffer.flip();
-                            long offset = headerBuffer.getLong();
-                            long length = headerBuffer.getLong(); // Corrected to long
-
-                            // LogPanel.log(String.format("Receiver: Got header for chunk: offset=%d, length=%d", offset, length));
-
-                            if (length < 0) {
-                                throw new IOException("Received invalid chunk length: " + length);
-                            }
-                            if (length == 0) { // Sender should not send zero-length chunks based on its logic
-                                // LogPanel.log(String.format("Receiver: Received zero-length chunk for offset=%d. Skipping write.", offset));
-                                return; // Nothing to write
-                            }
-
-
-                            byte[] buffer = new byte[32 * 1024]; // 32KB buffer
-                            long bytesReadForThisChunk = 0;
-                            int n;
-
-                            while (bytesReadForThisChunk < length &&
-                                   (n = socketInputStream.read(buffer, 0, (int) Math.min(buffer.length, length - bytesReadForThisChunk))) != -1) {
-                                synchronized (raf) { // Synchronize access to RandomAccessFile
-                                    raf.seek(offset + bytesReadForThisChunk);
-                                    raf.write(buffer, 0, n);
-                                }
-                                bytesReadForThisChunk += n;
-                                if (cb != null) {
-                                    cb.onProgress(n);
-                                }
-                            }
-
-                            if (bytesReadForThisChunk < length) {
-                                throw new EOFException(String.format(
-                                    "Socket closed prematurely. Expected %d bytes for chunk (offset %d), but received only %d.",
-                                    length, offset, bytesReadForThisChunk
-                                ));
-                            }
-                            // LogPanel.log(String.format("Receiver: Finished receiving chunk: offset=%d, length=%d", offset, length));
-
-                        } catch (IOException e) {
-                            LogPanel.log("Error processing chunk in receiver thread: " + e.getMessage());
-                            // e.printStackTrace(); // For debugging
-                            if (cb != null) {
-                                cb.onError(e);
-                            }
-                            // Propagate the exception so Future.get() can catch it
-                            throw new RuntimeException("Failed to process chunk", e);
-                        } finally {
-                            try {
-                                if (finalDataSock != null && !finalDataSock.isClosed()) {
-                                    finalDataSock.close();
-                                }
-                            } catch (IOException ex) {
-                                // LogPanel.log("Error closing data socket in receiver thread: " + ex.getMessage());
-                            }
-                        }
-                    }));
-                } catch (IOException e) { // Catch accept() errors or initial socket setup errors
-                    LogPanel.log("Receiver error accepting connection or setting up socket for chunk: " + e.getMessage());
-                    if (cb != null) cb.onError(e);
-                    // If accept fails, we might not be able to receive all chunks.
-                    // Close any opened socket and rethrow or handle to stop further processing.
+                    futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceived, fileLength)));
+                } catch (IOException e) {
+                    LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
                     if (dataSock != null && !dataSock.isClosed()) dataSock.close();
-                    pool.shutdownNow(); // Attempt to stop all active tasks
-                    throw e; // Rethrow to signal failure of the start method
+                    // If a connection accept fails, we might not receive all data.
+                    // Propagate error or decide how to handle partial reception.
+                    // For now, we'll let other workers try, but this is a critical failure.
+                    if (cb != null) cb.onError(e);
+                    // Consider shutting down the pool and failing fast if not all workers can start
+                    // For this example, we continue, which might lead to incomplete file.
                 }
             }
-        } // try-with-resources for RandomAccessFile will close raf
 
-        pool.shutdown();
-        boolean terminatedCleanly = pool.awaitTermination(1, TimeUnit.HOURS); // Wait for all tasks to complete
-
-        if (!terminatedCleanly) {
-            LogPanel.log("Receiver pool did not terminate cleanly. Some tasks might not have completed.");
-            pool.shutdownNow();
-            if (cb != null) cb.onError(new IOException("Receiver tasks timed out."));
-            return false;
-        }
-        
-        // Validate all futures completed without exceptions
-        boolean allOk = true;
-        for (Future<?> future : futures) {
-            try {
-                future.get(); // This will throw an exception if the task threw one
-            } catch (Exception e) {
-                // LogPanel.log("A receiver task failed: " + e.getMessage());
-                // e.printStackTrace(); // For debugging
-                // cb.onError was likely already called within the task
-                allOk = false;
-                // No need to call cb.onError(e) again if it was called inside the lambda
+            if (futures.isEmpty() && fileLength > 0) {
+                 LogPanel.log("Receiver: No receiver workers started. Aborting.");
+                 if (cb != null) cb.onError(new IOException("No receiver workers started."));
+                 pool.shutdownNow(); // Ensure pool is shutdown
+                 return false;
             }
-        }
 
-        if (allOk) {
-            // Verify file size after all chunks are processed
-            if (out.length() == fileLength) {
-                LogPanel.log("File received successfully: " + outputFile + ", Size: " + out.length());
-                if (cb != null) cb.onComplete();
+
+            pool.shutdown();
+            if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Long timeout
+                LogPanel.log("Receiver: Pool termination timeout.");
+                pool.shutdownNow();
+                if (cb != null) cb.onError(new IOException("Receiver tasks timed out."));
+                return false; // Indicate failure
+            }
+            LogPanel.log("Receiver: All receiver worker tasks have been submitted and pool has shut down.");
+
+            // Validate all futures completed without exceptions
+            boolean allTasksOk = true;
+            for (Future<?> future : futures) {
+                try {
+                    future.get(); // This will throw an exception if the task threw one
+                } catch (Exception e) {
+                    LogPanel.log("A receiver task failed: " + e.getCause() != null ? e.getCause().getMessage() : e.getMessage());
+                    allTasksOk = false;
+                    // cb.onError was likely already called within the task
+                }
+            }
+
+            if (allTasksOk) {
+                // Final check on file size
+                if (out.length() == fileLength) {
+                    LogPanel.log("File received successfully: " + outputFile + ", Final Size: " + out.length());
+                    if (cb != null) cb.onComplete();
+                    return true;
+                } else {
+                    LogPanel.log("File size mismatch. Expected: " + fileLength + ", Actual: " + out.length() + " (Total reported by workers: " + totalBytesActuallyReceived.get() + ")");
+                    if (cb != null) cb.onError(new IOException("File size mismatch after transfer. Expected " + fileLength + ", got " + out.length()));
+                    return false;
+                }
             } else {
-                LogPanel.log("File size mismatch. Expected: " + fileLength + ", Actual: " + out.length());
-                if (cb != null) cb.onError(new IOException("File size mismatch after transfer."));
-                allOk = false;
+                LogPanel.log("One or more receiver tasks failed. File transfer incomplete or corrupted.");
+                // cb.onError would have been called by the failing task(s)
+                return false;
             }
-        } else {
-            LogPanel.log("One or more receiver tasks failed. File transfer incomplete or corrupted.");
-            // cb.onError would have been called by the failing task(s)
+
+        } finally {
+            for (Socket s : dataSockets) {
+                if (s != null && !s.isClosed()) {
+                    try {
+                        s.close();
+                    } catch (IOException e) {
+                        LogPanel.log("Receiver: Error closing a data socket: " + e.getMessage());
+                    }
+                }
+            }
+            LogPanel.log("Receiver: All accepted data sockets closed.");
         }
-        return allOk;
+    }
+
+    private static class ReceiverWorker implements Runnable {
+        private final Socket dataSocket;
+        private final RandomAccessFile raf; // Shared
+        private final TransferCallback callback;
+        private final AtomicLong totalBytesActuallyReceivedOverall; // For final verification
+        private final long expectedTotalFileLength;
+
+
+        public ReceiverWorker(Socket dataSocket, RandomAccessFile raf, TransferCallback callback, AtomicLong totalReceived, long expectedTotalFileLength) {
+            this.dataSocket = dataSocket;
+            this.raf = raf;
+            this.callback = callback;
+            this.totalBytesActuallyReceivedOverall = totalReceived;
+            this.expectedTotalFileLength = expectedTotalFileLength;
+        }
+
+        @Override
+        public void run() {
+            try (InputStream socketInputStream = dataSocket.getInputStream();
+                 ReadableByteChannel rbc = Channels.newChannel(socketInputStream)) {
+
+                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
+                byte[] dataBuffer = new byte[64 * 1024]; // 64KB data buffer
+
+                while (true) {
+                    headerBuffer.clear();
+                    int headerBytesRead = 0;
+                    try {
+                        while (headerBuffer.hasRemaining()) {
+                            int bytesReadThisCall = rbc.read(headerBuffer);
+                            if (bytesReadThisCall == -1) {
+                                if (headerBytesRead == 0) { // Clean EOF, sender closed connection
+                                    // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): Clean EOF detected on header read. Assuming sender finished for this channel.");
+                                    return; // End of chunks for this worker
+                                }
+                                throw new EOFException("Socket closed prematurely while reading chunk header. Read " + headerBytesRead + " header bytes.");
+                            }
+                            headerBytesRead += bytesReadThisCall;
+                        }
+                    } catch (EOFException e) {
+                        // This can happen if sender closes connection after sending some chunks.
+                        // If no header bytes were read at all, it's a clean termination for this worker.
+                        if (headerBytesRead == 0) {
+                             // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOF on header read (no bytes), worker finishing.");
+                             return;
+                        }
+                        LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+"): EOFException reading header: " + e.getMessage());
+                        throw e; // Propagate to mark task as failed
+                    }
+
+
+                    headerBuffer.flip();
+                    long offset = headerBuffer.getLong();
+                    long length = headerBuffer.getLong();
+
+                    // LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d", Thread.currentThread().getName(), offset, length));
+
+                    if (length < 0) {
+                        throw new IOException("Received invalid chunk length: " + length);
+                    }
+                    
+                    if (length == 0) { // Handle zero-byte file signal or empty chunk
+                        // LogPanel.log(String.format("ReceiverWorker (%s): Received zero-length chunk for offset=%d. Handled.", Thread.currentThread().getName(), offset));
+                        // If this is the *only* chunk (for a zero-byte file), this worker might be the one to receive it.
+                        // The main `start` method already creates an empty file if fileLength is 0.
+                        // If this is the only chunk and it's for a zero-byte file, the worker can simply return.
+                        // The sender sends one (0,0) chunk for empty files.
+                        if (expectedTotalFileLength == 0 && offset == 0) {
+                            return; // This worker handled the zero-byte file signal
+                        }
+                        continue; // If it's just an empty part of a larger file (should not happen with current sender)
+                    }
+
+
+                    long bytesReadForThisChunk = 0;
+                    while (bytesReadForThisChunk < length) {
+                        int toRead = (int) Math.min(dataBuffer.length, length - bytesReadForThisChunk);
+                        int n = socketInputStream.read(dataBuffer, 0, toRead);
+                        if (n == -1) {
+                            throw new EOFException(String.format(
+                                    "Socket closed prematurely. Expected %d bytes for chunk (offset %d), but received only %d before EOF.",
+                                    length, offset, bytesReadForThisChunk
+                            ));
+                        }
+                        synchronized (raf) {
+                            raf.seek(offset + bytesReadForThisChunk);
+                            raf.write(dataBuffer, 0, n);
+                        }
+                        bytesReadForThisChunk += n;
+                        totalBytesActuallyReceivedOverall.addAndGet(n);
+                        if (callback != null) {
+                            callback.onProgress(n);
+                        }
+                    }
+                    // LogPanel.log(String.format("ReceiverWorker (%s): Finished receiving chunk: offset=%d, length=%d", Thread.currentThread().getName(), offset, length));
+                }
+
+            } catch (SocketTimeoutException e) {
+                LogPanel.log("Error in ReceiverWorker ("+Thread.currentThread().getName()+"): Socket timeout - " + e.getMessage());
+                if (callback != null) callback.onError(e);
+                throw new RuntimeException("Socket timeout in ReceiverWorker", e);
+            } catch (IOException e) {
+                LogPanel.log("Error in ReceiverWorker ("+Thread.currentThread().getName()+"): " + e.getMessage());
+                // e.printStackTrace(); // For debugging
+                if (callback != null) {
+                    callback.onError(e);
+                }
+                throw new RuntimeException("IOException in ReceiverWorker", e); // Propagate to mark Future as failed
+            } finally {
+                // LogPanel.log("ReceiverWorker ("+Thread.currentThread().getName()+") finishing run method.");
+                // The dataSocket is closed by the main Receiver.start() method's finally block.
+            }
+        }
     }
 }

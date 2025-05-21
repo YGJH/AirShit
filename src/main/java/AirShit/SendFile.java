@@ -1,7 +1,9 @@
 package AirShit;
 
-import java.io.*;
-import java.net.Socket; // Keep for reference or if other parts use it, though ChunkSender won't
+import AirShit.ui.LogPanel; // Assuming LogPanel is accessible
+
+import java.io.File;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -9,20 +11,16 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * SendFile: 將檔案分割成多段，並以多執行緒同時傳送給 Receiver。
- * 已改用 NIO FileChannel.transferTo()。
- */
 public class SendFile {
     private final String host;
     private final int port;
     private final File file;
-    // private final AtomicLong totalSent = new AtomicLong(0); // Progress is handled by callback
     private final TransferCallback callback;
     private int threadCount;
 
@@ -31,132 +29,199 @@ public class SendFile {
         this.host = host;
         this.port = port;
         this.file = file;
-        this.threadCount = threadCount;
+        this.threadCount = Math.max(1, threadCount); // Ensure at least one thread
     }
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        System.out.println("file size: " + fileLength);
-        threadCount = Math.max(threadCount, 1);
-        // 每個 "baseChunk" 最大約 5GB (long)，但實際傳輸時會再切分給 threadCount 個執行緒
-        long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024 * 1024); // 5GB limit for a conceptual processing block
-        long workerCount = (long) Math.ceil((double) fileLength / (double) baseChunkSize); // Number of base chunks
-        
-        // chunkSize 是每個執行緒在一個 baseChunk 內理想情況下處理的大小
-        long chunkSize = (baseChunkSize + threadCount - 1) / threadCount;
-
-        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
-
-        long alreadySubmittedBytes = 0;
-
-        for (int i = 0; i < workerCount; i++) {
-            // processing 是當前這個 baseChunk 的實際大小
-            long processing = Math.min(baseChunkSize, fileLength - alreadySubmittedBytes);
-            
-            for (int j = 0; j < threadCount; j++) {
-                // offset 是這個執行緒負責的區塊在整個檔案中的起始位置
-                long offset = (j * chunkSize) + alreadySubmittedBytes;
-                
-                // 如果計算出的 offset 已經超出了這個 baseChunk 的範圍，則無需再為此 baseChunk 分配執行緒
-                if (offset >= alreadySubmittedBytes + processing) {
-                    break; 
-                }
-
-                // tempChunkSize 是這個執行緒實際要傳輸的大小
-                long tempChunkSize;
-                if (j == threadCount - 1) {
-                    // 最後一個執行緒處理這個 baseChunk 的剩餘部分
-                    tempChunkSize = (alreadySubmittedBytes + processing) - offset;
-                } else {
-                    tempChunkSize = Math.min(chunkSize, (alreadySubmittedBytes + processing) - offset);
-                }
-                
-                if (tempChunkSize <= 0) { // 如果計算出的大小為0或負，則跳過
-                    continue;
-                }
-
-                pool.submit(new ChunkSender(offset, tempChunkSize));
-            }
-            alreadySubmittedBytes += processing;
+        if (fileLength == 0) {
+            LogPanel.log("SendFile: Source file is empty. Attempting to send zero-byte file signal.");
+            // Special handling for zero-byte files: connect, send zero-length header, close.
+            // This requires receiver to handle a zero-length chunk correctly.
+            // For simplicity with persistent connections, we might need a different signal
+            // or ensure at least one worker tries to send a "zero-length" chunk if file is empty.
+            // For now, if file is empty, no chunks will be added to queue, workers will do nothing.
+            // The receiver side needs to be aware of this.
+            // A robust way: if fileLength is 0, send a single chunk with offset 0, length 0.
         }
 
-        pool.shutdown();
-        if (!pool.awaitTermination(10000, TimeUnit.MINUTES)) { // Timeout is very long
-            pool.shutdownNow();
+        LogPanel.log("SendFile starting. File size: " + fileLength + ", Threads: " + threadCount);
+
+        ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
+        populateChunkQueue(fileLength, chunkQueue);
+
+        if (fileLength > 0 && chunkQueue.isEmpty()) {
+            LogPanel.log("Error: File length is " + fileLength + " but no chunks were generated.");
+            if (callback != null) callback.onError(new IOException("No chunks generated for non-empty file."));
+            return;
+        }
+        if (fileLength == 0 && chunkQueue.isEmpty()) { // Add a zero-length chunk for empty files
+            chunkQueue.offer(new ChunkInfo(0,0));
+            LogPanel.log("SendFile: Added a zero-length chunk for empty file.");
+        }
+
+
+        List<SocketChannel> channels = new ArrayList<>();
+        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+        AtomicInteger activeWorkers = new AtomicInteger(threadCount);
+
+
+        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
+            for (int i = 0; i < threadCount; i++) {
+                SocketChannel socketChannel = SocketChannel.open();
+                socketChannel.configureBlocking(true); // Ensure blocking mode for simplicity here
+                try {
+                    socketChannel.connect(new InetSocketAddress(host, port));
+                    channels.add(socketChannel);
+                    LogPanel.log("SendFile: Worker " + i + " connected to " + host + ":" + port);
+                    pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, callback, activeWorkers));
+                } catch (IOException e) {
+                    LogPanel.log("SendFile: Worker " + i + " failed to connect or start: " + e.getMessage());
+                    // Close this specific channel if it was opened
+                    if (socketChannel.isOpen()) socketChannel.close();
+                    activeWorkers.decrementAndGet(); // This worker won't run
+                    // If any connection fails, we might want to abort the whole process
+                    // For now, other workers will proceed. This could lead to partial sends.
+                    // A more robust solution would be to signal all other workers to stop or not start.
+                    // And then clean up all successfully opened channels.
+                    // For this example, we'll let it try with fewer workers if some fail to connect.
+                }
+            }
+
+            if (channels.isEmpty() && fileLength > 0) {
+                LogPanel.log("SendFile: No sender workers could connect. Aborting.");
+                if (callback != null) callback.onError(new IOException("All sender workers failed to connect."));
+                pool.shutdownNow();
+                return;
+            }
+
+
+            pool.shutdown();
+            // Wait for all tasks to complete or timeout
+            if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Long timeout
+                LogPanel.log("SendFile: Pool termination timeout. Forcing shutdown.");
+                pool.shutdownNow();
+                if (callback != null) callback.onError(new IOException("SendFile tasks timed out."));
+            } else {
+                LogPanel.log("SendFile: All sender workers completed.");
+                // At this point, onComplete should be triggered by the receiver's logic
+                // or after verifying with receiver. For now, sender assumes its job is done.
+            }
+
+        } finally {
+            for (SocketChannel sc : channels) {
+                if (sc.isOpen()) {
+                    try {
+                        sc.close();
+                    } catch (IOException e) {
+                        LogPanel.log("SendFile: Error closing a sender socket channel: " + e.getMessage());
+                    }
+                }
+            }
+            LogPanel.log("SendFile: All sender socket channels closed.");
         }
     }
 
-    private class ChunkSender implements Runnable {
-        private final long offset;
-        private final long length; // length of the chunk this sender is responsible for
+    private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
+        if (fileLength == 0) {
+            return; // Handled by adding a single zero-length chunk in start()
+        }
 
-        public ChunkSender(long offset, long length) {
-            this.offset = offset;
-            this.length = length;
+        long baseChunkSize = Math.min(fileLength, 1024L * 1024 * 1024); // 1GB conceptual processing block
+        long workerCountForChunkCalc = (long) Math.ceil((double) fileLength / baseChunkSize);
+        long subChunkSizePerThread = (baseChunkSize + threadCount - 1) / threadCount; // Ideal size per thread within a baseChunk
+
+        long bytesSubmittedSoFar = 0;
+        for (int i = 0; i < workerCountForChunkCalc; i++) {
+            long currentBaseChunkActualSize = Math.min(baseChunkSize, fileLength - bytesSubmittedSoFar);
+            for (int j = 0; j < threadCount; j++) {
+                long chunkOffsetInFile = (j * subChunkSizePerThread) + bytesSubmittedSoFar;
+                if (chunkOffsetInFile >= bytesSubmittedSoFar + currentBaseChunkActualSize) {
+                    break;
+                }
+                long actualChunkLengthForThread;
+                if (j == threadCount - 1) {
+                    actualChunkLengthForThread = (bytesSubmittedSoFar + currentBaseChunkActualSize) - chunkOffsetInFile;
+                } else {
+                    actualChunkLengthForThread = Math.min(subChunkSizePerThread, (bytesSubmittedSoFar + currentBaseChunkActualSize) - chunkOffsetInFile);
+                }
+                if (actualChunkLengthForThread > 0) {
+                    chunkQueue.offer(new ChunkInfo(chunkOffsetInFile, actualChunkLengthForThread));
+                }
+            }
+            bytesSubmittedSoFar += currentBaseChunkActualSize;
+        }
+        LogPanel.log("SendFile: Populated chunk queue with " + chunkQueue.size() + " chunks.");
+    }
+
+    private static class SenderWorker implements Runnable {
+        private final SocketChannel socketChannel;
+        private final FileChannel fileChannel; // Shared
+        private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
+        private final TransferCallback callback;
+        private final AtomicInteger activeWorkers;
+
+
+        public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel,
+                              ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback, AtomicInteger activeWorkers) {
+            this.socketChannel = socketChannel;
+            this.fileChannel = fileChannel;
+            this.chunkQueue = chunkQueue;
+            this.callback = callback;
+            this.activeWorkers = activeWorkers;
         }
 
         @Override
         public void run() {
-            // Check if there's anything to send for this chunk
-            if (length <= 0) {
-                // System.out.println("ChunkSender for offset=" + offset + " has zero length, skipping.");
-                return;
-            }
-
-            try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ);
-                 SocketChannel socketChannel = SocketChannel.open()) {
-
-                socketChannel.connect(new InetSocketAddress(host, port));
-
-                // 1. 傳送 Header (offset: long, length: long)
+            try {
                 ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
-                headerBuffer.putLong(offset);
-                headerBuffer.putLong(length);
-                headerBuffer.flip();
-                while (headerBuffer.hasRemaining()) {
-                    socketChannel.write(headerBuffer);
-                }
+                ChunkInfo chunk;
+                while ((chunk = chunkQueue.poll()) != null) {
+                    if (chunk.length < 0) continue; // Should not happen with current logic
 
-                // 2. 使用 transferTo 傳送檔案區塊數據
-                long bytesTransferredForThisChunk = 0;
-                while (bytesTransferredForThisChunk < length) {
-                    // fileChannel.transferTo(position, count, target)
-                    // position: 檔案中的絕對位置
-                    // count: 要傳輸的位元組數
-                    long transferredThisCall = fileChannel.transferTo(
-                            offset + bytesTransferredForThisChunk, // Absolute position in the file
-                            length - bytesTransferredForThisChunk,  // Remaining bytes for this chunk
-                            socketChannel
-                    );
+                    // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sending chunk " + chunk);
+                    headerBuffer.clear();
+                    headerBuffer.putLong(chunk.offset);
+                    headerBuffer.putLong(chunk.length);
+                    headerBuffer.flip();
 
-                    if (transferredThisCall < 0) {
-                        // 根據 SocketChannel javadoc, write (which transferTo uses)
-                        // should not return -1 unless channel is closed.
-                        throw new IOException("SocketChannel closed or error during transferTo, returned " + transferredThisCall);
+                    while (headerBuffer.hasRemaining()) {
+                        socketChannel.write(headerBuffer);
                     }
                     
-                    bytesTransferredForThisChunk += transferredThisCall;
-                    if (callback != null && transferredThisCall > 0) {
-                        callback.onProgress(transferredThisCall);
+                    if (chunk.length == 0) { // For zero-byte file signal
+                        // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Sent zero-length chunk header.");
+                        continue; // No data to send
                     }
-                    // If transferredThisCall is 0, the loop will continue,
-                    // which is correct for blocking channels if the buffer was temporarily full
-                    // (though less common for transferTo with blocking socket).
-                }
-                // System.out.printf("已傳送分段 (NIO)：offset=%d, length=%d%n", offset, length);
 
+                    long bytesTransferredForThisChunk = 0;
+                    while (bytesTransferredForThisChunk < chunk.length) {
+                        long transferredThisCall = fileChannel.transferTo(
+                                chunk.offset + bytesTransferredForThisChunk,
+                                chunk.length - bytesTransferredForThisChunk,
+                                socketChannel
+                        );
+                        if (transferredThisCall < 0) {
+                            throw new IOException("SocketChannel closed or error during transferTo, returned " + transferredThisCall);
+                        }
+                        bytesTransferredForThisChunk += transferredThisCall;
+                        if (callback != null && transferredThisCall > 0) {
+                            callback.onProgress(transferredThisCall);
+                        }
+                    }
+                    // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + "): Finished sending chunk " + chunk);
+                }
             } catch (IOException e) {
-                System.err.println("ChunkSender (NIO) 發生 IO 錯誤 (offset=" + offset + ", length=" + length + "): " + e.getMessage());
-                e.printStackTrace();
+                LogPanel.log("Error in SenderWorker (" + Thread.currentThread().getName() + "): " + e.getMessage());
                 if (callback != null) {
-                    // callback.onError(e); // 假設您的 callback 有 onError 方法
+                    callback.onError(e); // Report error
                 }
-            } catch (Exception e) { // 捕捉其他未預期錯誤
-                System.err.println("ChunkSender (NIO) 發生未預期錯誤 (offset=" + offset + ", length=" + length + "): " + e.getMessage());
-                e.printStackTrace();
-                 if (callback != null) {
-                    // callback.onError(e);
-                }
+            } finally {
+                // LogPanel.log("SenderWorker (" + Thread.currentThread().getName() + ") finishing.");
+                // The socketChannel itself will be closed by the main SendFile.start() method's finally block.
+                // This worker just finishes its task.
+                // If we need to signal individual worker completion for more complex logic:
+                // activeWorkers.decrementAndGet();
             }
         }
     }
