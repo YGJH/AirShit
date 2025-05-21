@@ -60,14 +60,16 @@ public class FileSender {
         boolean isCompress = false;
         sb.append(senderUserName+"@");
         if(file.isDirectory()) {
-            for(File f : file.listFiles()) {
-                total_files_size += f.length();
-                sb.append(f.getName() + "@");
-            }
-            sb.append(THREADS_STR+"@"+Long.toString(total_files_size));
+            // for(File f : file.listFiles()) {
+            //     total_files_size += f.length();
+            //     sb.append(f.getName() + "@");
+            // }
             isCompress = true;
             System.out.println(file.getAbsolutePath() + ".tar.lz4");
             archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getAbsolutePath() + ".tar.lz4");
+            total_files_size = new File(archFile).length();
+            sb.append(THREADS_STR+"@"+Long.toString(total_files_size));
+
             
         } else {
             archFile = file.getAbsolutePath();
