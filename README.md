@@ -8,6 +8,37 @@ Version: 1.0.0
 
 Last Updated: 2025-05-18
 
+[01:47:55] Waiting for ACK from sender...
+[01:47:55] Received from sender: charles@C:\Users\charless\Desktop\YoutubeDownloader.Bare.win-x64.tar.lz4@8@72761902
+[01:47:55] Error: Expected ACK, but received: charles@C:\Users\charless\Desktop\YoutubeDownloader.Bare.win-x64.tar.lz4@8@72761902
+[01:47:55] Waiting for ACK from sender...
+[01:47:55] Received from sender: ACK
+[01:47:55] ACK received. Ready for file data.
+[01:47:55] Receiving 69.39 MB
+[01:47:55] ReceiverThread: Starting file reception for: C:\Users\kkasdasd\Downloads\YoutubeDownloader.Bare.win-x64.tar.lz4
+[01:47:55] ReceiverThread: Expected total size: 72761902
+[01:47:55] ReceiverThread: Negotiated thread count: 8
+[01:47:55] Receiver starting. Expecting file: C:\Users\kkasdasd\Downloads\YoutubeDownloader.Bare.win-x64.tar.lz4, Size: 72761902, Connections: 8
+[01:47:55] Receiver: Worker 0 waiting to accept connection on 0.0.0.0/0.0.0.0:51550...
+[01:47:55] Receiver: Worker 0 accepted connection from /192.168.0.100:62073
+[01:47:55] Receiver: Worker 1 waiting to accept connection on 0.0.0.0/0.0.0.0:51550...
+[01:47:55] ReceiverWorker (pool-2-thread-1): Started.
+[01:47:55] ReceiverWorker (pool-2-thread-1): Top of chunk read loop. Waiting for header.
+[01:47:55] ReceiverWorker (pool-2-thread-1): Got header: offset=0, length=72761902
+[01:47:55] Progress: 0% (12.83 KB)
+[01:47:55] Progress: 10% (6.95 MB)
+[01:47:56] Progress: 20% (13.89 MB)
+[01:47:56] Progress: 30% (20.83 MB)
+[01:47:57] Progress: 40% (27.76 MB)
+[01:47:58] Progress: 50% (34.71 MB)
+[01:47:58] Progress: 60% (41.64 MB)
+[01:47:59] Progress: 70% (48.58 MB)
+[01:48:00] Progress: 80% (55.53 MB)
+[01:48:00] Progress: 90% (62.46 MB)
+[01:48:01] ReceiverWorker (pool-2-thread-1): Top of chunk read loop. Waiting for header.
+[01:48:01] Progress: 100% (69.39 MB)
+[01:48:01] ReceiverWorker (pool-2-thread-1) finishing run method.
+
 =====================================================
 
 
