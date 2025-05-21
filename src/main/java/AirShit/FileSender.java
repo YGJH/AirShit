@@ -66,7 +66,7 @@ public class FileSender {
             }
             sb.append(THREADS_STR+"@"+Long.toString(total_files_size));
             isCompress = true;
-            archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getName() + "tar.lz4");
+            archFile = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath() , file.getName() + ".tar.lz4");
             
         } else {
             archFile = file.getAbsolutePath();

@@ -76,12 +76,14 @@ public class FileReceiver {
                                 sb.append(parts[i]);
                                 if (i < len - 3) { // 如果不是倒數第二個檔名，則加換行符
                                     sb.append("\n");
-                                }                            }
+                                }                            
+                            }
+                            // 如果有收到，先回ACK
+                            dos.writeUTF("ACK");
                             // show pannel
                             FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI ,  sb ,  SenderName,  Long.toString(total_size));
                             boolean accepted = dialog.showDialog();
                             
-                            int retries = 0;
                             String message;
                             int threadCount = Math.min(threads, ITHREADS);
 
@@ -123,7 +125,6 @@ public class FileReceiver {
                                 accepted = false; // Ensure accepted is false if we are rejecting
                             }
 
-                            int ackRetries = 0;
                             boolean isFine = false;
                             dos.writeUTF(message); // Send OK@threads or REJECT
                             dos.flush();
@@ -210,7 +211,7 @@ public class FileReceiver {
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
             JLabel iconLabel = new JLabel();
             // You can customize this icon path
-            iconLabel.setIcon(new ImageIcon(getClass().getResource("/icons/file_transfer.png")));
+            iconLabel.setIcon(new ImageIcon(getClass().getResource("/resources/asset/data-trasfer.png")));
             topPanel.add(iconLabel, BorderLayout.WEST);
             JPanel infoPanel = new JPanel(new GridLayout(2, 1));
             infoPanel.add(new JLabel("Sender: " + senderName));
