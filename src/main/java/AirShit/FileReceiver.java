@@ -211,7 +211,7 @@ public class FileReceiver {
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
             JLabel iconLabel = new JLabel();
             // You can customize this icon path
-            Icon dataIcon = new ImageIcon(this.getClass().getResource("/asset/data-transfer.png");
+            Icon dataIcon = new ImageIcon(this.getClass().getResource("/asset/data-transfer.png"));
             if (dataIcon instanceof ImageIcon) {
                 Image image = ((ImageIcon) dataIcon).getImage();
                 // 確保 lblIcon 已初始化
