@@ -170,9 +170,6 @@ public class FileSender {
                         boolean isFine = true;
                         try {
                             sender.start(); // This will now run in a new thread
-                            // If sender.start() completes without exception, it implies success from its perspective.
-                            // The actual onComplete for the entire file transfer should be handled by SendFile
-                            // or its callback mechanism when all chunks are truly sent and confirmed.
                         } catch (Exception e) {
                             LogPanel.log("IOException in SendFile thread: " + e.getMessage());
                             isFine = false;

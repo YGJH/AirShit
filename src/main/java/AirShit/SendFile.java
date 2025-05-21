@@ -15,19 +15,19 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean; // Added
+import java.util.concurrent.atomic.AtomicBoolean; 
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class SendFile {
     private final String host;
     private final int port;
     private final File file;
-    private final TransferCallback originalCallback; // Renamed for clarity
+    private final TransferCallback originalCallback; 
     private int threadCount;
-    private final AtomicBoolean errorReportedByWorker = new AtomicBoolean(false); // Added
+    private final AtomicBoolean errorReportedByWorker = new AtomicBoolean(false); 
 
     public SendFile(String host, int port, File file, int threadCount, TransferCallback callback) {
-        this.originalCallback = callback; // Store the original callback
+        this.originalCallback = callback; 
         this.host = host;
         this.port = port;
         this.file = file;
@@ -36,7 +36,6 @@ public class SendFile {
         LogPanel.log("SendFile Constructor: Set SendFile.this.threadCount=" + this.threadCount);
     }
 
-    // Wrapper callback to intercept onError
     private TransferCallback getWrappedCallback() {
         return new TransferCallback() {
             @Override
@@ -59,14 +58,9 @@ public class SendFile {
         };
     }
 
-
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        TransferCallback workerCallback = getWrappedCallback(); // Use wrapped callback for workers
-
-        // onStart is typically called by the higher-level sender (FileSender) before this.
-        // If SendFile needs to signal its own start, it can do so.
-        // if (originalCallback != null) originalCallback.onStart(fileLength); // Or rely on FileSender
+        TransferCallback workerCallback = getWrappedCallback(); 
 
         LogPanel.log("SendFile starting. File: " + file.getName() + ", Size: " + fileLength + ", Threads: " + threadCount);
 
@@ -82,27 +76,24 @@ public class SendFile {
             chunkQueue.offer(new ChunkInfo(0, 0));
             LogPanel.log("SendFile: Added a zero-length chunk for empty file.");
         }
-        if (chunkQueue.isEmpty()){ // Should not happen if logic above is correct
+        if (chunkQueue.isEmpty()){ 
              LogPanel.log("Error: Chunk queue is empty before starting workers.");
              if (workerCallback != null) workerCallback.onError(new IOException("Chunk queue empty unexpectedly."));
              return;
         }
 
-
         List<SocketChannel> channels = new ArrayList<>();
-        // Ensure thread pool size matches the number of chunks if chunks < threadCount, or use this.threadCount
         int poolSize = Math.min(this.threadCount, chunkQueue.size());
-        if (fileLength == 0) poolSize = 1; // For zero-byte file, one worker to send the (0,0) chunk
-        poolSize = Math.max(1, poolSize); // Ensure at least one thread in pool
+        if (fileLength == 0) poolSize = 1; 
+        poolSize = Math.max(1, poolSize); 
 
         LogPanel.log("SendFile: Effective pool size for sender workers: " + poolSize);
         ExecutorService pool = Executors.newFixedThreadPool(poolSize);
-        AtomicInteger workersToStart = new AtomicInteger(poolSize);
-
+        AtomicInteger workersToStart = new AtomicInteger(poolSize); // This seems unused, can be removed if not needed by SenderWorker logic
 
         try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
             for (int i = 0; i < poolSize; i++) {
-                SocketChannel socketChannel = null; // Declare here for broader scope in catch/finally
+                SocketChannel socketChannel = null; 
                 try {
                     socketChannel = SocketChannel.open();
                     socketChannel.configureBlocking(true);
@@ -116,45 +107,39 @@ public class SendFile {
                     if (socketChannel != null && socketChannel.isOpen()) {
                         try { socketChannel.close(); } catch (IOException sce) { LogPanel.log("Error closing failed socket channel: " + sce.getMessage());}
                     }
-                    workersToStart.decrementAndGet(); // This worker won't run or count towards completion
-                    // If one worker fails to connect, we might want to signal an overall error.
-                    // For now, errorReportedByWorker will be set if workerCallback.onError is called.
-                    // Let's explicitly report this connection failure.
+                    // workersToStart.decrementAndGet(); // Not strictly necessary if not used for completion logic
                     if (workerCallback != null) workerCallback.onError(new IOException("Worker " + i + " connection failed: " + e.getMessage(), e));
                 }
             }
             LogPanel.log("SendFile: Number of successfully initiated sender workers: " + channels.size() + " (Expected to start: " + poolSize + ")");
 
-            if (channels.isEmpty() && fileLength > 0) { // No workers connected for a non-empty file
+            if (channels.isEmpty() && fileLength > 0) { 
                 LogPanel.log("SendFile: No sender workers could connect. Aborting.");
-                // workerCallback.onError would have been called above for each failed connection
-                pool.shutdownNow(); // Ensure pool is shutdown
+                pool.shutdownNow(); 
                 return;
             }
-            if (channels.isEmpty() && fileLength == 0 && poolSize > 0) { // No worker for zero-byte file
+            if (channels.isEmpty() && fileLength == 0 && poolSize > 0) { 
                  LogPanel.log("SendFile: No sender worker connected for zero-byte file. Aborting.");
                  pool.shutdownNow();
                  return;
             }
-
 
             pool.shutdown();
             LogPanel.log("SendFile: Pool shutdown initiated. Waiting for termination...");
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) {
                 LogPanel.log("SendFile: Pool termination timeout. Forcing shutdown.");
                 pool.shutdownNow();
-                if (workerCallback != null) workerCallback.onError(new IOException("SendFile tasks timed out."));
+                if (workerCallback != null && !errorReportedByWorker.get()) workerCallback.onError(new IOException("SendFile tasks timed out."));
             } else {
                 LogPanel.log("SendFile: All sender worker tasks have completed execution.");
-                if (!chunkQueue.isEmpty()) {
+                if (!chunkQueue.isEmpty() && !errorReportedByWorker.get()) {
                     LogPanel.log("Warning: SendFile workers finished, but chunk queue is not empty. Size: " + chunkQueue.size());
-                    // This might indicate not enough workers or an issue in chunk processing.
-                    if (workerCallback != null && !errorReportedByWorker.get()) { // Report error if not already
+                    if (workerCallback != null) { 
                          workerCallback.onError(new IOException("Transfer incomplete: chunks remaining after workers finished."));
                     }
                 } else if (!errorReportedByWorker.get()) {
                     LogPanel.log("SendFile: All data sent without worker-reported errors and queue empty. Calling onComplete.");
-                    if (originalCallback != null) originalCallback.onComplete(); // Call original onComplete
+                    if (originalCallback != null) originalCallback.onComplete(); 
                 } else {
                     LogPanel.log("SendFile: Pool terminated, but one or more workers reported an error or chunks remain. onComplete not called by SendFile.");
                 }
@@ -179,11 +164,7 @@ public class SendFile {
     }
 
     private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
-        // ... (populateChunkQueue logic seems okay, ensure it logs verbosely if issues persist)
-        // Minor: if fileLength > 0 and this.threadCount > fileLength, it will create fileLength chunks of size 1.
-        // This is acceptable.
         if (fileLength == 0) {
-            // Handled by start() which adds a (0,0) chunk if queue is empty
             return;
         }
         LogPanel.log("SendFile.populateChunkQueue: Calculating chunks for fileLength=" + fileLength + ", SendFile.this.threadCount=" + this.threadCount);
@@ -191,17 +172,15 @@ public class SendFile {
         if (this.threadCount <= 0) {
             LogPanel.log("SendFile.populateChunkQueue: Error - threadCount is " + this.threadCount + ". Defaulting to 1 chunk.");
             chunkQueue.offer(new ChunkInfo(0, fileLength));
-        } else if (this.threadCount == 1 || fileLength < (1024 * 10)) { // Single chunk for very small files or 1 thread
+        } else if (this.threadCount == 1 || fileLength < (1024 * 10)) { 
             ChunkInfo singleChunk = new ChunkInfo(0, fileLength);
             LogPanel.log("SendFile.populateChunkQueue: Single chunk mode (threadCount=" + this.threadCount + ", fileLength=" + fileLength + "), adding one chunk: " + singleChunk);
             chunkQueue.offer(singleChunk);
         } else {
-            // Multi-threaded chunking
-            long idealChunkSize = (fileLength + this.threadCount - 1) / this.threadCount; // Ceiling division
-            // Let's define a minimum practical chunk size, e.g., 64KB, to avoid too many tiny chunks
+            long idealChunkSize = (fileLength + this.threadCount - 1) / this.threadCount; 
             long minChunkSize = 64 * 1024;
             long actualChunkSize = Math.max(idealChunkSize, minChunkSize);
-            if (actualChunkSize >= fileLength && fileLength > 0) { // If calculated chunk size is >= file, just send one chunk
+            if (actualChunkSize >= fileLength && fileLength > 0) { 
                  chunkQueue.offer(new ChunkInfo(0, fileLength));
                  LogPanel.log("SendFile.populateChunkQueue: Calculated chunk size covers whole file. Adding one chunk: " + new ChunkInfo(0, fileLength));
             } else {
@@ -214,7 +193,7 @@ public class SendFile {
                         chunkQueue.offer(chunk);
                         numChunks++;
                     } else {
-                        break; // Should not happen if offset < fileLength
+                        break; 
                     }
                 }
                  LogPanel.log("SendFile.populateChunkQueue: Generated " + numChunks + " chunks with target size " + actualChunkSize);
@@ -223,13 +202,12 @@ public class SendFile {
         LogPanel.log("SendFile.populateChunkQueue: Finished. Final chunk queue size: " + chunkQueue.size());
     }
 
-    // SenderWorker class remains largely the same, ensure it uses the passed workerCallback
     private static class SenderWorker implements Runnable {
         private final SocketChannel socketChannel;
         private final FileChannel fileChannel;
         private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
-        private final TransferCallback callback; // This is the wrapped callback
-        private final AtomicInteger activeWorkersToken; // Renamed for clarity, represents workers to start/manage
+        private final TransferCallback callback; 
+        private final AtomicInteger activeWorkersToken; 
 
         public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel,
                               ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback, AtomicInteger activeWorkersToken) {
@@ -245,7 +223,7 @@ public class SendFile {
             String workerName = Thread.currentThread().getName();
             LogPanel.log("SenderWorker (" + workerName + ") started for socket: " + socketChannel.socket().getLocalPort() + " -> " + socketChannel.socket().getRemoteSocketAddress());
             try {
-                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES); // 16 bytes
+                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES); 
                 ChunkInfo chunk;
                 boolean processedAtLeastOneChunk = false;
 
@@ -266,9 +244,8 @@ public class SendFile {
                         socketChannel.write(headerBuffer);
                     }
 
-                    if (chunk.length == 0) { // For zero-byte file or an explicit zero-length chunk
+                    if (chunk.length == 0) { 
                         LogPanel.log("SenderWorker (" + workerName + "): Sent zero-length chunk header for " + chunk + ". No data body to send.");
-                        // For a zero-byte file, this is the only chunk. Worker will exit loop.
                         continue;
                     }
 
@@ -276,7 +253,7 @@ public class SendFile {
                     long bytesTransferredForThisChunk = 0;
                     long loopStartTime = System.currentTimeMillis();
                     while (bytesTransferredForThisChunk < chunk.length) {
-                        if (System.currentTimeMillis() - loopStartTime > 300000) { // 5 min timeout per chunk data send loop
+                        if (System.currentTimeMillis() - loopStartTime > 300000) { 
                             throw new IOException("Timeout sending data for chunk " + chunk);
                         }
                         long transferredThisCall = fileChannel.transferTo(
@@ -285,24 +262,15 @@ public class SendFile {
                                 socketChannel
                         );
                         if (transferredThisCall <= 0 && (chunk.length - bytesTransferredForThisChunk > 0)) {
-                             // If transferTo returns 0 or -1 when more data is expected, it's an issue.
-                             // -1 means EOF on channel or error. 0 means socket buffer might be full, should retry or indicates problem.
-                             // For blocking channel, 0 is less common unless buffer is truly full and it can't write.
-                             // Let's consider this an error if it persists.
-                             Thread.sleep(50); // Brief pause before retrying or failing
-                             // Re-check connection, or simply count as error after a few tries.
-                             // For now, we'll let it loop, but a robust solution would have retries/timeout here.
-                             // If transferredThisCall is 0 for a while, it means the socket isn't accepting data.
-                             LogPanel.log("SenderWorker (" + workerName + "): transferTo returned " + transferredThisCall + " for chunk " + chunk + ". Retrying or may indicate issue.");
-                             // A simple break or error after N such occurrences might be needed.
-                             // For now, the outer loop timeout will catch stuck transfers.
+                             Thread.sleep(50); 
+                            //  LogPanel.log("SenderWorker (" + workerName + "): transferTo returned " + transferredThisCall + " for chunk " + chunk + ". Retrying or may indicate issue.");
                         }
                         bytesTransferredForThisChunk += transferredThisCall;
                         if (callback != null && transferredThisCall > 0) {
                             callback.onProgress(transferredThisCall);
                         }
                     }
-                    LogPanel.log("SenderWorker (" + workerName + "): Finished sending data for chunk " + chunk + ". Total sent: " + bytesTransferredForThisChunk);
+                    // LogPanel.log("SenderWorker (" + workerName + "): Finished sending data for chunk " + chunk + ". Total sent: " + bytesTransferredForThisChunk);
                 }
 
                 if (!processedAtLeastOneChunk) {
@@ -312,16 +280,34 @@ public class SendFile {
 
             } catch (IOException e) {
                 LogPanel.log("Error in SenderWorker (" + workerName + "): " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                // e.printStackTrace(); // For debugging
                 if (callback != null) {
                     callback.onError(e);
                 }
             } catch (InterruptedException e) {
                 LogPanel.log("SenderWorker (" + workerName + ") was interrupted: " + e.getMessage());
-                Thread.currentThread().interrupt(); // Preserve interrupt status
+                Thread.currentThread().interrupt(); 
                 if (callback != null) {
                     callback.onError(e);
                 }
             } finally {
-                // activeWorkersToken.decrementAndGet(); // Decrement when worker finishes its lifecycle
-                // This token was more for tracking
+                // activeWorkersToken.decrementAndGet(); // This token is not strictly necessary for completion tracking here
+                LogPanel.log("SenderWorker (" + workerName + ") run method finished.");
+            } // End of finally
+        } // End of run() method
+    } // End of SenderWorker class
+
+    private static class ChunkInfo {
+        final long offset;
+        final long length;
+
+        public ChunkInfo(long offset, long length) {
+            this.offset = offset;
+            this.length = length;
+        }
+
+        @Override
+        public String toString() {
+            return "ChunkInfo{offset=" + offset + ", length=" + length + '}';
+        }
+    }
+} // End of SendFile class
