@@ -44,7 +44,13 @@ public class LogPanel extends JPanel {
             SendFileGUI.FONT_TITLE, currentTextPrimary
         ));
 
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 13));
+        // 設定支援中文的字體，例如 "Microsoft YaHei" 或 "SimSun"
+        // 或者使用邏輯字體 "SansSerif" 讓 Swing 自動選擇
+        // Font chineseFont = new Font("Microsoft YaHei", Font.PLAIN, 13); // 微軟雅黑
+        // Font chineseFont = new Font("SimSun", Font.PLAIN, 13); // 宋體
+        Font chineseFont = new Font(Font.SANS_SERIF, Font.PLAIN, 13); // 使用邏輯字體，更具可攜性
+
+        logArea.setFont(chineseFont); // <--- 修改這裡
         logArea.setForeground(currentTextPrimary);
         logArea.setBackground(currentLogAreaBg); // Use the specific log area background
         logArea.setMargin(new Insets(5,5,5,5));
