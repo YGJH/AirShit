@@ -1,0 +1,74 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId> <!-- 請替換成您的 Group ID -->
+    <artifactId>AirShit</artifactId>   <!-- 請替換成您的 Artifact ID -->
+    <version>1.0-SNAPSHOT</version> <!-- 請替換成您的版本 -->
+
+    <properties>
+        <maven.compiler.source>1.8</maven.compiler.source> <!-- 或您專案使用的 Java 版本 -->
+        <maven.compiler.target>1.8</maven.compiler.target> <!-- 或您專案使用的 Java 版本 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lz4</groupId>
+            <artifactId>lz4-java</artifactId>
+            <version>1.8.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+            <version>3.4.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.26.1</version> <!-- 您可以檢查並使用最新的穩定版本 -->
+        </dependency>
+        <!-- 其他依賴項可以加在這裡 -->
+    </dependencies>
+
+    <!-- 您可能還需要 build plugins，例如 maven-jar-plugin 來設定 Main Class -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version> <!-- 或您偏好的版本 -->
+                <configuration>
+                    <source>1.8</source> <!-- 與 properties 中一致 -->
+                    <target>1.8</target> <!-- 與 properties 中一致 -->
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <mainClass>AirShit.LZ4FileCompressor</mainClass> <!-- 或者您專案的實際主要進入點 -->
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version> <!-- 或更新版本 -->
+                <configuration>
+                    <mainClass>AirShit.Main</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+
+<!-- mvn compile
+mvn exec:java -Dexec.mainClass="AirShit.LZ4FileCompressor" -->
