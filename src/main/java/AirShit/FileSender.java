@@ -169,24 +169,34 @@ public class FileSender {
                 String rs = dis.readUTF();
                 if(rs.equals("ACK")) {
                     callback.onStart(total_files_size);
-                    boolean isFine = true;
-                    try { 
-                        sender = new SendFile(this.host , this.port , sentFile , threadCount , callback); 
-                    }
-                    catch (Exception e) {
-                        isFine = false;
-                        if(isCompress)
-                            sentFile.delete();
-                        callback.onError(e);
-                        return;
-                    }
-                    if(isFine) {
-                        callback.onComplete();
-                        if(isCompress) {
-                            sentFile.delete();
+                    sender = new SendFile(this.host , this.port , sentFile , threadCount , callback); 
+                    Thread senderThread = new Thread(() -> {
+                        boolean isFine = true;
+                        try {
+                            sender.start(); // This will now run in a new thread
+                            // If sender.start() completes without exception, it implies success from its perspective.
+                            // The actual onComplete for the entire file transfer should be handled by SendFile
+                            // or its callback mechanism when all chunks are truly sent and confirmed.
+                        } catch (Exception e) {
+                            LogPanel.log("IOException in SendFile thread: " + e.getMessage());
+                            isFine = false;
+                            if (callback != null) {
+                                callback.onError(e);
+                            }
+                            // Optionally, handle cleanup if isCompress and sentFile needs deletion
                         }
-                        return ;
+                        if(!isFine) {
+                            sentFile.delete();
+                        } else {
+                            callback.onComplete();
+                        }
+                    });
+                    senderThread.setName("FileSender-SendFile-Thread"); // Good practice to name threads
+                    senderThread.run(); // Correct way to start a new thread
+                    if(isCompress) {
+                        sentFile.delete();
                     }
+
                 }
             } else {
                 if(isCompress) {

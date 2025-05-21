@@ -36,6 +36,7 @@ public class SendFile {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
+        System.out.println("file size: " + fileLength);
         threadCount = Math.max(threadCount, 1);
         // 每個 "baseChunk" 最大約 5GB (long)，但實際傳輸時會再切分給 threadCount 個執行緒
         long baseChunkSize = Math.min(fileLength, 5L * 1024 * 1024 * 1024); // 5GB limit for a conceptual processing block

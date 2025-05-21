@@ -173,12 +173,12 @@ public class FileReceiver {
                             
                             try {
                                 String outPutFileName = dis.readUTF();
-                                System.out.println(selectedSavePath.getAbsolutePath()+outPutFileName);
+                                System.out.println(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName);
                                 dos.writeUTF("ACK");
 
                                 callback.onStart(total_size);
                                 receiver = new Receiver(serverSocket);
-                                receiver.start(selectedSavePath.getAbsolutePath()+outPutFileName, len, threadCount, callback);
+                                receiver.start(selectedSavePath.getAbsolutePath()+"\\"+outPutFileName, len, threadCount, callback);
                             } catch (Exception e) {
                                 callback.onError(new Exception("transfer fail", e));
                                 continue;
