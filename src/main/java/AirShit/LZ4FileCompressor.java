@@ -13,8 +13,8 @@ import net.jpountz.lz4.LZ4FrameOutputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.io.IOUtils; // Add this line
+// import org.apache.commons.compress.utils.IOUtils; // Remove this line
+import org.apache.commons.io.IOUtils; 
 
 public class LZ4FileCompressor {
 
@@ -43,7 +43,7 @@ public class LZ4FileCompressor {
             files[fileCount++] = new File(outputTarLz4FilePath);
             System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
             System.out.println("files: ");
-            for (int i = 0; i < files.length; i++) {
+            for (int i = 0; i < fileCount; i++) {
                     System.out.println(files[i].getName());
             }
             return fileCount;

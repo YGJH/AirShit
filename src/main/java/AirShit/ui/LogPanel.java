@@ -44,7 +44,7 @@ public class LogPanel extends JPanel {
             SendFileGUI.FONT_TITLE, currentTextPrimary
         ));
 
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 13));
+        logArea.setFont(new Font("Microsoft YaHei UI", Font.PLAIN, 13)); // 更新字體
         logArea.setForeground(currentTextPrimary);
         logArea.setBackground(currentLogAreaBg); // Use the specific log area background
         logArea.setMargin(new Insets(5,5,5,5));

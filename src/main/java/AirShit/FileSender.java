@@ -6,9 +6,6 @@ import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import AirShit.ui.*;
 import AirShit.ui.LogPanel;
@@ -58,28 +55,15 @@ public class FileSender {
                 actualFilePathToSend = Paths.get(tempDir.toString(), compressedFileName).toString();               
                 fileCount = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), actualFilePathToSend , fileToSend); // This should return void or throw
                 if(fileCount == 0 && new File(actualFilePathToSend).length() == 0) { // If no large files AND archive is empty (or failed)
-                    // Consider if an empty directory should result in an empty archive or an error.
-                    // If an empty archive is valid, this check might need adjustment.
-                    // For now, assuming an empty archive from an empty dir is okay, but if fileCount is 0
-                    // and actualFilePathToSend is also 0 length, it might indicate an issue.
-                    // However, the primary concern of LZ4FileCompressor is to populate fileToSend with large files
-                    // and create actualFilePathToSend with small ones.
-                    // If the source directory was empty, actualFilePathToSend would be a valid empty tar.lz4, and fileCount would be 0.
-                    // The original check "if(fileCount == 0)" might be too strict if an empty archive is okay.
-                    // Let's assume for now that if compression happens, actualFilePathToSend is the primary artifact.
+                    return ;
                 }
-                // Announce the name that the receiver should use for saving (e.g., originalFolderName.tar.lz4)
                 currentTotalFileSize = 0; // Recalculate based on what will be sent
-                
-                // Handshake builder needs to list all files that will be sent in order.
-                // Current logic sends large files (fileToSend[i]) first, then implies the archive.
-                // This part needs to align with the actual sending logic.
-                // For now, focusing on the dead code fix.
                 handshakeBuilder.append(senderUserName).append("@");
                 for(int i = 0 ; i < fileCount ; i++) { // Names of large files
-                    handshakeBuilder.append(fileToSend[i].getName()).append(File.pathSeparatorChar); // Use char for single separator
+                    handshakeBuilder.append(fileToSend[i].getName()).append("@"); // Use char for single separator
                     currentTotalFileSize += fileToSend[i].length();
                 }
+                System.out.println(currentTotalFileSize);
                 // Add the archive name to handshake and its size to total
                 if (actualFilePathToSend != null) { // Ensure archive path exists before using it
                     handshakeBuilder.append(new File(actualFilePathToSend).getName()).append("@"); 
