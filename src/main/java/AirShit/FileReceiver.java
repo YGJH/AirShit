@@ -54,6 +54,7 @@ public class FileReceiver {
                 long totalSizeFromSender = 0;
                 String senderNameFromSender = null;
                 int clientAnnouncedThreads = 1;
+                int numFilesToExpect = 0; // Declare numFilesToExpect here
                 File selectedSaveDirectory = null; // This will be the parent directory chosen by user
                 String originalFolderNameFromSender = null; // To store the original folder name if it's a directory transfer
                 boolean isDirectoryTransferFromSender = false;
@@ -71,28 +72,44 @@ public class FileReceiver {
                          DataOutputStream dos = new DataOutputStream(handshakeSocket.getOutputStream())) {
 
                         // Phase 1: Read Initial Metadata
-                        String initialMetadata = dis.readUTF();
-                        LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
-                        String[] metaParts = initialMetadata.split("@");
-                        if (metaParts.length < 6) { // Expecting 6 parts now
-                            throw new IOException("Invalid initial metadata format (expected 6 parts): " + initialMetadata);
+                        String initialMetadata = null; // Initialize
+                        try {
+                            initialMetadata = dis.readUTF();
+                            LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
+                            String[] metaParts = initialMetadata.split("@");
+                            if (metaParts.length < 6) { 
+                                throw new IOException("Invalid initial metadata format (expected 6 parts, got " + metaParts.length + "): " + initialMetadata);
+                            }
+                            senderNameFromSender = metaParts[0];
+                            numFilesToExpect = Integer.parseInt(metaParts[1]); // Now assigns to the declared variable
+                            totalSizeFromSender = Long.parseLong(metaParts[2]); // Potential NumberFormatException
+                            clientAnnouncedThreads = Integer.parseInt(metaParts[3]); // Potential NumberFormatException
+                            isDirectoryTransferFromSender = "1".equals(metaParts[4]);
+                            originalFolderNameFromSender = metaParts[5];
+
+                            LogPanel.log(String.format("FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d, IsDir=%b, OrigFolder=%s",
+                                    senderNameFromSender, numFilesToExpect, SendFileGUI.formatFileSize(totalSizeFromSender), clientAnnouncedThreads, isDirectoryTransferFromSender, originalFolderNameFromSender));
+                            
+                            dos.writeUTF("ACK_METADATA");
+                            dos.flush();
+                            LogPanel.log("FileReceiver: Sent ACK_METADATA.");
+
+                        } catch (NumberFormatException e) {
+                            LogPanel.log("FileReceiver: Error parsing metadata numbers: " + e.getMessage() + " from metadata: " + initialMetadata);
+                            // Consider sending a NACK or just closing the socket, which would lead to EOF or other error on sender side
+                            // For now, let the exception propagate to the outer catch, which will close the socket.
+                            throw new IOException("Metadata parsing error (numbers): " + e.getMessage(), e);
+                        } catch (ArrayIndexOutOfBoundsException e) {
+                            LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " + e.getMessage() + " from metadata: " + initialMetadata);
+                            throw new IOException("Metadata parsing error (parts): " + e.getMessage(), e);
+                        } catch (Exception e) { // Catch any other unexpected error during this critical phase
+                            LogPanel.log("FileReceiver: Unexpected error during initial metadata processing or ACK sending: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                            // e.printStackTrace(); // For more detailed debugging if needed
+                            throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
-                        senderNameFromSender = metaParts[0];
-                        int numFilesToExpect = Integer.parseInt(metaParts[1]);
-                        totalSizeFromSender = Long.parseLong(metaParts[2]);
-                        clientAnnouncedThreads = Integer.parseInt(metaParts[3]);
-                        isDirectoryTransferFromSender = "1".equals(metaParts[4]);
-                        originalFolderNameFromSender = metaParts[5];
-
-
-                        LogPanel.log(String.format("FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d, IsDir=%b, OrigFolder=%s",
-                                senderNameFromSender, numFilesToExpect, SendFileGUI.formatFileSize(totalSizeFromSender), clientAnnouncedThreads, isDirectoryTransferFromSender, originalFolderNameFromSender));
-                        dos.writeUTF("ACK_METADATA");
-                        dos.flush();
-                        LogPanel.log("FileReceiver: Sent ACK_METADATA.");
 
                         // Phase 2: Read File Info Loop
-                        for (int i = 0; i < numFilesToExpect; i++) {
+                        for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
                             LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): " + fileInfoString);
                             String[] fileInfoParts = fileInfoString.split("@");

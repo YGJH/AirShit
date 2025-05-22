@@ -32,7 +32,7 @@ public class FileSender {
         LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
-    public void sendFiles(File inputFile, String senderUserName, TransferCallback callback) throws InterruptedException {
+    public void sendFiles(File inputFile, String senderUserName, TransferCallback callback) {
         if (inputFile == null) {
             LogPanel.log("FileSender: Input file/directory is null. Aborting.");
             if (callback != null) callback.onError(new IllegalArgumentException("Input file/directory cannot be null."));
@@ -105,22 +105,23 @@ public class FileSender {
                                      (isDirectoryTransfer ? "1" : "0") + "@" +
                                      originalFolderName;
 
-            try (Socket socket = new Socket(host, port);
+            try (Socket socket = new Socket(host, port); // Line ~106 in your provided full FileSender
                  DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                  DataInputStream dis = new DataInputStream(socket.getInputStream())) {
 
-                socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
+                socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000); // Set timeout immediately after socket creation
+
                 LogPanel.log("FileSender: Sending initial metadata: " + initialMetadata);
                 dos.writeUTF(initialMetadata);
                 dos.flush();
 
-                String ackResponse = dis.readUTF();
+                String ackResponse = dis.readUTF(); // Line ~117 - EOFException occurs here
                 if (!"ACK_METADATA".equals(ackResponse)) {
                     throw new IOException("FileSender: Did not receive ACK_METADATA. Got: " + ackResponse);
                 }
                 LogPanel.log("FileSender: Received ACK_METADATA.");
 
-                // Send File Info Loop
+                // ===== 階段 2: 檔案資訊迴圈 =====
                 for (File fileToSendInfo : filesToProcess) {
                     String fileInfoString = fileToSendInfo.getName() + "@" + fileToSendInfo.length();
                     LogPanel.log("FileSender: Sending file info: " + fileInfoString);
@@ -133,6 +134,7 @@ public class FileSender {
                     LogPanel.log("FileSender: Received ACK_FILE_INFO for " + fileToSendInfo.getName());
                 }
 
+                // ===== 階段 3: 等待接收方決定 =====
                 // Wait for receiver's decision (OK@ or REJECT)
                 int originalTimeoutMillis = socket.getSoTimeout();
                 socket.setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000);
@@ -167,6 +169,7 @@ public class FileSender {
                     throw new IOException("FileSender: Unknown decision from receiver: " + receiverDecision);
                 }
 
+                // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
                     if (callback != null) callback.onStart(totalSizeOverall); // Notify UI with total size
 
