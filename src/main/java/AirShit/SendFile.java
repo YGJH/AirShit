@@ -5,6 +5,7 @@ import AirShit.ui.LogPanel;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
@@ -132,6 +133,7 @@ public class SendFile {
                 SocketChannel socketChannel = null;
                 try {
                     socketChannel = SocketChannel.open(); // 開啟 SocketChannel
+                    socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                     socketChannel.configureBlocking(true); // 這裡為簡化使用阻塞模式
                     // LogPanel.log("SendFile: Worker " + i + " 嘗試連接到 " + host + ":" + port);
                     socketChannel.connect(new InetSocketAddress(host, port)); // 連接到接收端
@@ -177,7 +179,7 @@ public class SendFile {
                     }
                 } else if (!errorReportedByWorker.get()) { // 如果佇列為空且沒有 worker 報告錯誤
                     LogPanel.log("SendFile: 所有資料已發送，無 worker 報告錯誤且佇列為空。呼叫 onComplete。");
-                    if (originalCallback != null) originalCallback.onComplete(); // 呼叫原始的 onComplete
+                    // if (originalCallback != null) originalCallback.onComplete(); // 呼叫原始的 onComplete
                 } else { // 如果有錯誤或佇列不為空
                     LogPanel.log("SendFile: 執行緒池已終止，但一個或多個 workers 報告錯誤或仍有剩餘區塊。SendFile 不會呼叫 onComplete。");
                 }

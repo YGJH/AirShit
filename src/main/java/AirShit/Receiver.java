@@ -149,7 +149,7 @@ public class Receiver {
                 if (fileLength == 0) {
                     if (out.exists() && out.length() == 0 && totalBytesActuallyReceivedOverall.get() == 0) {
                         // LogPanel.log("Zero-byte file received successfully: " + outputFile);
-                        if (cb != null) cb.onComplete(out.getName());
+                        // if (cb != null) cb.onComplete(out.getName());
                         return true;
                     } else {
                         LogPanel.log("Zero-byte file discrepancy. Expected size: 0, Actual disk size: " + (out.exists() ? out.length() : "N/A") + ", Reported by workers: " + totalBytesActuallyReceivedOverall.get());
@@ -165,7 +165,7 @@ public class Receiver {
                     // Additional check: ensure total bytes processed by workers also matches
                     if (totalBytesActuallyReceivedOverall.get() == fileLength) {
                         LogPanel.log("File received successfully: " + outputFile + ", Final Size: " + finalFileSizeOnDisk);
-                        if (cb != null) cb.onComplete();
+                        // if (cb != null) cb.onComplete();
                         return true;
                     } else {
                         LogPanel.log("File size on disk matches expected, but total bytes processed by workers (" + totalBytesActuallyReceivedOverall.get() + ") does not match fileLength (" + fileLength + ").");
