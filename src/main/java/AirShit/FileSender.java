@@ -152,24 +152,48 @@ public class FileSender {
 
                 // ===== 階段 2: 檔案資訊迴圈 =====
                 // 為 filesToProcess 中的每個檔案傳送其名稱和大小
+                Path selectedPath = inputFile.toPath().normalize(); // 使用者選擇的原始路徑
+                Path parentOfSelectedPath = selectedPath.getParent(); // 獲取父目錄
                 for (File fileToSendInfo : filesToProcess) {
                     String nameToSend;
-                    if (isDirectoryTransfer && baseDirectoryPath != null) {
-                        // 計算相對於基礎目錄的路徑
-                        Path filePath = fileToSendInfo.toPath();
-                        // 檢查檔案是否為壓縮檔，如果是，則直接使用其名稱（它位於臨時目錄中）
-                        // 否則，計算相對於原始選擇資料夾的相對路徑
-                        if (tempArchiveFilePath != null && filePath.equals(Paths.get(tempArchiveFilePath))) {
-                            nameToSend = fileToSendInfo.getName(); // 壓縮檔直接用其檔名
+                    Path filePath = fileToSendInfo.toPath().normalize();
+
+                    if (isDirectoryTransfer) {
+                        if (tempArchiveFilePath != null && filePath.equals(Paths.get(tempArchiveFilePath).normalize())) {
+                            // 這是壓縮檔
+                            nameToSend = inputFile.getName() + ".tar.lz4"; // 例如 "competitiveShit.tar.lz4"
                         } else {
-                            Path relativePath = baseDirectoryPath.relativize(filePath);
-                            nameToSend = relativePath.toString();
+                            // 這是大檔案
+                            if (parentOfSelectedPath != null) {
+                                // 相對於父目錄計算，結果會包含 selectedPath 的名稱
+                                // e.g., parent="D:\folder", filePath="D:\folder\competitiveShit\.git\pack.idx"
+                                // relativePath = "competitiveShit\.git\pack.idx"
+                                Path relativePath = parentOfSelectedPath.relativize(filePath);
+                                nameToSend = relativePath.toString();
+                            } else {
+                                // 如果選擇的是根目錄下的資料夾 (e.g., "C:\competitiveShit")
+                                // parentOfSelectedPath 會是 "C:\"
+                                // 如果選擇的是根目錄本身 (e.g., "C:\"), parentOfSelectedPath 是 null
+                                // 這種情況下，我們希望路徑直接從 selectedPath 的名稱開始
+                                // filePath 相對於 selectedPath (inputFile.toPath())
+                                Path relativeToSelected = selectedPath.relativize(filePath);
+                                if (relativeToSelected.toString().isEmpty() && filePath.getFileName().toString().equals(selectedPath.getFileName().toString())) {
+                                     // 如果檔案就是選擇的目錄本身（理論上大檔案不會是這樣）
+                                     nameToSend = selectedPath.getFileName().toString();
+                                } else {
+                                     nameToSend = selectedPath.getFileName().toString() + File.separator + relativeToSelected.toString();
+                                }
+                                // 確保不會出現 "competitiveShit\" + "" 的情況
+                                if (nameToSend.endsWith(File.separator) && relativeToSelected.toString().isEmpty()){
+                                    nameToSend = selectedPath.getFileName().toString();
+                                }
+                            }
                         }
                     } else {
-                        // 如果是單一檔案傳輸，或者 baseDirectoryPath 未設定，則直接使用檔案名
+                        // 單一檔案傳輸
                         nameToSend = fileToSendInfo.getName();
-                    }
-
+                    }                    
+                    System.out.println(nameToSend);
                     String fileInfoString = nameToSend + "@" + fileToSendInfo.length();
                     // System.out.println(fileToSendInfo.getName()); // 舊的調試輸出
                     LogPanel.log("FileSender: 正在傳送檔案資訊: " + fileInfoString);

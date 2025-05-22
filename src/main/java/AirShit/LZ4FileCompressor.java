@@ -60,13 +60,13 @@ public class LZ4FileCompressor {
                 // 根據需求，這裡可以拋出異常或採取其他錯誤處理
             }
             
-            System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
-            System.out.println("files (大型檔案 + 壓縮檔): ");
-            for (int i = 0; i < countOfItemsInFilesArray; i++) {
-                if (filesArray[i] != null) { // 防禦性檢查
-                    System.out.println(filesArray[i].getName());
-                }
-            }
+            // System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
+            // System.out.println("files (大型檔案 + 壓縮檔): ");
+            // for (int i = 0; i < countOfItemsInFilesArray; i++) {
+            //     if (filesArray[i] != null) { // 防禦性檢查
+            //         System.out.println(filesArray[i].getName());
+            //     }
+            // }
 
             return countOfItemsInFilesArray; // 返回 filesArray 中實際填充的項目數量
 
