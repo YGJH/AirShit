@@ -96,8 +96,14 @@ public class FileSender {
 
             LogPanel.log("FileSender: Total files to send: " + filesToProcess.size() + ", Total size: " + SendFileGUI.formatFileSize(totalSizeOverall));
 
-            // Initial Handshake: SENDER_USERNAME@NUMBER_OF_FILES_TO_SEND@TOTAL_SIZE_BYTES@REQUESTED_THREADS
-            String initialMetadata = senderUserName + "@" + filesToProcess.size() + "@" + totalSizeOverall + "@" + THREADS_STR;
+            // Initial Handshake: SENDER_USERNAME@NUMBER_OF_FILES_TO_SEND@TOTAL_SIZE_BYTES@REQUESTED_THREADS@IS_DIRECTORY@ORIGINAL_FOLDER_NAME
+            String originalFolderName = isDirectoryTransfer ? inputFile.getName() : "-"; // Use "-" for single file
+            String initialMetadata = senderUserName + "@" +
+                                     filesToProcess.size() + "@" +
+                                     totalSizeOverall + "@" +
+                                     THREADS_STR + "@" +
+                                     (isDirectoryTransfer ? "1" : "0") + "@" +
+                                     originalFolderName;
 
             try (Socket socket = new Socket(host, port);
                  DataOutputStream dos = new DataOutputStream(socket.getOutputStream());

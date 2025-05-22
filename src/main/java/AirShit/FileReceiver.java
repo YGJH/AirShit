@@ -54,7 +54,9 @@ public class FileReceiver {
                 long totalSizeFromSender = 0;
                 String senderNameFromSender = null;
                 int clientAnnouncedThreads = 1;
-                File selectedSaveDirectory = null;
+                File selectedSaveDirectory = null; // This will be the parent directory chosen by user
+                String originalFolderNameFromSender = null; // To store the original folder name if it's a directory transfer
+                boolean isDirectoryTransferFromSender = false;
                 boolean proceedWithTransfer = false;
                 int negotiatedThreadCount = 1;
 
@@ -72,16 +74,19 @@ public class FileReceiver {
                         String initialMetadata = dis.readUTF();
                         LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                         String[] metaParts = initialMetadata.split("@");
-                        if (metaParts.length < 4) {
-                            throw new IOException("Invalid initial metadata format: " + initialMetadata);
+                        if (metaParts.length < 6) { // Expecting 6 parts now
+                            throw new IOException("Invalid initial metadata format (expected 6 parts): " + initialMetadata);
                         }
                         senderNameFromSender = metaParts[0];
                         int numFilesToExpect = Integer.parseInt(metaParts[1]);
                         totalSizeFromSender = Long.parseLong(metaParts[2]);
                         clientAnnouncedThreads = Integer.parseInt(metaParts[3]);
+                        isDirectoryTransferFromSender = "1".equals(metaParts[4]);
+                        originalFolderNameFromSender = metaParts[5];
 
-                        LogPanel.log(String.format("FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d",
-                                senderNameFromSender, numFilesToExpect, SendFileGUI.formatFileSize(totalSizeFromSender), clientAnnouncedThreads));
+
+                        LogPanel.log(String.format("FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d, IsDir=%b, OrigFolder=%s",
+                                senderNameFromSender, numFilesToExpect, SendFileGUI.formatFileSize(totalSizeFromSender), clientAnnouncedThreads, isDirectoryTransferFromSender, originalFolderNameFromSender));
                         dos.writeUTF("ACK_METADATA");
                         dos.flush();
                         LogPanel.log("FileReceiver: Sent ACK_METADATA.");
@@ -102,8 +107,11 @@ public class FileReceiver {
 
                         // Phase 3: User Interaction and Decision
                         StringBuilder fileListForDialog = new StringBuilder();
+                        if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-")) {
+                            fileListForDialog.append("Folder: ").append(originalFolderNameFromSender).append("\nContaining:\n");
+                        }
                         for(FileInfo fi : filesExpected) {
-                            fileListForDialog.append(fi.name).append(" (").append(SendFileGUI.formatFileSize(fi.size)).append(")\n");
+                            fileListForDialog.append("  ").append(fi.name).append(" (").append(SendFileGUI.formatFileSize(fi.size)).append(")\n");
                         }
 
                         FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI, fileListForDialog, senderNameFromSender, SendFileGUI.formatFileSize(totalSizeFromSender));
@@ -119,8 +127,25 @@ public class FileReceiver {
                             saveLocationChooser.setCurrentDirectory(defaultSaveDir);
                             int chooserResult = saveLocationChooser.showDialog(Main.GUI, "Select Folder");
                             if (chooserResult == JFileChooser.APPROVE_OPTION) {
-                                selectedSaveDirectory = saveLocationChooser.getSelectedFile();
-                                LogPanel.log("User selected save directory: " + selectedSaveDirectory.getAbsolutePath());
+                                selectedSaveDirectory = saveLocationChooser.getSelectedFile(); // This is the base directory chosen by user
+                                LogPanel.log("User selected base save directory: " + selectedSaveDirectory.getAbsolutePath());
+
+                                if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-")) {
+                                    File targetFolder = new File(selectedSaveDirectory, originalFolderNameFromSender);
+                                    if (!targetFolder.exists()) {
+                                        if (targetFolder.mkdirs()) {
+                                            LogPanel.log("Created target sub-directory: " + targetFolder.getAbsolutePath());
+                                            selectedSaveDirectory = targetFolder; // Update selectedSaveDirectory to be the new sub-folder
+                                        } else {
+                                            LogPanel.log("Error: Failed to create target sub-directory: " + targetFolder.getAbsolutePath() + ". Files will be saved in the parent directory.");
+                                            // Optionally, set userAccepted = false or show an error to the user
+                                            // For now, we'll proceed to save in the parent if sub-folder creation fails.
+                                        }
+                                    } else {
+                                        LogPanel.log("Target sub-directory already exists: " + targetFolder.getAbsolutePath());
+                                        selectedSaveDirectory = targetFolder; // Update selectedSaveDirectory to use the existing sub-folder
+                                    }
+                                }
                             } else {
                                 LogPanel.log("User cancelled save location selection.");
                                 userAccepted = false;
@@ -163,6 +188,7 @@ public class FileReceiver {
                             for (FileInfo currentFileToReceive : filesExpected) {
                                 String outputFileName = currentFileToReceive.name;
                                 long fileSizeForThisFile = currentFileToReceive.size;
+                                // selectedSaveDirectory now correctly points to the base chosen by user OR the newly created/existing sub-folder
                                 String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator + outputFileName;
 
                                 LogPanel.log("FileReceiver: Starting data reception for " + outputFileName + " -> " + wholeOutputFilePath + " (" + SendFileGUI.formatFileSize(fileSizeForThisFile) + ")");
@@ -177,6 +203,7 @@ public class FileReceiver {
                                     if (receptionWasSuccessful) {
                                         LogPanel.log("FileReceiver: Data reception successful for: " + wholeOutputFilePath);
                                         if (outputFileName.endsWith(".tar.lz4")) {
+                                            // Decompress into the same directory where the .tar.lz4 was saved
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
                                             LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath + " into folder " + decompressedTargetFolder);
                                             try {
@@ -264,8 +291,9 @@ public class FileReceiver {
     // ... (FileReceiveDialog class remains largely the same, ensure it can display multiple file names from the StringBuilder)
     private class FileReceiveDialog extends JDialog {
         private boolean accepted = false;
+        // Constructor now takes StringBuilder for more flexible content
         public FileReceiveDialog(JFrame owner, StringBuilder fileListContent, String senderName, String totalSizeStr) {
-            super(owner, "Incoming Files from " + senderName, true);
+            super(owner, "Incoming Transfer from " + senderName, true); // Title updated
             setDefaultCloseOperation(DISPOSE_ON_CLOSE);
             // setSize(450, 350); // Adjust size as needed
             setMinimumSize(new Dimension(450,300));

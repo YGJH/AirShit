@@ -81,10 +81,9 @@ public class Receiver {
                     dataSock = serverSocket.accept(); // Accept a connection for this worker
                     dataSockets.add(dataSock); // Add to list for later cleanup
                     LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
-                    // dataSock.setSoTimeout(60 * 1000); // 60-second timeout for socket operations
-                    dataSock.setSoTimeout(5 * 60 * 1000); // 5-minute timeout for socket operations
+                    // dataSock.setSoTimeout(5 * 60 * 1000); // Original 5-minute timeout
+                    dataSock.setSoTimeout(30 * 60 * 1000); // Increase to 30 minutes for socket operations
 
-                    // Pass raf (can be null for 0-byte file), callback, counter, and expected length
                     futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceivedOverall, fileLength)));
                 } catch (IOException e) {
                     LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());

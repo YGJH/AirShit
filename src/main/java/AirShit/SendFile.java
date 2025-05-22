@@ -81,7 +81,7 @@ public class SendFile {
         if (fileLength == 0 && chunkQueue.isEmpty()) {
             // Ensure a (0,0) chunk for zero-byte files if populateChunkQueue didn't add it
             chunkQueue.offer(new ChunkInfo(0, 0));
-            LogPanel.log("SendFile: Added a zero-length chunk for empty file.");
+            // LogPanel.log("SendFile: Added a zero-length chunk for empty file.");
         }
         if (chunkQueue.isEmpty() && fileLength > 0){ // Should not happen if logic above is correct
              LogPanel.log("Error: Chunk queue is empty before starting workers for a non-empty file.");
@@ -106,10 +106,10 @@ public class SendFile {
                 try {
                     socketChannel = SocketChannel.open();
                     socketChannel.configureBlocking(true); // Using blocking for simplicity here
-                    LogPanel.log("SendFile: Worker " + i + " attempting to connect to " + host + ":" + port);
+                    // LogPanel.log("SendFile: Worker " + i + " attempting to connect to " + host + ":" + port);
                     socketChannel.connect(new InetSocketAddress(host, port));
                     channels.add(socketChannel);
-                    LogPanel.log("SendFile: Worker " + i + " connected to " + host + ":" + port + " (Local: " + socketChannel.getLocalAddress() + ")");
+                    // LogPanel.log("SendFile: Worker " + i + " connected to " + host + ":" + port + " (Local: " + socketChannel.getLocalAddress() + ")");
                     pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, workerCallback /*, workersToStart*/));
                 } catch (IOException e) {
                     LogPanel.log("SendFile: Worker " + i + " failed to connect or start: " + e.getMessage());
@@ -121,7 +121,7 @@ public class SendFile {
                     // If a worker fails to connect, errorReportedByWorker will be set.
                 }
             }
-            LogPanel.log("SendFile: Number of successfully initiated sender workers: " + channels.size() + " (Expected to start: " + poolSize + ")");
+            // LogPanel.log("SendFile: Number of successfully initiated sender workers: " + channels.size() + " (Expected to start: " + poolSize + ")");
 
             if (channels.isEmpty() && (fileLength > 0 || poolSize > 0)) { // No workers connected
                 LogPanel.log("SendFile: No sender workers could connect. Aborting.");
@@ -132,7 +132,7 @@ public class SendFile {
             }
 
             pool.shutdown();
-            LogPanel.log("SendFile: Pool shutdown initiated. Waiting for termination...");
+            // LogPanel.log("SendFile: Pool shutdown initiated. Waiting for termination...");
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) {
                 LogPanel.log("SendFile: Pool termination timeout. Forcing shutdown.");
                 pool.shutdownNow();
@@ -141,7 +141,7 @@ public class SendFile {
                     workerCallback.onError(new IOException("SendFile tasks timed out."));
                 }
             } else {
-                LogPanel.log("SendFile: All sender worker tasks have completed execution (pool terminated).");
+                // LogPanel.log("SendFile: All sender worker tasks have completed execution (pool terminated).");
                 // Check if all chunks were processed and no worker reported an error
                 if (!chunkQueue.isEmpty() && !errorReportedByWorker.get()) {
                     LogPanel.log("Warning: SendFile workers finished, but chunk queue is not empty. Size: " + chunkQueue.size());
@@ -166,7 +166,7 @@ public class SendFile {
                     }
                 }
             }
-            LogPanel.log("SendFile: All sender socket channels attempted to close.");
+            // LogPanel.log("SendFile: All sender socket channels attempted to close.");
             if (!pool.isTerminated()) {
                 LogPanel.log("SendFile: Forcing pool shutdown in final finally block.");
                 pool.shutdownNow();
@@ -192,7 +192,7 @@ public class SendFile {
         // Single chunk for very small files or if threadCount is 1
         if (this.threadCount == 1 || fileLength < (1024 * 10)) { // e.g. < 10KB
             ChunkInfo singleChunk = new ChunkInfo(0, fileLength);
-            LogPanel.log("SendFile.populateChunkQueue: Single chunk mode (threadCount=" + this.threadCount + ", fileLength=" + fileLength + "), adding one chunk: " + singleChunk);
+            // LogPanel.log("SendFile.populateChunkQueue: Single chunk mode (threadCount=" + this.threadCount + ", fileLength=" + fileLength + "), adding one chunk: " + singleChunk);
             chunkQueue.offer(singleChunk);
         } else {
             // Multi-threaded chunking
@@ -203,14 +203,14 @@ public class SendFile {
             // If calculated chunk size is still >= file length (e.g., file is smaller than minChunkSize but > 10KB), send as one chunk.
             if (actualChunkSize >= fileLength) {
                  chunkQueue.offer(new ChunkInfo(0, fileLength));
-                 LogPanel.log("SendFile.populateChunkQueue: Calculated chunk size ("+actualChunkSize+") covers whole file ("+fileLength+"). Adding one chunk: " + new ChunkInfo(0, fileLength));
+                //  LogPanel.log("SendFile.populateChunkQueue: Calculated chunk size ("+actualChunkSize+") covers whole file ("+fileLength+"). Adding one chunk: " + new ChunkInfo(0, fileLength));
             } else {
                 int numChunks = 0;
                 for (long offset = 0; offset < fileLength; offset += actualChunkSize) {
                     long length = Math.min(actualChunkSize, fileLength - offset);
                     if (length > 0) { // Ensure we don't add a zero-length chunk here unless it's the only one for a zero-byte file (handled above)
                         ChunkInfo chunk = new ChunkInfo(offset, length);
-                        LogPanel.log("SendFile.populateChunkQueue: Adding chunk " + (numChunks + 1) + ": " + chunk);
+                        // LogPanel.log("SendFile.populateChunkQueue: Adding chunk " + (numChunks + 1) + ": " + chunk);
                         chunkQueue.offer(chunk);
                         numChunks++;
                     } else if (offset < fileLength) { // Should not happen if fileLength > 0
@@ -220,7 +220,7 @@ public class SendFile {
                  LogPanel.log("SendFile.populateChunkQueue: Generated " + numChunks + " chunks with target size " + actualChunkSize);
             }
         }
-        LogPanel.log("SendFile.populateChunkQueue: Finished. Final chunk queue size: " + chunkQueue.size());
+        // LogPanel.log("SendFile.populateChunkQueue: Finished. Final chunk queue size: " + chunkQueue.size());
     }
 
     private static class SenderWorker implements Runnable {
