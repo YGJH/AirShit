@@ -107,7 +107,7 @@ public class FileReceiver {
                             // e.printStackTrace(); // For more detailed debugging if needed
                             throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
-
+                        boolean hasLz4 = false;
                         // Phase 2: Read File Info Loop
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
@@ -115,6 +115,9 @@ public class FileReceiver {
                             String[] fileInfoParts = fileInfoString.split("@");
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
+                            }
+                            if(fileInfoParts[0].endsWith(".tar.lz4")) {
+                                hasLz4 = true;
                             }
                             filesExpected.add(new FileInfo(fileInfoParts[0], Long.parseLong(fileInfoParts[1])));
                             dos.writeUTF("ACK_FILE_INFO");
@@ -147,7 +150,7 @@ public class FileReceiver {
                                 selectedSaveDirectory = saveLocationChooser.getSelectedFile(); // This is the base directory chosen by user
                                 LogPanel.log("User selected base save directory: " + selectedSaveDirectory.getAbsolutePath());
 
-                                if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-")) {
+                                if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-") && hasLz4) {
                                     File targetFolder = new File(selectedSaveDirectory, originalFolderNameFromSender);
                                     if (!targetFolder.exists()) {
                                         if (targetFolder.mkdirs()) {
@@ -259,7 +262,7 @@ public class FileReceiver {
                                     break;
                                 }
                             } // End of loop for filesExpected
-                            
+
                             if (overallSuccess && callback != null) {
                                 callback.onComplete();
                             } else if (!overallSuccess && callback != null) {

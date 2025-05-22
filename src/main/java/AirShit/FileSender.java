@@ -153,6 +153,7 @@ public class FileSender {
                 // 為 filesToProcess 中的每個檔案傳送其名稱和大小
                 for (File fileToSendInfo : filesToProcess) {
                     String fileInfoString = fileToSendInfo.getName() + "@" + fileToSendInfo.length();
+                    System.out.println(fileToSendInfo.getName());
                     LogPanel.log("FileSender: 正在傳送檔案資訊: " + fileInfoString);
                     dos.writeUTF(fileInfoString);
                     dos.flush();
