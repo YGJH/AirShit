@@ -290,7 +290,8 @@ public class SendFile {
                         if (!socketChannel.isOpen()) {
                             throw new IOException("SocketChannel closed while sending data for chunk " + chunk + " (sent " + bytesTransferredForThisChunk + "/" + chunk.length + ") on worker " + workerName);
                         }
-                        if (System.currentTimeMillis() - loopStartTime > 300000) { // 5 minutes per chunk data send loop
+                        // if (System.currentTimeMillis() - loopStartTime > 300000) { // 5 minutes per chunk data send loop
+                        if (System.currentTimeMillis() - loopStartTime > 30 * 60 * 1000) { // 30 minutes per chunk data send loop
                             throw new IOException("Timeout sending data for chunk " + chunk + " on worker " + workerName + ". Sent " + bytesTransferredForThisChunk + "/" + chunk.length);
                         }
 

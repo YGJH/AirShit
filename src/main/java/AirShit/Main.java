@@ -406,7 +406,7 @@ public class Main { // 定義 Main 類別
         if (lockSocket != null && !lockSocket.isClosed()) {
             try {
                 lockSocket.close();
-                System.out.println("Single instance lock released.");
+                System.out.println("relase");
             } catch (IOException e) {
                 System.err.println("Error releasing single instance lock: " + e.getMessage());
             }

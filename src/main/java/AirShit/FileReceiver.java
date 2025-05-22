@@ -9,16 +9,36 @@ import javax.swing.border.EmptyBorder;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import AirShit.ui.LogPanel;
 
 public class FileReceiver {
 
     public int port;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors();
-    public String currentSenderName;
-    public Long currentTotalSize;
+    // These are now set per handshake
+    // public String currentSenderName;
+    // public Long currentTotalSize;
 
-    private static final int HANDSHAKE_TIMEOUT_SECONDS = 15; // Increased slightly
+    private static final int HANDSHAKE_TIMEOUT_SECONDS = 30; // Increased for multi-stage handshake
+
+    // Simple POJO to store received file information
+    private static class FileInfo {
+        String name;
+        long size;
+        // String localPath; // Can be added if needed later
+
+        FileInfo(String name, long size) {
+            this.name = name;
+            this.size = size;
+        }
+        @Override
+        public String toString() { return name + " (" + SendFileGUI.formatFileSize(size) + ")"; }
+    }
+
 
     FileReceiver(int port) {
         this.port = port;
@@ -30,14 +50,14 @@ public class FileReceiver {
 
             while (true) {
                 Socket handshakeSocket = null;
-                String outPutFileName = null; // The name of the file as received from sender (e.g., archive.tar.lz4)
-                String wholeOutputFilePath = null; // Full path to save the received file
-                String decompressedOutputFolderPath = null; // Path for decompressed content if applicable
-
+                List<FileInfo> filesExpected = new ArrayList<>();
+                long totalSizeFromSender = 0;
+                String senderNameFromSender = null;
+                int clientAnnouncedThreads = 1;
+                File selectedSaveDirectory = null;
+                boolean proceedWithTransfer = false;
                 int negotiatedThreadCount = 1;
 
-                currentSenderName = null;
-                currentTotalSize = null;
 
                 try {
                     LogPanel.log("FileReceiver: Waiting for a new sender to connect for handshake...");
@@ -48,175 +68,183 @@ public class FileReceiver {
                     try (DataInputStream dis = new DataInputStream(handshakeSocket.getInputStream());
                          DataOutputStream dos = new DataOutputStream(handshakeSocket.getOutputStream())) {
 
-                        String handShakeMsg = dis.readUTF();
-                        LogPanel.log("FileReceiver: Received initial handshake message: " + handShakeMsg);
+                        // Phase 1: Read Initial Metadata
+                        String initialMetadata = dis.readUTF();
+                        LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
+                        String[] metaParts = initialMetadata.split("@");
+                        if (metaParts.length < 4) {
+                            throw new IOException("Invalid initial metadata format: " + initialMetadata);
+                        }
+                        senderNameFromSender = metaParts[0];
+                        int numFilesToExpect = Integer.parseInt(metaParts[1]);
+                        totalSizeFromSender = Long.parseLong(metaParts[2]);
+                        clientAnnouncedThreads = Integer.parseInt(metaParts[3]);
 
-                        if (handShakeMsg.contains("@")) {
-                            String[] parts = handShakeMsg.split("@");
-                            if (parts.length < 4) {
-                                LogPanel.log("Error: Invalid handshake format (not enough parts): " + handShakeMsg);
-                                dos.writeUTF("ERROR_HANDSHAKE_FORMAT");
-                                dos.flush();
-                                continue;
+                        LogPanel.log(String.format("FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d",
+                                senderNameFromSender, numFilesToExpect, SendFileGUI.formatFileSize(totalSizeFromSender), clientAnnouncedThreads));
+                        dos.writeUTF("ACK_METADATA");
+                        dos.flush();
+                        LogPanel.log("FileReceiver: Sent ACK_METADATA.");
+
+                        // Phase 2: Read File Info Loop
+                        for (int i = 0; i < numFilesToExpect; i++) {
+                            String fileInfoString = dis.readUTF();
+                            LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): " + fileInfoString);
+                            String[] fileInfoParts = fileInfoString.split("@");
+                            if (fileInfoParts.length < 2) {
+                                throw new IOException("Invalid file info format: " + fileInfoString);
                             }
-
-                            currentSenderName = parts[0];
-                            String clientAnnouncedFileNameForDialog = parts[1]; // Used for dialog display
-                            int clientAnnouncedThreads = Integer.parseInt(parts[parts.length - 2]);
-                            currentTotalSize = Long.parseLong(parts[parts.length - 1]);
-
-                            LogPanel.log(String.format("FileReceiver: Parsed Handshake: Sender=%s, FileForDialog=%s, Threads=%d, Size=%d",
-                                    currentSenderName, clientAnnouncedFileNameForDialog, clientAnnouncedThreads, currentTotalSize));
-
-                            dos.writeUTF("ACK");
+                            filesExpected.add(new FileInfo(fileInfoParts[0], Long.parseLong(fileInfoParts[1])));
+                            dos.writeUTF("ACK_FILE_INFO");
                             dos.flush();
-                            LogPanel.log("FileReceiver: Sent ACK for initial handshake.");
+                        }
+                        LogPanel.log("FileReceiver: Received all file infos. Total files: " + filesExpected.size());
 
-                            FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI, new StringBuilder(clientAnnouncedFileNameForDialog), currentSenderName, SendFileGUI.formatFileSize(currentTotalSize));
-                            boolean userAccepted = dialog.showDialog();
-                            File selectedSaveDirectory = null;
+                        // Phase 3: User Interaction and Decision
+                        StringBuilder fileListForDialog = new StringBuilder();
+                        for(FileInfo fi : filesExpected) {
+                            fileListForDialog.append(fi.name).append(" (").append(SendFileGUI.formatFileSize(fi.size)).append(")\n");
+                        }
 
-                            if (userAccepted) {
-                                JFileChooser saveLocationChooser = new JFileChooser();
-                                saveLocationChooser.setDialogTitle("Select Save Location for files from " + currentSenderName);
-                                saveLocationChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                                saveLocationChooser.setAcceptAllFileFilterUsed(false);
-                                File defaultSaveDir = new File(System.getProperty("user.home") + File.separator + "Downloads");
-                                if (!defaultSaveDir.exists()) defaultSaveDir.mkdirs();
-                                saveLocationChooser.setCurrentDirectory(defaultSaveDir);
-                                int chooserResult = saveLocationChooser.showDialog(Main.GUI, "Select Folder");
-                                if (chooserResult == JFileChooser.APPROVE_OPTION) {
-                                    selectedSaveDirectory = saveLocationChooser.getSelectedFile();
-                                    LogPanel.log("User selected save directory: " + selectedSaveDirectory.getAbsolutePath());
-                                } else {
-                                    LogPanel.log("User cancelled save location selection.");
-                                    userAccepted = false;
-                                }
-                            }
+                        FileReceiveDialog dialog = new FileReceiveDialog(Main.GUI, fileListForDialog, senderNameFromSender, SendFileGUI.formatFileSize(totalSizeFromSender));
+                        boolean userAccepted = dialog.showDialog();
 
-                            String decisionMessage;
-                            boolean proceedWithTransfer = false;
-
-                            if (userAccepted && selectedSaveDirectory != null && selectedSaveDirectory.isDirectory()) {
-                                negotiatedThreadCount = Math.min(clientAnnouncedThreads, ITHREADS);
-                                negotiatedThreadCount = Math.max(1, negotiatedThreadCount);
-                                decisionMessage = "OK@" + negotiatedThreadCount;
-                                proceedWithTransfer = true;
-                                LogPanel.log("FileReceiver: User accepted. Sending " + decisionMessage);
+                        if (userAccepted) {
+                            JFileChooser saveLocationChooser = new JFileChooser();
+                            saveLocationChooser.setDialogTitle("Select Save Location for files from " + senderNameFromSender);
+                            saveLocationChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                            saveLocationChooser.setAcceptAllFileFilterUsed(false);
+                            File defaultSaveDir = new File(System.getProperty("user.home") + File.separator + "Downloads");
+                            if (!defaultSaveDir.exists()) defaultSaveDir.mkdirs();
+                            saveLocationChooser.setCurrentDirectory(defaultSaveDir);
+                            int chooserResult = saveLocationChooser.showDialog(Main.GUI, "Select Folder");
+                            if (chooserResult == JFileChooser.APPROVE_OPTION) {
+                                selectedSaveDirectory = saveLocationChooser.getSelectedFile();
+                                LogPanel.log("User selected save directory: " + selectedSaveDirectory.getAbsolutePath());
                             } else {
-                                decisionMessage = "REJECT";
-                                LogPanel.log("FileReceiver: User rejected, no save path, or path is not a directory. Sending REJECT.");
-                                if (selectedSaveDirectory != null && !selectedSaveDirectory.isDirectory()) {
-                                    LogPanel.log("Error: Selected save path is not a directory: " + selectedSaveDirectory.getAbsolutePath());
-                                }
+                                LogPanel.log("User cancelled save location selection.");
+                                userAccepted = false;
                             }
-                            dos.writeUTF(decisionMessage);
-                            dos.flush();
+                        }
 
-                            if (proceedWithTransfer) {
-                                LogPanel.log("FileReceiver: Waiting for sender's ACK to our '" + decisionMessage + "' message...");
-                                String senderAckToOk = dis.readUTF();
-                                if (!"ACK".equals(senderAckToOk)) {
-                                    LogPanel.log("Error: Sender did not ACK our OK@ message. Received: '" + senderAckToOk + "'. Aborting this transfer.");
-                                    proceedWithTransfer = false;
-                                } else {
-                                    LogPanel.log("FileReceiver: Sender ACKed our OK@ message. Ready for actual filename.");
-                                    try {
-                                        outPutFileName = dis.readUTF(); // Read the actual filename to be saved (e.g., archive.tar.lz4)
-                                        LogPanel.log("FileReceiver: Received final filename from sender: " + outPutFileName);
+                        String decisionMessage;
+                        if (userAccepted && selectedSaveDirectory != null && selectedSaveDirectory.isDirectory()) {
+                            negotiatedThreadCount = Math.min(clientAnnouncedThreads, ITHREADS);
+                            negotiatedThreadCount = Math.max(1, negotiatedThreadCount);
+                            decisionMessage = "OK@" + negotiatedThreadCount;
+                            proceedWithTransfer = true;
+                            LogPanel.log("FileReceiver: User accepted. Sending " + decisionMessage);
+                        } else {
+                            decisionMessage = "REJECT";
+                            LogPanel.log("FileReceiver: User rejected or invalid save path. Sending REJECT.");
+                            // proceedWithTransfer remains false
+                        }
+                        dos.writeUTF(decisionMessage);
+                        dos.flush();
 
-                                        if (outPutFileName == null || outPutFileName.trim().isEmpty()) {
-                                            throw new IOException("Received null or empty filename from sender.");
-                                        }
-                                        // Validate filename for path traversal or invalid characters (basic example)
-                                        if (outPutFileName.contains("..") || outPutFileName.contains("/") || outPutFileName.contains("\\")) {
-                                            throw new IOException("Received potentially unsafe filename: " + outPutFileName);
-                                        }
-
-                                        wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator + outPutFileName;
-                                        if (outPutFileName.endsWith(".tar.lz4") && outPutFileName.length() > 8) { // ".tar.lz4" is 8 chars
-                                            // Output folder for decompression will be the selected save directory
-                                            decompressedOutputFolderPath = selectedSaveDirectory.getAbsolutePath();
-                                        } else {
-                                            decompressedOutputFolderPath = wholeOutputFilePath; // Not a tar.lz4 or too short
-                                        }
-                                        
-                                        LogPanel.log("FileReceiver: Calculated final save path: " + wholeOutputFilePath);
-                                        if (decompressedOutputFolderPath != null && !decompressedOutputFolderPath.equals(wholeOutputFilePath)) {
-                                            LogPanel.log("FileReceiver: Decompression target folder: " + decompressedOutputFolderPath);
-                                        }
-
-
-                                        dos.writeUTF("ACK"); // ACK the filename
-                                        dos.flush();
-                                        LogPanel.log("FileReceiver: ACKed filename. Handshake fully complete. Preparing for data sockets.");
-                                    } catch (Exception e_fn_ack) { // Catch any error during filename processing/ACK
-                                        LogPanel.log("FileReceiver: Error processing received filename or sending its ACK: " + e_fn_ack.getClass().getSimpleName() + " - " + e_fn_ack.getMessage());
-                                        // e_fn_ack.printStackTrace(); // For detailed debug
-                                        proceedWithTransfer = false; // Critical: ensure we don't proceed
-                                        // Do not try to send error to sender, socket state might be bad. Sender will get EOF.
-                                    }
-                                }
+                        // Phase 4: Wait for Sender's ACK to our decision (if we sent OK)
+                        if (proceedWithTransfer) {
+                            LogPanel.log("FileReceiver: Waiting for sender's ACK to our '" + decisionMessage + "' message...");
+                            String senderAckToDecision = dis.readUTF();
+                            if (!"ACK_DECISION".equals(senderAckToDecision)) {
+                                LogPanel.log("Error: Sender did not ACK our OK@ message. Received: '" + senderAckToDecision + "'. Aborting this transfer.");
+                                proceedWithTransfer = false; // Critical: ensure we don't proceed
+                            } else {
+                                LogPanel.log("FileReceiver: Sender ACKed our OK@ message. Handshake fully complete. Preparing for data sockets.");
                             }
+                        }
 
-                            if (proceedWithTransfer) {
-                                LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
-                                if (callback != null) callback.onStart(currentTotalSize);
+                        // Data Reception Loop (if proceedWithTransfer is true)
+                        if (proceedWithTransfer) {
+                            LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
+                            if (callback != null) callback.onStart(totalSizeFromSender);
 
-                                Receiver dataReceiver = new Receiver(serverSocket);
-                                LogPanel.log("FileReceiver: Starting data reception process for " + wholeOutputFilePath + "...");
+                            boolean overallSuccess = true;
+                            for (FileInfo currentFileToReceive : filesExpected) {
+                                String outputFileName = currentFileToReceive.name;
+                                long fileSizeForThisFile = currentFileToReceive.size;
+                                String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator + outputFileName;
+
+                                LogPanel.log("FileReceiver: Starting data reception for " + outputFileName + " -> " + wholeOutputFilePath + " (" + SendFileGUI.formatFileSize(fileSizeForThisFile) + ")");
+
+                                // Receiver class is responsible for handling the data transfer for ONE file.
+                                // The serverSocket argument to Receiver constructor is not used by its start method if it connects out.
+                                // This might need review based on Receiver.java's actual implementation.
+                                Receiver dataReceiver = new Receiver(serverSocket); 
                                 boolean receptionWasSuccessful = false;
                                 try {
-                                    receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath, currentTotalSize, negotiatedThreadCount, callback);
+                                    receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath, fileSizeForThisFile, negotiatedThreadCount, callback);
                                     if (receptionWasSuccessful) {
                                         LogPanel.log("FileReceiver: Data reception successful for: " + wholeOutputFilePath);
-                                        if (outPutFileName.endsWith(".tar.lz4") && decompressedOutputFolderPath != null) {
-                                            LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath + " into folder " + decompressedOutputFolderPath);
-                                            // Ensure the target for decompression is a directory.
-                                            // LZ4FileDecompressor.decompressTarLz4Folder expects outputParentDir
-                                            LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFilePath, decompressedOutputFolderPath);
-                                            LogPanel.log("FileReceiver: Decompression complete into " + decompressedOutputFolderPath);
-                                            // Optionally delete the .tar.lz4 file after successful decompression
-                                            // new File(wholeOutputFilePath).delete();
+                                        if (outputFileName.endsWith(".tar.lz4")) {
+                                            String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
+                                            LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath + " into folder " + decompressedTargetFolder);
+                                            try {
+                                                LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFilePath, decompressedTargetFolder);
+                                                LogPanel.log("FileReceiver: Decompression complete into " + decompressedTargetFolder);
+                                                // Delete the .tar.lz4 file after successful decompression
+                                                try {
+                                                    Files.deleteIfExists(Paths.get(wholeOutputFilePath));
+                                                    LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath + " after decompression.");
+                                                } catch (IOException eDel) {
+                                                    LogPanel.log("FileReceiver: Error deleting archive " + wholeOutputFilePath + " after decompression: " + eDel.getMessage());
+                                                }
+                                            } catch (Exception eDecompress) {
+                                                LogPanel.log("FileReceiver: Error decompressing " + wholeOutputFilePath + ": " + eDecompress.getMessage());
+                                                if (callback != null) callback.onError(new IOException("Decompression failed for " + outputFileName, eDecompress));
+                                                overallSuccess = false; // Mark overall transfer as failed if decompression fails
+                                                // break; // Optionally break if decompression failure is critical for subsequent files
+                                            }
                                         }
-                                        if (callback != null) callback.onComplete();
                                     } else {
-                                        LogPanel.log("FileReceiver: Data reception process reported failure for " + outPutFileName);
-                                        // Receiver.start or its workers should have called callback.onError
+                                        LogPanel.log("FileReceiver: Data reception process reported failure for " + outputFileName);
+                                        if (callback != null) callback.onError(new IOException("Reception failed for " + outputFileName));
+                                        overallSuccess = false;
+                                        break; // Stop processing further files if one fails to receive
                                     }
                                 } catch (InterruptedException e_intr) {
                                     Thread.currentThread().interrupt();
-                                    LogPanel.log("FileReceiver: Data reception interrupted for " + outPutFileName + ": " + e_intr.getMessage());
+                                    LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": " + e_intr.getMessage());
                                     if (callback != null) callback.onError(e_intr);
-                                } catch (Exception e_recv) {
-                                    LogPanel.log("FileReceiver: Error during data reception/decompression for " + outPutFileName + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
-                                    // e_recv.printStackTrace();
+                                    overallSuccess = false;
+                                    break; 
+                                } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
+                                    LogPanel.log("FileReceiver: Error during data reception for " + outputFileName + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
                                     if (callback != null) callback.onError(e_recv);
+                                    overallSuccess = false;
+                                    break;
                                 }
-                                LogPanel.log("FileReceiver: Finished handling current sender (" + currentSenderName + "). Ready for next handshake.");
-                            } else {
-                                LogPanel.log("FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
+                            } // End of loop for filesExpected
+
+                            if (overallSuccess && callback != null) {
+                                callback.onComplete();
+                            } else if (!overallSuccess && callback != null) {
+                                // onError would have been called by the failing part.
+                                // No explicit onError here unless to signal a general "multi-file transfer incomplete".
+                                LogPanel.log("FileReceiver: Overall multi-file transfer did not complete successfully.");
                             }
-                        } else {
-                            LogPanel.log("Error: Invalid handshake string received (no '@'): " + handShakeMsg);
-                            dos.writeUTF("ERROR_INVALID_HANDSHAKE");
-                            dos.flush();
+
+                        } else { // proceedWithTransfer was false
+                            LogPanel.log("FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
+                            if (callback != null && totalSizeFromSender > 0) {
+                                callback.onError(new IOException("Transfer rejected or handshake failed."));
+                            } else if (callback != null) { // No specific error, but not proceeding
+                                callback.onError(new IOException("Transfer not initiated."));
+                            }
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
                     LogPanel.log("FileReceiver: Timeout during handshake phase with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getMessage());
-                    if (callback != null && currentTotalSize != null) callback.onError(e);
+                    if (callback != null) callback.onError(e);
                 } catch (EOFException e) {
                     LogPanel.log("FileReceiver: EOF during handshake with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ". Client likely disconnected. " + e.getMessage());
-                    if (callback != null && currentTotalSize != null) callback.onError(e);
+                    if (callback != null) callback.onError(e);
                 } catch (IOException e) {
                     LogPanel.log("FileReceiver: IOException during handshake phase with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getMessage());
-                    // e.printStackTrace();
-                    if (callback != null && currentTotalSize != null) callback.onError(e);
+                    if (callback != null) callback.onError(e);
                 } catch (Exception e) { // Catch-all for other handshake processing errors
                     LogPanel.log("FileReceiver: General error during handshake processing with " + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client") + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                    // e.printStackTrace();
-                    if (callback != null && currentTotalSize != null) callback.onError(e);
+                    if (callback != null) callback.onError(e);
                 } finally {
                     if (handshakeSocket != null && !handshakeSocket.isClosed()) {
                         try {
@@ -227,22 +255,26 @@ public class FileReceiver {
                         }
                     }
                 }
+                LogPanel.log("FileReceiver: Finished handling current sender. Ready for next handshake.");
             } // End while(true)
         } // ServerSocket closed here
-        // LogPanel.log("FileReceiver: Main server loop has exited (this should not happen for a continuous server).");
     }
 
     // FileReceiveDialog class (ensure Main.GUI and SendFileGUI.formatFileSize are accessible and correct)
+    // ... (FileReceiveDialog class remains largely the same, ensure it can display multiple file names from the StringBuilder)
     private class FileReceiveDialog extends JDialog {
         private boolean accepted = false;
-        public FileReceiveDialog(JFrame owner, StringBuilder fileListBuilder, String senderName, String totalSize) {
+        public FileReceiveDialog(JFrame owner, StringBuilder fileListContent, String senderName, String totalSizeStr) {
             super(owner, "Incoming Files from " + senderName, true);
             setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-            setSize(450, 350);
-            setLocationRelativeTo(owner); // owner is Main.GUI
+            // setSize(450, 350); // Adjust size as needed
+            setMinimumSize(new Dimension(450,300));
+            setLocationRelativeTo(owner); 
+
             JPanel content = new JPanel(new BorderLayout(10, 10));
             content.setBorder(new EmptyBorder(15, 15, 15, 15));
             setContentPane(content);
+
             JPanel topPanel = new JPanel(new BorderLayout(8, 8));
             JLabel iconLabel = new JLabel();
             java.net.URL iconUrl = this.getClass().getResource("/asset/data-transfer.png");
@@ -250,37 +282,37 @@ public class FileReceiver {
                 ImageIcon dataIcon = new ImageIcon(iconUrl);
                 if (dataIcon.getImageLoadStatus() == MediaTracker.COMPLETE) {
                     Image image = dataIcon.getImage();
-                    int targetSize = 30;
+                    int targetSize = 30; 
                     Image scaled = image.getScaledInstance(targetSize, targetSize, Image.SCALE_SMOOTH);
                     iconLabel.setIcon(new ImageIcon(scaled));
                 } else {
                     System.err.println("Failed to load image: /asset/data-transfer.png");
-                    iconLabel.setText("[X]");
+                    iconLabel.setText("[X]"); 
                 }
             } else {
                 System.err.println("Could not find resource: /asset/data-transfer.png. Place it in src/main/resources/asset/");
                 iconLabel.setText("[?]");
             }
             topPanel.add(iconLabel, BorderLayout.WEST);
+
             JPanel infoPanel = new JPanel(new GridLayout(2, 1));
             infoPanel.add(new JLabel("Sender: " + senderName));
-            infoPanel.add(new JLabel("Total Size: " + totalSize)); // totalSize is formatted string
+            infoPanel.add(new JLabel("Total Size: " + totalSizeStr));
             topPanel.add(infoPanel, BorderLayout.CENTER);
             content.add(topPanel, BorderLayout.NORTH);
-            DefaultListModel<String> listModel = new DefaultListModel<>();
-            String[] files = fileListBuilder.toString().split("\\r?\\n");
-            for (String file : files) {
-                if (file != null && !file.trim().isEmpty()) {
-                    listModel.addElement(file);
-                }
-            }
-            JList<String> fileList = new JList<>(listModel);
-            fileList.setBorder(BorderFactory.createTitledBorder("Files to Receive"));
-            JScrollPane scroll = new JScrollPane(fileList);
+
+            JTextArea fileListArea = new JTextArea(fileListContent.toString());
+            fileListArea.setEditable(false);
+            fileListArea.setLineWrap(true);
+            fileListArea.setWrapStyleWord(true);
+            JScrollPane scroll = new JScrollPane(fileListArea);
+            scroll.setBorder(BorderFactory.createTitledBorder("Files to Receive"));
             content.add(scroll, BorderLayout.CENTER);
+
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             JButton acceptBtn = new JButton("Accept");
             JButton rejectBtn = new JButton("Reject");
+
             acceptBtn.addActionListener(e -> {
                 accepted = true;
                 dispose();
@@ -289,10 +321,13 @@ public class FileReceiver {
                 accepted = false;
                 dispose();
             });
+
             buttonPanel.add(rejectBtn);
             buttonPanel.add(acceptBtn);
             content.add(buttonPanel, BorderLayout.SOUTH);
+            pack(); // Pack the dialog to fit its contents
         }
+
         public boolean showDialog() {
             setVisible(true);
             return accepted;
