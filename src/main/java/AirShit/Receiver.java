@@ -77,10 +77,10 @@ public class Receiver {
             for (int i = 0; i < threadCount; i++) {
                 Socket dataSock = null;
                 try {
-                    LogPanel.log("Receiver: Worker " + i + " waiting to accept connection on " + serverSocket.getLocalSocketAddress() + "...");
+                    // LogPanel.log("Receiver: Worker " + i + " waiting to accept connection on " + serverSocket.getLocalSocketAddress() + "...");
                     dataSock = serverSocket.accept(); // Accept a connection for this worker
                     dataSockets.add(dataSock); // Add to list for later cleanup
-                    LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
+                    // LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
                     // dataSock.setSoTimeout(5 * 60 * 1000); // Original 5-minute timeout
                     dataSock.setSoTimeout(30 * 60 * 1000); // Increase to 30 minutes for socket operations
 
@@ -90,16 +90,16 @@ public class Receiver {
                     if (dataSock != null && !dataSock.isClosed()) {
                         try { dataSock.close(); } catch (IOException ex) { LogPanel.log("Error closing dataSock on accept error: " + ex.getMessage()); }
                     }
-                    if (cb != null) cb.onError(e);
+                    // if (cb != null) cb.onError(e);
                     // If a worker fails to even accept a connection, the transfer is likely doomed.
                     // Consider a strategy to signal all other workers to stop or fail the transfer immediately.
                     // For now, we let other workers proceed, but the transfer will likely fail overall.
                 }
             }
-            LogPanel.log("Receiver: All connection accept loops finished. Number of futures submitted: " + futures.size());
+            // LogPanel.log("Receiver: All connection accept loops finished. Number of futures submitted: " + futures.size());
 
             if (futures.isEmpty() && threadCount > 0) {
-                LogPanel.log("Receiver: No worker tasks were submitted, though threads were expected. Aborting.");
+                // LogPanel.log("Receiver: No worker tasks were submitted, though threads were expected. Aborting.");
                 if (cb != null) cb.onError(new IOException("No receiver worker tasks started."));
                 pool.shutdownNow();
                 return false;
@@ -107,7 +107,7 @@ public class Receiver {
 
 
             pool.shutdown(); // Signal that no new tasks will be submitted
-            LogPanel.log("Receiver: Pool shutdown initiated. Waiting for termination...");
+            // LogPanel.log("Receiver: Pool shutdown initiated. Waiting for termination...");
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Wait for tasks to complete
                 LogPanel.log("Receiver: Pool termination timeout. Forcing shutdown.");
                 pool.shutdownNow(); // Forcefully stop tasks
@@ -147,8 +147,8 @@ public class Receiver {
                 // totalBytesActuallyReceivedOverall should also be 0.
                 if (fileLength == 0) {
                     if (out.exists() && out.length() == 0 && totalBytesActuallyReceivedOverall.get() == 0) {
-                        LogPanel.log("Zero-byte file received successfully: " + outputFile);
-                        if (cb != null) cb.onComplete();
+                        // LogPanel.log("Zero-byte file received successfully: " + outputFile);
+                        if (cb != null) cb.onComplete(out.getName());
                         return true;
                     } else {
                         LogPanel.log("Zero-byte file discrepancy. Expected size: 0, Actual disk size: " + (out.exists() ? out.length() : "N/A") + ", Reported by workers: " + totalBytesActuallyReceivedOverall.get());

@@ -240,6 +240,18 @@ public class SendFileGUI extends JFrame {
                 LogPanel.log("Total size: " + totalBytes + " bytes");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
+            @Override
+            public void onComplete(String name) {
+                SwingUtilities.invokeLater(() -> {
+                    log(name + " is complete");
+                    recvPanel.getLabel().setVisible(false);
+                    recvPanel.getProgressBar().setVisible(false);
+                    sendPanel.getSendButton().setEnabled(true);
+                });
+                LogPanel.log("File transfer complete.");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
+
+            }
 
             @Override public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
@@ -295,7 +307,7 @@ public class SendFileGUI extends JFrame {
         if (logPanel != null) {
             LogPanel.log(msg);
         } else {
-            System.out.println("[LOG EARLY] " + msg); 
+            System.out.println(msg); 
         }
     }
 

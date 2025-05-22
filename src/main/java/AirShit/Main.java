@@ -351,6 +351,18 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getLabel().setVisible(false);
                 });
             }
+            public void onComplete(String name) {
+                sendStatus.set(SEND_STATUS.SEND_OK);
+                
+                SwingUtilities.invokeLater(() -> {
+                    GUI.log(name + " is transfer complete");
+                    GUI.recvPanel.getProgressBar().setValue(100);
+                    GUI.sendPanel.getSendButton().setEnabled(true);
+                    GUI.log("Transfer complete");
+                    GUI.recvPanel.getProgressBar().setVisible(false);
+                    GUI.recvPanel.getLabel().setVisible(false);
+                });
+            }
 
             @Override
             public void onError(Exception e) {

@@ -195,7 +195,7 @@ public class FileReceiver {
                                 LogPanel.log("FileReceiver: Sender ACKed our OK@ message. Handshake fully complete. Preparing for data sockets.");
                             }
                         }
-
+                        System.out.println("negotiatedThreadCount: " + negotiatedThreadCount );
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");

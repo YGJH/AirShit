@@ -12,55 +12,79 @@ import java.util.concurrent.TimeUnit;
 import AirShit.ui.*;
 import AirShit.ui.LogPanel;
 
+/**
+ * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
+ * 這包括：
+ * 1. 準備要傳送的檔案列表（對於資料夾，可能包括壓縮小檔案到一個 .tar.lz4 存檔）。
+ * 2. 與接收端進行多階段握手，交換元數據（檔案總數、總大小、執行緒請求、是否為目錄、原始資料夾名稱）和每個檔案的資訊。
+ * 3. 等待接收端的接受或拒絕決定。
+ * 4. 如果接受，則為每個要傳送的檔案（可能是原始大檔案或 .tar.lz4 存檔）啟動一個 SendFile 實例進行傳輸。
+ * 5. 清理臨時檔案。
+ */
 public class FileSender {
-    private String host;
-    private int port;
-    private SendFile senderInstance; // Instance for sending a single file's data
-    private final int ITHREADS = Runtime.getRuntime().availableProcessors();
-    private final String THREADS_STR = Integer.toString(ITHREADS);
+    private String host; // 接收端主機名稱或 IP
+    private int port;    // 接收端埠號
+    private SendFile senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
+    private final int ITHREADS = Runtime.getRuntime().availableProcessors(); // 本機可用的處理器核心數，作為建議的執行緒數
+    private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 
-    private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15;
-    private static final int USER_INTERACTION_TIMEOUT_MINUTES = 5;
-    private static final int MAX_INITIAL_HANDSHAKE_RETRIES = 3; // Not used in the new protocol directly, but good to keep for other potential retries
+    private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // 預設 Socket 操作超時時間（秒）
+    private static final int USER_INTERACTION_TIMEOUT_MINUTES = 5; // 等待使用者（接收端）互動的超時時間（分鐘）
+    // private static final int MAX_INITIAL_HANDSHAKE_RETRIES = 3; // 最大初始握手重試次數 (目前未使用)
 
+    /**
+     * FileSender 的建構函式。
+     * @param host 接收端主機。
+     * @param port 接收端埠號。
+     */
     public FileSender(String host, int port) {
         this.host = host;
         this.port = port;
     }
 
+    /**
+     * 輔助方法，用於輸出調試資訊到日誌面板。
+     * @param str 要輸出的字串。
+     */
     public static void println(String str) {
         LogPanel.log("DEBUG_PRINTLN: " + str);
     }
 
+    /**
+     * 主要方法，用於傳送指定的檔案或資料夾。
+     * @param inputFile      要傳送的檔案或資料夾 (File 物件)。
+     * @param senderUserName 傳送端的使用者名稱。
+     * @param callback       用於報告傳輸狀態的回呼介面。
+     */
     public void sendFiles(File inputFile, String senderUserName, TransferCallback callback) {
         if (inputFile == null) {
-            LogPanel.log("FileSender: Input file/directory is null. Aborting.");
-            if (callback != null) callback.onError(new IllegalArgumentException("Input file/directory cannot be null."));
+            LogPanel.log("FileSender: 輸入的檔案/目錄為 null。中止操作。");
+            if (callback != null) callback.onError(new IllegalArgumentException("輸入的檔案/目錄不能為 null。"));
             return;
         }
-        // callback.onStart(0); // Moved to after total size is known
 
-        List<File> filesToProcess = new ArrayList<>();
-        String tempArchiveFilePath = null; // Path to the temporary .tar.lz4 archive, if created
-        boolean isDirectoryTransfer = inputFile.isDirectory();
-        long totalSizeOverall = 0;
-        Path tempDirForArchive = null; // To store the path of the temp directory for the archive
+        List<File> filesToProcess = new ArrayList<>(); // 實際需要傳送的檔案列表 (大檔案 + 壓縮檔)
+        String tempArchiveFilePath = null; // 如果創建了臨時 .tar.lz4 存檔，其路徑
+        boolean isDirectoryTransfer = inputFile.isDirectory(); // 判斷輸入是否為目錄
+        long totalSizeOverall = 0; // 所有待傳送檔案的總大小
+        Path tempDirForArchive = null; // 儲存存檔的臨時目錄的路徑
 
-        // Outer try-finally for cleaning up the temporary archive and its directory, if created.
+        // 最外層的 try-finally 用於確保清理臨時存檔及其目錄（如果創建了的話）
         try {
-            LogPanel.log("FileSender: Preparing files for sending...");
-            if (isDirectoryTransfer) {
-                isCompressed = true; // Legacy variable, indicates directory processing
-                String baseName = inputFile.getName();
-                tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // Create unique temp dir
-                String compressedFileName = baseName + ".tar.lz4";
-                tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString();
+            LogPanel.log("FileSender: 準備傳送檔案...");
+            if (isDirectoryTransfer) { // 如果是傳送資料夾
+                // isCompressed = true; // 舊的標記變數，表示正在處理目錄
+                String baseName = inputFile.getName(); // 資料夾的基本名稱
+                tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
+                String compressedFileName = baseName + ".tar.lz4"; // 壓縮檔案的名稱
+                tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString(); // 壓縮檔案的完整路徑
 
-                // LZ4FileCompressor will populate largeFilesArray with files >= 3MB
-                // and create tempArchiveFilePath with files < 3MB.
-                File[] largeFilesArray = new File[1000000]; // Max large files, adjust if necessary
+                // LZ4FileCompressor 會將小於 3MB 的檔案壓縮到 tempArchiveFilePath，
+                // 並將大於等於 3MB 的檔案填充到 largeFilesArray。
+                File[] largeFilesArray = new File[1000000]; // 假設最多有這麼多大檔案，可根據需要調整
                 int largeFileCount = LZ4FileCompressor.compressFolderToTarLz4(inputFile.getAbsolutePath(), tempArchiveFilePath, largeFilesArray);
 
+                // 將所有大檔案加入到待處理列表
                 for (int i = 0; i < largeFileCount; i++) {
                     if (largeFilesArray[i] != null && largeFilesArray[i].exists()) {
                         filesToProcess.add(largeFilesArray[i]);
@@ -68,168 +92,174 @@ public class FileSender {
                     }
                 }
 
-                File archiveFile = new File(tempArchiveFilePath);
+                File archiveFile = new File(tempArchiveFilePath); // 創建代表壓縮檔的 File 物件
+                // 如果壓縮檔存在且有內容，也將其加入待處理列表
                 if (archiveFile.exists() && archiveFile.length() > 0) {
                     filesToProcess.add(archiveFile);
                     totalSizeOverall += archiveFile.length();
-                } else if (largeFileCount == 0) { // No large files and no (or empty) archive
-                    LogPanel.log("FileSender: Directory '" + inputFile.getName() + "' is empty or resulted in no files to send.");
-                    if (archiveFile.exists()) Files.deleteIfExists(archiveFile.toPath()); // Clean up empty archive
-                    // tempDirForArchive will be cleaned in the final finally block
-                    if (callback != null) callback.onComplete(); // Or onError if this is an error
-                    return;
+                } else if (largeFileCount == 0) { // 如果沒有大檔案，且壓縮檔不存在或為空
+                    LogPanel.log("FileSender: 目錄 '" + inputFile.getName() + "' 為空或沒有產生任何要傳送的檔案。");
+                    if (archiveFile.exists()) Files.deleteIfExists(archiveFile.toPath()); // 清理空的壓縮檔
+                    // tempDirForArchive 會在最後的 finally 區塊中清理
+                    if (callback != null) callback.onComplete(); // 或 onError (如果這算錯誤)
+                    return; // 沒有檔案可傳送，直接返回
                 }
-                LogPanel.log("FileSender: Directory processing complete. Large files: " + largeFileCount + ". Archive: " + (archiveFile.exists() && archiveFile.length() > 0 ? archiveFile.getName() : "N/A"));
+                LogPanel.log("FileSender: 目錄處理完成。大檔案數量: " + largeFileCount + ". 壓縮檔: " + (archiveFile.exists() && archiveFile.length() > 0 ? archiveFile.getName() : "無"));
 
-            } else { // Single file
-                isCompressed = false; // Legacy variable
+            } else { // 如果是傳送單一檔案
+                // isCompressed = false; // 舊的標記變數
                 filesToProcess.add(inputFile);
                 totalSizeOverall += inputFile.length();
-                LogPanel.log("FileSender: Single file selected: " + inputFile.getName());
+                LogPanel.log("FileSender: 選擇了單一檔案: " + inputFile.getName());
             }
 
+            // 再次檢查是否有檔案需要傳送
             if (filesToProcess.isEmpty()) {
-                LogPanel.log("FileSender: No files to send after preparation.");
+                LogPanel.log("FileSender: 準備後沒有檔案需要傳送。");
                 if (callback != null) callback.onComplete();
                 return;
             }
 
-            LogPanel.log("FileSender: Total files to send: " + filesToProcess.size() + ", Total size: " + SendFileGUI.formatFileSize(totalSizeOverall));
+            LogPanel.log("FileSender: 總共要傳送的檔案數量: " + filesToProcess.size() + ", 總大小: " + SendFileGUI.formatFileSize(totalSizeOverall));
 
-            // Initial Handshake: SENDER_USERNAME@NUMBER_OF_FILES_TO_SEND@TOTAL_SIZE_BYTES@REQUESTED_THREADS@IS_DIRECTORY@ORIGINAL_FOLDER_NAME
-            String originalFolderName = isDirectoryTransfer ? inputFile.getName() : "-"; // Use "-" for single file
+            // ===== 階段 1: 初始握手元數據 =====
+            // 格式: SENDER_USERNAME@NUMBER_OF_FILES_TO_SEND@TOTAL_SIZE_BYTES@REQUESTED_THREADS@IS_DIRECTORY@ORIGINAL_FOLDER_NAME
+            String originalFolderName = isDirectoryTransfer ? inputFile.getName() : "-"; // 如果是單一檔案，原始資料夾名稱用 "-" 表示
             String initialMetadata = senderUserName + "@" +
                                      filesToProcess.size() + "@" +
                                      totalSizeOverall + "@" +
                                      THREADS_STR + "@" +
-                                     (isDirectoryTransfer ? "1" : "0") + "@" +
+                                     (isDirectoryTransfer ? "1" : "0") + "@" + // "1" 表示目錄，"0" 表示檔案
                                      originalFolderName;
 
-            try (Socket socket = new Socket(host, port); // Line ~106 in your provided full FileSender
-                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                 DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            // 使用 try-with-resources 管理 Socket 和相關的流
+            try (Socket socket = new Socket(host, port); // 建立到接收端的 Socket 連接 (用於握手)
+                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream()); // 用於向 Socket 寫入資料
+                 DataInputStream dis = new DataInputStream(socket.getInputStream())) {  // 用於從 Socket 讀取資料
 
-                socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000); // Set timeout immediately after socket creation
+                socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000); // 設定 Socket 操作的超時時間
 
-                LogPanel.log("FileSender: Sending initial metadata: " + initialMetadata);
-                dos.writeUTF(initialMetadata);
-                dos.flush();
+                LogPanel.log("FileSender: 正在傳送初始元數據: " + initialMetadata);
+                dos.writeUTF(initialMetadata); // 傳送初始元數據字串
+                dos.flush(); // 確保資料被送出
 
-                String ackResponse = dis.readUTF(); // Line ~117 - EOFException occurs here
+                String ackResponse = dis.readUTF(); // 等待接收端對元數據的確認 (ACK_METADATA)
                 if (!"ACK_METADATA".equals(ackResponse)) {
-                    throw new IOException("FileSender: Did not receive ACK_METADATA. Got: " + ackResponse);
+                    throw new IOException("FileSender: 未收到 ACK_METADATA。收到: " + ackResponse);
                 }
-                LogPanel.log("FileSender: Received ACK_METADATA.");
+                LogPanel.log("FileSender: 收到 ACK_METADATA。");
 
                 // ===== 階段 2: 檔案資訊迴圈 =====
+                // 為 filesToProcess 中的每個檔案傳送其名稱和大小
                 for (File fileToSendInfo : filesToProcess) {
                     String fileInfoString = fileToSendInfo.getName() + "@" + fileToSendInfo.length();
-                    LogPanel.log("FileSender: Sending file info: " + fileInfoString);
+                    LogPanel.log("FileSender: 正在傳送檔案資訊: " + fileInfoString);
                     dos.writeUTF(fileInfoString);
                     dos.flush();
-                    String fileInfoAck = dis.readUTF();
+                    String fileInfoAck = dis.readUTF(); // 等待接收端對此檔案資訊的確認 (ACK_FILE_INFO)
                     if (!"ACK_FILE_INFO".equals(fileInfoAck)) {
-                        throw new IOException("FileSender: Did not receive ACK_FILE_INFO for " + fileToSendInfo.getName() + ". Got: " + fileInfoAck);
+                        throw new IOException("FileSender: 未收到檔案 " + fileToSendInfo.getName() + " 的 ACK_FILE_INFO。收到: " + fileInfoAck);
                     }
-                    LogPanel.log("FileSender: Received ACK_FILE_INFO for " + fileToSendInfo.getName());
+                    LogPanel.log("FileSender: 收到檔案 " + fileToSendInfo.getName() + " 的 ACK_FILE_INFO。");
                 }
 
                 // ===== 階段 3: 等待接收方決定 =====
-                // Wait for receiver's decision (OK@ or REJECT)
-                int originalTimeoutMillis = socket.getSoTimeout();
-                socket.setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000);
-                LogPanel.log("FileSender: Set timeout to " + USER_INTERACTION_TIMEOUT_MINUTES + " minutes waiting for receiver's decision (OK@/REJECT).");
+                // 等待接收端的決定 (OK@協商後的執行緒數 或 REJECT)
+                int originalTimeoutMillis = socket.getSoTimeout(); // 保存原始超時設定
+                socket.setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000); // 設定較長的超時以等待使用者操作
+                LogPanel.log("FileSender: 設定超時為 " + USER_INTERACTION_TIMEOUT_MINUTES + " 分鐘，等待接收端決定 (OK@/REJECT)。");
                 String receiverDecision;
                 try {
-                    receiverDecision = dis.readUTF();
+                    receiverDecision = dis.readUTF(); // 讀取接收端的決定
                 } finally {
-                    socket.setSoTimeout(originalTimeoutMillis);
-                    LogPanel.log("FileSender: Restored timeout to " + originalTimeoutMillis / 1000 + "s.");
+                    socket.setSoTimeout(originalTimeoutMillis); // 恢復原始超時設定
+                    LogPanel.log("FileSender: 超時已恢復至 " + originalTimeoutMillis / 1000 + " 秒。");
                 }
-                LogPanel.log("FileSender: Received decision from receiver: " + receiverDecision);
+                LogPanel.log("FileSender: 收到來自接收端的決定: " + receiverDecision);
 
-                int negotiatedThreadCount = 1;
-                boolean transferAcceptedByReceiver = false;
+                int negotiatedThreadCount = 1; // 協商後的執行緒數量，預設為1
+                boolean transferAcceptedByReceiver = false; // 標記傳輸是否被接收端接受
 
-                if (receiverDecision.startsWith("OK@")) {
+                if (receiverDecision.startsWith("OK@")) { // 如果接收端接受
                     try {
-                        negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3));
+                        negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3)); // 解析協商後的執行緒數
+                        // 確保執行緒數在合理範圍內 (不超過本機核心數，且至少為1)
                         negotiatedThreadCount = Math.min(ITHREADS, Math.max(1, negotiatedThreadCount));
-                        LogPanel.log("FileSender: Transfer accepted by receiver. Negotiated threads: " + negotiatedThreadCount);
-                        dos.writeUTF("ACK_DECISION"); // Sender ACKs the OK
+                        LogPanel.log("FileSender: 傳輸被接收端接受。協商後的執行緒數: " + negotiatedThreadCount);
+                        dos.writeUTF("ACK_DECISION"); // 傳送端確認收到 OK 決定
                         dos.flush();
                         transferAcceptedByReceiver = true;
                     } catch (NumberFormatException | IndexOutOfBoundsException e) {
-                        throw new IOException("FileSender: Invalid format in receiver's OK message: " + receiverDecision, e);
+                        throw new IOException("FileSender: 接收端 OK 訊息格式無效: " + receiverDecision, e);
                     }
-                } else if ("REJECT".equals(receiverDecision)) {
-                    LogPanel.log("FileSender: Transfer rejected by receiver.");
-                    if (callback != null) callback.onError(new IOException("Transfer rejected by receiver."));
-                } else {
-                    throw new IOException("FileSender: Unknown decision from receiver: " + receiverDecision);
+                } else if ("REJECT".equals(receiverDecision)) { // 如果接收端拒絕
+                    LogPanel.log("FileSender: 傳輸被接收端拒絕。");
+                    if (callback != null) callback.onError(new IOException("傳輸被接收端拒絕。"));
+                } else { // 未知的決定
+                    throw new IOException("FileSender: 收到來自接收端的未知決定: " + receiverDecision);
                 }
 
                 // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
-                    if (callback != null) callback.onStart(totalSizeOverall); // Notify UI with total size
+                    if (callback != null) callback.onStart(totalSizeOverall); // 通知 UI 傳輸開始，並傳遞總大小
 
+                    // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
-                        LogPanel.log("FileSender: Starting transfer for: " + fileToActuallySend.getName() + " (" + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
+                        LogPanel.log("FileSender: 開始傳輸檔案: " + fileToActuallySend.getName() + " (" + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
                         
+                        // 創建 SendFile 實例，傳入協商後的執行緒數
                         senderInstance = new SendFile(this.host, this.port, fileToActuallySend, negotiatedThreadCount, callback);
                         
-                        // Run SendFile operation in a new thread to keep UI responsive, but wait for it to finish before next file.
-                        // For true parallel file sending, SendFile and Receiver would need significant redesign.
-                        final File currentFileForThread = fileToActuallySend; // Effectively final for lambda
+                        // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
+                        // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
+                        final File currentFileForThread = fileToActuallySend; // Lambda 表達式中使用的變數需為 final 或 effectively final
                         Thread senderOperationThread = new Thread(() -> {
                             try {
-                                senderInstance.start(); // This blocks until this file is sent or error
+                                senderInstance.start(); // 此方法會阻塞直到該檔案傳送完成或出錯
                             } catch (Exception e) {
-                                LogPanel.log("FileSender: Exception in SendFile operation for " + currentFileForThread.getName() + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                                LogPanel.log("FileSender: 檔案 " + currentFileForThread.getName() + " 的 SendFile 操作發生異常: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                                 if (callback != null) {
-                                    // It's tricky to call onError multiple times. Consider a single overall failure.
-                                    // For now, let individual SendFile errors be handled by its callback.
+                                    // 多次呼叫 onError 比較棘手。考慮一個整體的失敗。
+                                    // 目前，讓 SendFile 內部的錯誤由其自身的回呼處理。
                                 }
                             }
                         });
-                        senderOperationThread.setName("FileSender-Op-" + currentFileForThread.getName());
-                        senderOperationThread.start();
-                        senderOperationThread.join(); // Wait for the current file to finish sending
+                        senderOperationThread.setName("FileSender-Op-" + currentFileForThread.getName()); // 設定執行緒名稱
+                        senderOperationThread.start(); // 啟動執行緒
+                        senderOperationThread.join(); // 等待此檔案的傳輸執行緒完成
 
-                        LogPanel.log("FileSender: Finished SendFile operation for: " + currentFileForThread.getName());
+                        LogPanel.log("FileSender: 完成檔案 " + currentFileForThread.getName() + " 的 SendFile 操作。");
                     }
-                    LogPanel.log("FileSender: All files processed for sending.");
-                    if (callback != null) callback.onComplete();
+                    LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
+                    if (callback != null) callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
                 }
-            } // End of try-with-resources for Socket, dos, dis
-        } catch (IOException e) {
-            LogPanel.log("FileSender: IOException during sendFiles: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            } // Socket, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
+        } catch (IOException e) { // 捕獲 I/O 異常 (例如 Socket 連接失敗、讀寫錯誤等)
+            LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             if (callback != null) callback.onError(e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LogPanel.log("FileSender: sendFiles interrupted: " + e.getMessage());
+        } catch (InterruptedException e) { // 捕獲中斷異常 (例如 senderOperationThread.join() 被中斷)
+            Thread.currentThread().interrupt(); // 重設中斷狀態
+            LogPanel.log("FileSender: sendFiles 被中斷: " + e.getMessage());
             if (callback != null) callback.onError(e);
         } finally {
-            // Final cleanup for the temporary archive file and its directory
+            // 最後的清理工作：刪除臨時的壓縮檔及其目錄
             if (isDirectoryTransfer && tempArchiveFilePath != null) {
-                LogPanel.log("FileSender: Final cleanup: Attempting to delete temporary archive: " + tempArchiveFilePath);
+                LogPanel.log("FileSender: 最後清理：嘗試刪除臨時壓縮檔: " + tempArchiveFilePath);
                 try {
                     Path archivePath = Paths.get(tempArchiveFilePath);
-                    // tempDirForArchive was stored earlier
                     
-                    Files.deleteIfExists(archivePath);
-                    LogPanel.log("FileSender: Final cleanup: Attempted delete of archive file " + archivePath.getFileName());
+                    Files.deleteIfExists(archivePath); // 刪除壓縮檔
+                    LogPanel.log("FileSender: 最後清理：已嘗試刪除壓縮檔 " + archivePath.getFileName());
 
                     if (tempDirForArchive != null && Files.exists(tempDirForArchive)) {
-                        Files.deleteIfExists(tempDirForArchive);
-                        LogPanel.log("FileSender: Final cleanup: Attempted delete of temporary directory: " + tempDirForArchive);
+                        Files.deleteIfExists(tempDirForArchive); // 刪除臨時目錄
+                        LogPanel.log("FileSender: 最後清理：已嘗試刪除臨時目錄: " + tempDirForArchive);
                     }
                 } catch (IOException ex) {
-                    LogPanel.log("FileSender: Final cleanup: Error deleting temporary archive/dir: " + ex.getMessage());
+                    LogPanel.log("FileSender: 最後清理：刪除臨時壓縮檔/目錄時出錯: " + ex.getMessage());
                 }
             }
         }
     }
-    // Legacy isCompressed variable, not strictly needed with the new List<File> approach
-    private boolean isCompressed = false;
+    // 舊的 isCompressed 變數，在新採用 List<File> 的方法後並非嚴格需要
 }
