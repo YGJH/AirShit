@@ -240,7 +240,6 @@ public class FileReceiver {
                                                 // break; // Optionally break if decompression failure is critical for subsequent files
                                             }
                                         }
-                                        callback.onComplete();
                                     } else {
                                         LogPanel.log("FileReceiver: Data reception process reported failure for " + outputFileName);
                                         if (callback != null) callback.onError(new IOException("Reception failed for " + outputFileName));
@@ -260,7 +259,7 @@ public class FileReceiver {
                                     break;
                                 }
                             } // End of loop for filesExpected
-
+                            
                             if (overallSuccess && callback != null) {
                                 callback.onComplete();
                             } else if (!overallSuccess && callback != null) {
