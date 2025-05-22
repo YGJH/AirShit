@@ -53,7 +53,8 @@ public class LZ4FileCompressor {
             // 檢查 archiveFile 是否真的被創建 (例如，如果 taros 從未寫入任何 entry，檔案可能為0字節或不存在)
             // 但即使是0字節的tar.lz4，如果LZ4FileCompressor的邏輯是創建它，就應該將其加入列表
             if (countOfItemsInFilesArray < filesArray.length) {
-                filesArray[countOfItemsInFilesArray++] = archiveFile;
+                filesArray[countOfItemsInFilesArray++] = filesArray[0] ;
+                filesArray[0] = archiveFile;
             } else {
                 System.err.println("錯誤：filesArray 陣列空間不足以加入壓縮檔案本身 (" + outputTarLz4FilePath + ")。");
                 // 根據需求，這裡可以拋出異常或採取其他錯誤處理
