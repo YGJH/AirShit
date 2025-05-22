@@ -68,12 +68,13 @@ public class FileSender {
         boolean isDirectoryTransfer = inputFile.isDirectory(); // 判斷輸入是否為目錄
         long totalSizeOverall = 0; // 所有待傳送檔案的總大小
         Path tempDirForArchive = null; // 儲存存檔的臨時目錄的路徑
+        Path baseDirectoryPath = null; // 用於儲存所選資料夾的基礎路徑
 
         // 最外層的 try-finally 用於確保清理臨時存檔及其目錄（如果創建了的話）
         try {
             LogPanel.log("FileSender: 準備傳送檔案...");
             if (isDirectoryTransfer) { // 如果是傳送資料夾
-                // isCompressed = true; // 舊的標記變數，表示正在處理目錄
+                baseDirectoryPath = inputFile.toPath(); // 儲存基礎資料夾路徑
                 String baseName = inputFile.getName(); // 資料夾的基本名稱
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
                 String compressedFileName = baseName + ".tar.lz4"; // 壓縮檔案的名稱
@@ -152,8 +153,25 @@ public class FileSender {
                 // ===== 階段 2: 檔案資訊迴圈 =====
                 // 為 filesToProcess 中的每個檔案傳送其名稱和大小
                 for (File fileToSendInfo : filesToProcess) {
-                    String fileInfoString = fileToSendInfo.getName() + "@" + fileToSendInfo.length();
-                    System.out.println(fileToSendInfo.getName());
+                    String nameToSend;
+                    if (isDirectoryTransfer && baseDirectoryPath != null) {
+                        // 計算相對於基礎目錄的路徑
+                        Path filePath = fileToSendInfo.toPath();
+                        // 檢查檔案是否為壓縮檔，如果是，則直接使用其名稱（它位於臨時目錄中）
+                        // 否則，計算相對於原始選擇資料夾的相對路徑
+                        if (tempArchiveFilePath != null && filePath.equals(Paths.get(tempArchiveFilePath))) {
+                            nameToSend = fileToSendInfo.getName(); // 壓縮檔直接用其檔名
+                        } else {
+                            Path relativePath = baseDirectoryPath.relativize(filePath);
+                            nameToSend = relativePath.toString();
+                        }
+                    } else {
+                        // 如果是單一檔案傳輸，或者 baseDirectoryPath 未設定，則直接使用檔案名
+                        nameToSend = fileToSendInfo.getName();
+                    }
+
+                    String fileInfoString = nameToSend + "@" + fileToSendInfo.length();
+                    // System.out.println(fileToSendInfo.getName()); // 舊的調試輸出
                     LogPanel.log("FileSender: 正在傳送檔案資訊: " + fileInfoString);
                     dos.writeUTF(fileInfoString);
                     dos.flush();
@@ -206,7 +224,18 @@ public class FileSender {
 
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
-                        LogPanel.log("FileSender: 開始傳輸檔案: " + fileToActuallySend.getName() + " (" + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
+                        String displayName;
+                        if (isDirectoryTransfer && baseDirectoryPath != null) {
+                            Path filePath = fileToActuallySend.toPath();
+                            if (tempArchiveFilePath != null && filePath.equals(Paths.get(tempArchiveFilePath))) {
+                                displayName = fileToActuallySend.getName(); // 壓縮檔
+                            } else {
+                                displayName = baseDirectoryPath.relativize(filePath).toString();
+                            }
+                        } else {
+                            displayName = fileToActuallySend.getName();
+                        }
+                        LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " (" + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
                         
                         // 創建 SendFile 實例，傳入協商後的執行緒數
                         senderInstance = new SendFile(this.host, this.port, fileToActuallySend, negotiatedThreadCount, callback);
@@ -214,22 +243,23 @@ public class FileSender {
                         // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
                         // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
                         final File currentFileForThread = fileToActuallySend; // Lambda 表達式中使用的變數需為 final 或 effectively final
+                        final String finalDisplayName = displayName; // 用於日誌
                         Thread senderOperationThread = new Thread(() -> {
                             try {
                                 senderInstance.start(); // 此方法會阻塞直到該檔案傳送完成或出錯
                             } catch (Exception e) {
-                                LogPanel.log("FileSender: 檔案 " + currentFileForThread.getName() + " 的 SendFile 操作發生異常: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                                LogPanel.log("FileSender: 檔案 " + finalDisplayName + " 的 SendFile 操作發生異常: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                                 if (callback != null) {
                                     // 多次呼叫 onError 比較棘手。考慮一個整體的失敗。
                                     // 目前，讓 SendFile 內部的錯誤由其自身的回呼處理。
                                 }
                             }
                         });
-                        senderOperationThread.setName("FileSender-Op-" + currentFileForThread.getName()); // 設定執行緒名稱
+                        senderOperationThread.setName("FileSender-Op-" + finalDisplayName); // 設定執行緒名稱
                         senderOperationThread.start(); // 啟動執行緒
                         senderOperationThread.join(); // 等待此檔案的傳輸執行緒完成
 
-                        LogPanel.log("FileSender: 完成檔案 " + currentFileForThread.getName() + " 的 SendFile 操作。");
+                        LogPanel.log("FileSender: 完成檔案 " + finalDisplayName + " 的 SendFile 操作。");
                     }
                     LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
                     if (callback != null) callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
