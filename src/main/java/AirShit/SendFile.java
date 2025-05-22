@@ -119,8 +119,8 @@ public class SendFile {
 
         List<SocketChannel> channels = new ArrayList<>(); // 儲存已建立的 SocketChannel
         // 決定執行緒池大小：取設定的執行緒數和可用區塊數的最小值，但至少為 1。
-        int poolSize = chunkQueue.isEmpty() ? 1 : Math.min(this.threadCount, chunkQueue.size()); // 如果佇列為空（例如0位元組檔案），仍需1個 worker 處理 (0,0) 區塊
-        if (fileLength == 0) poolSize = 1; // 特別針對零位元組檔案，一個 worker。
+        // chunkQueue will have at least one chunk (0,0 for empty file, or actual chunks)
+        int poolSize = Math.min(this.threadCount, chunkQueue.size());
         poolSize = Math.max(1, poolSize); // 確保執行緒池中至少有一個執行緒。
 
         LogPanel.log("SendFile: Sender workers 的有效執行緒池大小: " + poolSize);
@@ -225,7 +225,7 @@ public class SendFile {
         }
         
         final long SUPER_CHUNK_SIZE = 5L * 1024 * 1024 * 1024; // 5GB 作為超級區塊的大小
-        final long MIN_PRACTICAL_SUB_CHUNK_SIZE = 500 * 1024L; // 實際子區塊的最小大小 (來自您原程式碼的 500KB)
+        final long MIN_ABSOLUTE_SUB_CHUNK_SIZE = 64 * 1024L;   // 子區塊的絕對最小大小 (例如 64KB)
 
         long currentOverallOffset = 0; // 追蹤在整個檔案中的當前偏移量
         int totalChunksGenerated = 0;
@@ -237,8 +237,8 @@ public class SendFile {
             // LogPanel.log("SendFile.populateChunkQueue: 處理超級區塊，起始偏移: " + currentOverallOffset + ", 長度: " + currentSuperChunkLength);
 
             // 在當前超級區塊內，根據 threadCount 劃分子區塊
-            if (this.threadCount == 1 || currentSuperChunkLength < MIN_PRACTICAL_SUB_CHUNK_SIZE) {
-                // 如果只有一個執行緒，或者當前超級區塊本身小於最小實用子區塊大小，
+            if (this.threadCount == 1 || currentSuperChunkLength <= MIN_ABSOLUTE_SUB_CHUNK_SIZE) {
+                // 如果只有一個執行緒，或者當前超級區塊本身小於或等於最小子區塊大小，
                 // 則將整個超級區塊作為一個子區塊。
                 chunkQueue.offer(new ChunkInfo(currentOverallOffset, currentSuperChunkLength));
                 totalChunksGenerated++;
@@ -246,12 +246,14 @@ public class SendFile {
             } else {
                 // 多執行緒劃分當前超級區塊
                 long idealSubChunkSize = (currentSuperChunkLength + this.threadCount - 1) / this.threadCount; // 理想子區塊大小 (向上取整)
-                long actualSubChunkSize = Math.max(idealSubChunkSize, MIN_PRACTICAL_SUB_CHUNK_SIZE); // 確保子區塊不小於最小實用大小
+                // 確保子區塊不小於最小絕對大小，但優先使用 idealSubChunkSize 以便利用多執行緒
+                long actualSubChunkSize = Math.max(idealSubChunkSize, MIN_ABSOLUTE_SUB_CHUNK_SIZE); 
 
                 // LogPanel.log("SendFile.populateChunkQueue: 超級區塊 (長度 " + currentSuperChunkLength + ") 細分: idealSubChunk=" + idealSubChunkSize + ", actualSubChunk=" + actualSubChunkSize);
 
+                // 如果 super chunk 太小，即使 threadCount > 1, idealSubChunkSize 可能會小於 MIN_ABSOLUTE_SUB_CHUNK_SIZE
+                // 導致 actualSubChunkSize 變大。如果 actualSubChunkSize 最終大於等於 super chunk 本身，則 super chunk 作為一個整體。
                 if (actualSubChunkSize >= currentSuperChunkLength) {
-                    // 如果計算出的實際子區塊大小不小於當前超級區塊長度，則也將超級區塊作為一個子區塊。
                     chunkQueue.offer(new ChunkInfo(currentOverallOffset, currentSuperChunkLength));
                     totalChunksGenerated++;
                     // LogPanel.log("SendFile.populateChunkQueue: 計算後的 actualSubChunkSize >= 超級區塊長度。超級區塊作為單一子區塊加入: offset=" + currentOverallOffset + ", length=" + currentSuperChunkLength);
@@ -264,20 +266,19 @@ public class SendFile {
                             totalChunksGenerated++;
                             // LogPanel.log("SendFile.populateChunkQueue: 加入子區塊: offset=" + (currentOverallOffset + offsetWithinSuperChunk) + ", length=" + lengthForThisSubChunk);
                         } else if (offsetWithinSuperChunk < currentSuperChunkLength) {
-                            // 理論上不應發生，除非 actualSubChunkSize 為0或負數，這已被 Math.max 保護
                             LogPanel.log("SendFile.populateChunkQueue: 警告 - 在超級區塊內偏移量 " + offsetWithinSuperChunk + " 處計算出零長度子區塊。");
-                            break; // 避免無限迴圈
+                            break; 
                         }
                         offsetWithinSuperChunk += lengthForThisSubChunk;
-                        if (lengthForThisSubChunk == 0 && offsetWithinSuperChunk < currentSuperChunkLength) { // 額外的保護
+                        if (lengthForThisSubChunk == 0 && offsetWithinSuperChunk < currentSuperChunkLength) { 
                              LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 子區塊長度為0但未完成超級區塊的分割。");
                              break;
                         }
                     }
                 }
             }
-            currentOverallOffset += currentSuperChunkLength; // 移動到下一個超級區塊的起始位置
-            if (currentSuperChunkLength == 0 && currentOverallOffset < fileLength) { // 額外的保護
+            currentOverallOffset += currentSuperChunkLength; 
+            if (currentSuperChunkLength == 0 && currentOverallOffset < fileLength) { 
                 LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 超級區塊長度為0但未完成檔案的分割。");
                 break;
             }
