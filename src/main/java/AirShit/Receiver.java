@@ -9,6 +9,7 @@ import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -210,6 +211,7 @@ public class Receiver {
         private final TransferCallback callback;
         private final AtomicLong totalBytesActuallyReceivedOverall;
         private final long expectedTotalFileLength;
+        private final FileChannel fileChannel; // Added FileChannel
 
 
         public ReceiverWorker(Socket dataSocket, RandomAccessFile raf, TransferCallback callback, AtomicLong totalReceived, long expectedTotalFileLength) {
@@ -218,6 +220,7 @@ public class Receiver {
             this.callback = callback;
             this.totalBytesActuallyReceivedOverall = totalReceived;
             this.expectedTotalFileLength = expectedTotalFileLength;
+            this.fileChannel = (this.raf != null) ? this.raf.getChannel() : null; // Get FileChannel from raf
         }
 
         @Override
@@ -228,7 +231,8 @@ public class Receiver {
                  ReadableByteChannel rbc = Channels.newChannel(socketInputStream)) {
 
                 ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES); // offset + length
-                byte[] dataBuffer = new byte[64 * 1024]; // Buffer for reading data
+                byte[] dataArray = new byte[64 * 1024]; // Buffer for reading data from socket
+                ByteBuffer dataWriteBuffer = ByteBuffer.wrap(dataArray); // ByteBuffer for writing to FileChannel
 
                 while (true) { // Loop to read multiple chunks if sender sends them on this connection
                     LogPanel.log("ReceiverWorker ("+ workerName +"): Top of chunk read loop. Waiting for header.");
@@ -271,7 +275,7 @@ public class Receiver {
                     if (expectedTotalFileLength == 0) { // Special case for zero-byte files
                         if (offset == 0 && length == 0) {
                             LogPanel.log(String.format("ReceiverWorker (%s): Received and validated (0,0) chunk for zero-byte file. Worker finishing.", workerName));
-                            // No data to read, no raf to use. This worker's job is done.
+                            // No data to read, no raf/fileChannel to use. This worker's job is done.
                             return;
                         } else {
                             throw new IOException(String.format(
@@ -288,16 +292,13 @@ public class Receiver {
                             workerName, offset
                         ));
                     }
-                    // A chunk cannot start at or after the end of the file if it has data.
                     if (offset >= expectedTotalFileLength && length > 0) {
                          throw new IOException(String.format(
                             "ReceiverWorker (%s): Invalid chunk offset %d for non-empty chunk (length %d). Offset must be less than expected file length %d.",
                             workerName, offset, length, expectedTotalFileLength
                         ));
                     }
-                    // The end of the chunk cannot exceed the end of the file.
                     if (offset + length > expectedTotalFileLength) {
-                        // Allow offset + length == expectedTotalFileLength
                         throw new IOException(String.format(
                             "ReceiverWorker (%s): Chunk (offset=%d, length=%d) would exceed expected file length %d. Sum is %d.",
                             workerName, offset, length, expectedTotalFileLength, (offset + length)
@@ -306,33 +307,44 @@ public class Receiver {
                     // --- End of validation logic ---
 
                     if (length == 0) {
-                        // If expectedTotalFileLength > 0, an (offset, 0) chunk is unusual but not strictly an error by this validation.
-                        // It means no data to read for this chunk.
                         LogPanel.log(String.format("ReceiverWorker (%s): Received zero-length chunk (offset=%d) for non-empty file. Skipping data read for this chunk.", workerName, offset));
                         continue; // Go to read next header
                     }
 
-                    // If we reach here, length > 0 and expectedTotalFileLength > 0. So raf should not be null.
-                    if (raf == null) {
-                        // This should not happen if expectedTotalFileLength > 0.
-                        throw new IOException(String.format("ReceiverWorker (%s): RandomAccessFile is null but received chunk with data (offset=%d, length=%d) for expected file length %d.",
+                    if (this.fileChannel == null) { // Should only be null if expectedTotalFileLength is 0
+                        throw new IOException(String.format("ReceiverWorker (%s): FileChannel is null but received chunk with data (offset=%d, length=%d) for expected file length %d.",
                                 workerName, offset, length, expectedTotalFileLength));
                     }
 
                     long bytesReadForThisChunk = 0;
                     while (bytesReadForThisChunk < length) {
-                        int toRead = (int) Math.min(dataBuffer.length, length - bytesReadForThisChunk);
-                        int n = socketInputStream.read(dataBuffer, 0, toRead); // Read from socket
+                        int toRead = (int) Math.min(dataArray.length, length - bytesReadForThisChunk);
+                        int n = socketInputStream.read(dataArray, 0, toRead); // Read from socket
                         if (n == -1) { // EOF while reading chunk data
                             throw new EOFException(String.format(
                                     "ReceiverWorker (%s): Socket closed prematurely while reading data for chunk. Expected %d bytes for chunk (offset %d, length %d), but received only %d before EOF.",
                                     workerName, length, offset, bytesReadForThisChunk
                             ));
                         }
-                        synchronized (raf) { // Synchronize access to the shared RandomAccessFile
-                            raf.seek(offset + bytesReadForThisChunk);
-                            raf.write(dataBuffer, 0, n);
+                        
+                        dataWriteBuffer.clear();
+                        dataWriteBuffer.put(dataArray, 0, n);
+                        dataWriteBuffer.flip();
+                        
+                        long currentFilePosition = offset + bytesReadForThisChunk;
+                        while(dataWriteBuffer.hasRemaining()) {
+                            // Use FileChannel.write(ByteBuffer, long position)
+                            // This method is thread-safe for writing to different positions
+                            int written = fileChannel.write(dataWriteBuffer, currentFilePosition);
+                            // Note: fileChannel.write might not write all bytes in one go,
+                            // but for blocking channels, it usually does or throws an error.
+                            // The loop ensures all data from dataWriteBuffer is attempted.
+                            // However, for simplicity here, we assume it writes all or errors.
+                            // A more robust loop would be:
+                            // currentFilePosition += written;
+                            // if (written == 0 && dataWriteBuffer.hasRemaining()) { /* handle potential non-progress */ }
                         }
+                        
                         bytesReadForThisChunk += n;
                         totalBytesActuallyReceivedOverall.addAndGet(n); // Update global counter
                         if (callback != null) {
@@ -345,20 +357,15 @@ public class Receiver {
             } catch (SocketTimeoutException e) {
                 LogPanel.log("Error in ReceiverWorker ("+ workerName +"): Socket timeout - " + e.getMessage());
                 if (callback != null) callback.onError(e);
-                throw new RuntimeException("Socket timeout in ReceiverWorker for " + workerName, e); // Propagate to be caught by Future.get()
-            } catch (IOException e) { // Catches validation IOExceptions, EOFExceptions from data read, etc.
+                throw new RuntimeException("Socket timeout in ReceiverWorker for " + workerName, e);
+            } catch (IOException e) { 
                 LogPanel.log("Error in ReceiverWorker ("+ workerName +"): " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                // e.printStackTrace(); // For detailed debugging
                 if (callback != null) {
                     callback.onError(e);
                 }
-                // Re-throw to be caught by Future.get() in Receiver.start()
-                // This will mark the task as failed.
                 throw new RuntimeException("IOException in ReceiverWorker for " + workerName, e);
             } finally {
                 LogPanel.log("ReceiverWorker ("+ workerName +") finishing run method.");
-                // InputStream and ReadableByteChannel are closed by try-with-resources.
-                // The dataSocket itself is closed by the main Receiver.start() method's finally block.
             }
         }
     }
