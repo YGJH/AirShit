@@ -9,7 +9,6 @@ import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileSystemView;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
-import java.awt.dnd.DnDConstants;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
@@ -18,7 +17,7 @@ import java.util.List;
 public class FileSelectionPanel extends JPanel {
     private JLabel lblFiles;
     private JLabel lblIcon;
-    private String[] selected;
+    private File selected;
     private File folder;
     private String folderName;
     private JButton browseBtn;
@@ -44,11 +43,10 @@ public class FileSelectionPanel extends JPanel {
             lblIcon.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
-                    if (selected != null && selected.length > 0) {
-                        File targetFile = new File(folder, selected[0]);
-                        if (targetFile.exists()) {
+                    if (selected != null) {
+                        if (selected.exists()) {
                             try {
-                                Desktop.getDesktop().open(targetFile);
+                                Desktop.getDesktop().open(selected);
                             } catch (Exception ex) {
                                 JOptionPane.showMessageDialog(FileSelectionPanel.this,
                                         "Cannot preview file: " + ex.getMessage(),
@@ -154,14 +152,17 @@ public class FileSelectionPanel extends JPanel {
     private void handleSelectedFile(File sel) {
         if (sel == null) return;
 
-        String oldSelected = (selected != null && selected.length > 0) ? selected[0] : null;
-        folder = sel.getParentFile();
-        folderName = sel.getName();
+        File oldSelected = this.selected;  // 保存舊的選擇
+        this.selected = sel;
+        this.folder = sel.getParentFile();
+        this.folderName = sel.getName();
 
         Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(sel);
         if (fileIcon instanceof ImageIcon) {
             Image image = ((ImageIcon) fileIcon).getImage();
-            Image scaled = image.getScaledInstance(30, 30, Image.SCALE_SMOOTH);
+            // 動態縮放 icon，確保符合 lblIcon 尺寸
+            int size = Math.min(lblIcon.getPreferredSize().width - 10, 30);
+            Image scaled = image.getScaledInstance(size, size, Image.SCALE_SMOOTH);
             lblIcon.setIcon(new ImageIcon(scaled));
         } else {
             lblIcon.setIcon(fileIcon);
@@ -171,10 +172,11 @@ public class FileSelectionPanel extends JPanel {
         lblIcon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         if (sel.isDirectory()) {
-            selected = FolderSelector.listFilesRecursivelyWithRelativePaths(sel);
+            // 顯示資料夾內的部分檔案列表
+            String[] filesInFolder = FolderSelector.listFilesRecursivelyWithRelativePaths(sel);
             StringBuilder sb = new StringBuilder("<html><b>Folder:</b> " + sel.getName() + "<br>");
             int count = 0;
-            for (String f : selected) {
+            for (String f : filesInFolder) {
                 if (count < 5) {
                     sb.append("&nbsp;&nbsp;- ").append(f).append("<br>");
                 }
@@ -186,14 +188,13 @@ public class FileSelectionPanel extends JPanel {
             sb.append("</html>");
             lblFiles.setText(sb.toString());
         } else {
-            selected = new String[]{sel.getName()};
             lblFiles.setText("<html><b>File:</b> " + sel.getName() + "<br><b>Path:</b> " + sel.getParent() + "</html>");
         }
 
-        firePropertyChange("selectedFiles", oldSelected, selected);
+        firePropertyChange("selectedFile", oldSelected, selected);
     }
 
-    public String[] getSelectedFiles() {
+    public File getSelectedFile() {
         return selected;
     }
 
