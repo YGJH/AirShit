@@ -228,30 +228,41 @@ public class SendFile {
         private final FileChannel fileChannel;
         private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
         private final TransferCallback callback; // This is the wrapped callback
-        // private final AtomicInteger activeWorkersToken; // Seems unused
 
         public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel,
-                              ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback /*, AtomicInteger activeWorkersToken*/) {
+                              ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback) {
             this.socketChannel = socketChannel;
             this.fileChannel = fileChannel;
             this.chunkQueue = chunkQueue;
             this.callback = callback;
-            // this.activeWorkersToken = activeWorkersToken;
         }
 
         @Override
         public void run() {
             String workerName = Thread.currentThread().getName();
-            LogPanel.log("SenderWorker (" + workerName + ") started for socket: " + socketChannel.socket().getLocalPort() + " -> " + socketChannel.socket().getRemoteSocketAddress());
+            LogPanel.log("SenderWorker (" + workerName + ") started for socket: " + 
+                         (socketChannel.isOpen() ? socketChannel.socket().getLocalPort() + " -> " + socketChannel.socket().getRemoteSocketAddress() : "already closed"));
+            
+            if (!socketChannel.isOpen() || !socketChannel.isConnected()) {
+                LogPanel.log("Error in SenderWorker (" + workerName + "): SocketChannel is not open or not connected at the start.");
+                if (callback != null) {
+                    callback.onError(new IOException("SocketChannel not open/connected at worker start for " + workerName));
+                }
+                return;
+            }
+
             try {
                 ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES); // For offset and length
                 ChunkInfo chunk;
                 boolean processedAtLeastOneChunk = false;
 
                 while ((chunk = chunkQueue.poll()) != null) {
+                    if (!socketChannel.isOpen()) {
+                        throw new IOException("SocketChannel closed before processing chunk " + chunk + " on worker " + workerName);
+                    }
                     processedAtLeastOneChunk = true;
                     LogPanel.log("SenderWorker (" + workerName + "): Polled chunk " + chunk + ". Queue size approx: " + chunkQueue.size());
-                    if (chunk.length < 0) { // Should not happen with current populateChunkQueue
+                    if (chunk.length < 0) {
                         LogPanel.log("SenderWorker (" + workerName + "): Skipped invalid chunk with negative length: " + chunk);
                         continue;
                     }
@@ -262,23 +273,25 @@ public class SendFile {
                     headerBuffer.flip();
                     LogPanel.log("SenderWorker (" + workerName + "): Sending header for " + chunk);
                     while (headerBuffer.hasRemaining()) {
+                        if (!socketChannel.isOpen()) throw new IOException("SocketChannel closed while sending header for chunk " + chunk);
                         socketChannel.write(headerBuffer);
                     }
 
-                    if (chunk.length == 0) { // For zero-byte file, or an explicit (offset,0) chunk
+                    if (chunk.length == 0) {
                         LogPanel.log("SenderWorker (" + workerName + "): Sent zero-length chunk header for " + chunk + ". No data body to send.");
-                        // For a zero-byte file, this is the only chunk. Worker will exit loop.
                         continue;
                     }
 
                     LogPanel.log("SenderWorker (" + workerName + "): Sending data for " + chunk);
                     long bytesTransferredForThisChunk = 0;
-                    long loopStartTime = System.currentTimeMillis(); // Timeout for sending this specific chunk's data
+                    long loopStartTime = System.currentTimeMillis(); 
 
                     while (bytesTransferredForThisChunk < chunk.length) {
-                        // Check for timeout sending this chunk's data
+                        if (!socketChannel.isOpen()) {
+                            throw new IOException("SocketChannel closed while sending data for chunk " + chunk + " (sent " + bytesTransferredForThisChunk + "/" + chunk.length + ") on worker " + workerName);
+                        }
                         if (System.currentTimeMillis() - loopStartTime > 300000) { // 5 minutes per chunk data send loop
-                            throw new IOException("Timeout sending data for chunk " + chunk + " on worker " + workerName);
+                            throw new IOException("Timeout sending data for chunk " + chunk + " on worker " + workerName + ". Sent " + bytesTransferredForThisChunk + "/" + chunk.length);
                         }
 
                         long transferredThisCall = fileChannel.transferTo(
@@ -287,14 +300,17 @@ public class SendFile {
                                 socketChannel
                         );
 
-                        if (transferredThisCall <= 0 && (chunk.length - bytesTransferredForThisChunk > 0)) {
-                             // transferTo returning 0 or negative when data is still expected can indicate a problem
-                             // or just that the socket buffer is full (for 0).
-                             // A short sleep helps avoid busy-waiting if the buffer is temporarily full.
-                             // If it's persistently 0 or negative, the timeout or an IOException from transferTo should eventually occur.
-                             LogPanel.log("SenderWorker (" + workerName + "): transferTo returned " + transferredThisCall + " for chunk " + chunk + " with " + (chunk.length - bytesTransferredForThisChunk) + " bytes remaining. Sleeping briefly.");
-                             Thread.sleep(50); // Brief pause
+                        if (transferredThisCall == 0 && (chunk.length - bytesTransferredForThisChunk > 0)) {
+                             // If transferTo returns 0, the socket buffer might be full.
+                             // A very short sleep can prevent a tight loop.
+                             // If the connection is dead, an IOException should occur on a subsequent attempt or timeout.
+                             LogPanel.log("SenderWorker (" + workerName + "): transferTo returned 0 for chunk " + chunk + " with " + (chunk.length - bytesTransferredForThisChunk) + " bytes remaining. Socket buffer might be full. Sleeping briefly.");
+                             Thread.sleep(20); // Reduced sleep, more frequent checks.
+                        } else if (transferredThisCall < 0) {
+                            // transferTo returning a negative value is unusual and typically indicates an error or EOF on the source channel (not expected for a file).
+                            throw new IOException("fileChannel.transferTo returned " + transferredThisCall + " for chunk " + chunk + " on worker " + workerName);
                         }
+                        
                         bytesTransferredForThisChunk += transferredThisCall;
                         if (callback != null && transferredThisCall > 0) {
                             callback.onProgress(transferredThisCall);
@@ -303,30 +319,31 @@ public class SendFile {
                     LogPanel.log("SenderWorker (" + workerName + "): Finished sending data for chunk " + chunk + ". Total sent for this chunk: " + bytesTransferredForThisChunk);
                 }
 
-                if (!processedAtLeastOneChunk && !chunkQueue.isEmpty()) {
-                    // This worker didn't process any chunk, but there are still chunks.
-                    // This might happen if poolSize > number of chunks initially.
-                    LogPanel.log("SenderWorker (" + workerName + "): Polled no chunks, but queue is not empty. This might be normal.");
-                } else if (!processedAtLeastOneChunk && chunkQueue.isEmpty()) {
-                     LogPanel.log("SenderWorker (" + workerName + "): Polled no chunks, and queue is empty. This might be normal if other workers took all chunks or if queue was initially empty for this worker (e.g. 0-byte file handled by one worker).");
+                if (!processedAtLeastOneChunk) {
+                    LogPanel.log("SenderWorker (" + workerName + "): Did not process any chunks. Queue empty or worker started late. This is normal if other workers handled all chunks.");
                 }
                 LogPanel.log("SenderWorker (" + workerName + "): No more chunks in queue for this worker, or worker did not process any. Worker finishing.");
 
             } catch (IOException e) {
-                LogPanel.log("Error in SenderWorker (" + workerName + "): " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                // e.printStackTrace(); // For debugging
+                // Check if the exception is due to the channel being closed, which is common if the receiver aborts.
+                String socketState = "unknown";
+                if (socketChannel != null) {
+                    socketState = "isOpen=" + socketChannel.isOpen() + ", isConnected=" + socketChannel.isConnected() + 
+                                  (socketChannel.socket() != null ? ", remoteAddr=" + socketChannel.socket().getRemoteSocketAddress() : "");
+                }
+                LogPanel.log("Error in SenderWorker (" + workerName + "): " + e.getClass().getSimpleName() + " - " + e.getMessage() + ". Socket state: " + socketState);
+                // e.printStackTrace(); 
                 if (callback != null) {
-                    callback.onError(e); // This will set errorReportedByWorker in SendFile
+                    callback.onError(e); 
                 }
             } catch (InterruptedException e) {
                 LogPanel.log("SenderWorker (" + workerName + ") was interrupted: " + e.getMessage());
-                Thread.currentThread().interrupt(); // Preserve interrupt status
+                Thread.currentThread().interrupt(); 
                 if (callback != null) {
                     callback.onError(e);
                 }
             } finally {
                 LogPanel.log("SenderWorker (" + workerName + ") run method finished.");
-                // SocketChannel is closed by SendFile.start()'s finally block
             }
         }
     }

@@ -40,12 +40,13 @@ public class FileSender {
             if (callback != null) callback.onError(new IllegalArgumentException("File to send cannot be null."));
             return;
         }
-
+        callback.onStart(0);
         long currentTotalFileSize = 0;
         StringBuilder handshakeBuilder = new StringBuilder();
         String actualFilePathToSend = null;
         boolean isCompressed = false;
-        File fileToSend;
+        File[] fileToSend = new File[1000000];
+        int fileCount = 0;
 
         try {
             if (file.isDirectory()) {
@@ -54,47 +55,116 @@ public class FileSender {
                 // Place temporary archive in temp directory or a defined local app temp space
                 Path tempDir = Files.createTempDirectory("airshit_send_temp");
                 String compressedFileName = baseName + ".tar.lz4";
-                actualFilePathToSend = Paths.get(tempDir.toString(), compressedFileName).toString();
-                
-                LogPanel.log("FileSender: Compressing folder " + file.getAbsolutePath() + " to temporary file " + actualFilePathToSend);
-                LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), actualFilePathToSend); // This should return void or throw
-                
-                fileToSend = new File(actualFilePathToSend);
-                if (!fileToSend.exists() || fileToSend.length() == 0) {
-                    throw new IOException("Compression failed or resulted in an empty file: " + actualFilePathToSend);
+                actualFilePathToSend = Paths.get(tempDir.toString(), compressedFileName).toString();               
+                fileCount = LZ4FileCompressor.compressFolderToTarLz4(file.getAbsolutePath(), actualFilePathToSend , fileToSend); // This should return void or throw
+                if(fileCount == 0 && new File(actualFilePathToSend).length() == 0) { // If no large files AND archive is empty (or failed)
+                    // Consider if an empty directory should result in an empty archive or an error.
+                    // If an empty archive is valid, this check might need adjustment.
+                    // For now, assuming an empty archive from an empty dir is okay, but if fileCount is 0
+                    // and actualFilePathToSend is also 0 length, it might indicate an issue.
+                    // However, the primary concern of LZ4FileCompressor is to populate fileToSend with large files
+                    // and create actualFilePathToSend with small ones.
+                    // If the source directory was empty, actualFilePathToSend would be a valid empty tar.lz4, and fileCount would be 0.
+                    // The original check "if(fileCount == 0)" might be too strict if an empty archive is okay.
+                    // Let's assume for now that if compression happens, actualFilePathToSend is the primary artifact.
                 }
-                currentTotalFileSize = fileToSend.length();
                 // Announce the name that the receiver should use for saving (e.g., originalFolderName.tar.lz4)
+                currentTotalFileSize = 0; // Recalculate based on what will be sent
+                
+                // Handshake builder needs to list all files that will be sent in order.
+                // Current logic sends large files (fileToSend[i]) first, then implies the archive.
+                // This part needs to align with the actual sending logic.
+                // For now, focusing on the dead code fix.
                 handshakeBuilder.append(senderUserName).append("@");
-                handshakeBuilder.append(baseName + ".tar.lz4@"); // Name for receiver's dialog & final save name hint
-            } else {
-                actualFilePathToSend = file.getAbsolutePath();
-                fileToSend = file;
-                currentTotalFileSize = fileToSend.length();
+                for(int i = 0 ; i < fileCount ; i++) { // Names of large files
+                    handshakeBuilder.append(fileToSend[i].getName()).append(File.pathSeparatorChar); // Use char for single separator
+                    currentTotalFileSize += fileToSend[i].length();
+                }
+                // Add the archive name to handshake and its size to total
+                if (actualFilePathToSend != null) { // Ensure archive path exists before using it
+                    handshakeBuilder.append(new File(actualFilePathToSend).getName()).append("@"); 
+                    currentTotalFileSize += new File(actualFilePathToSend).length();
+                } else if (isCompressed) {
+                    // This case (isCompressed but actualFilePathToSend is null) might indicate an earlier error
+                    // or an empty directory that resulted in no archive. Handle as per requirements.
+                    // For now, just ensure we don't try to use a null actualFilePathToSend.
+                    LogPanel.log("FileSender: Warning - isCompressed is true, but actualFilePathToSend is null during handshake build.");
+                }
+
+
+            } else { // Single file case
+                actualFilePathToSend = null; // Not compressing a single file directly with tar.lz4 in this path
+                fileToSend = new File[]{file}; // The single file itself
+                fileCount = 1;
+                isCompressed = false; // It's a single file, not a compressed directory archive from this class's perspective
+                currentTotalFileSize = fileToSend[0].length();
                 handshakeBuilder.append(senderUserName).append("@");
-                handshakeBuilder.append(fileToSend.getName()).append("@");
+                handshakeBuilder.append(fileToSend[0].getName()).append("@");
             }
             handshakeBuilder.append(THREADS_STR).append("@").append(currentTotalFileSize);
         } catch (IOException e) {
             LogPanel.log("FileSender: Error during file preparation or compression: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             // e.printStackTrace();
-            if (callback != null) callback.onError(e);
-            if (isCompressed && actualFilePathToSend != null) {
+            if (callback != null) {
+                callback.onError(e); // Call onError only once
+            }
+            // 清理臨時檔案的邏輯：
+            // 如果是因為處理目錄 (isCompressed == true) 而創建了臨時 .tar.lz4 檔案 (actualFilePathToSend != null)
+            // 並且在這個階段發生了錯誤，則需要清理這些臨時檔案。
+            if (fileToSend != null) {
+                LogPanel.log("FileSender: Cleaning up temporary compressed file (.tar.lz4) due to preparation error: " + actualFilePathToSend);
                 try {
-                    Files.deleteIfExists(Paths.get(actualFilePathToSend));
-                    if (Paths.get(actualFilePathToSend).getParent() != null && Files.isDirectory(Paths.get(actualFilePathToSend).getParent()) && Paths.get(actualFilePathToSend).getParent().getFileName().toString().startsWith("airshit_send_temp")) {
-                         Files.deleteIfExists(Paths.get(actualFilePathToSend).getParent()); // Clean up temp dir
+                    Path tempArchiveFile = Paths.get(actualFilePathToSend); // actualFilePathToSend 就是 .tar.lz4 檔案的路徑
+                    
+                    // 嘗試刪除 .tar.lz4 檔案
+                    boolean deletedArchive = Files.deleteIfExists(tempArchiveFile);
+                    if (deletedArchive) {
+                        LogPanel.log("FileSender: Successfully deleted temporary .tar.lz4 file: " + actualFilePathToSend);
+                    } else {
+                        // 如果 actualFilePathToSend 存在但刪除失敗，Files.deleteIfExists 會拋出 IOException
+                        // 如果檔案本來就不存在，則 deletedArchive 為 false，且不會拋錯。
+                        // 這裡可以根據需要添加日誌，但通常 deleteIfExists 的行為已經包含了不存在的情況。
+                        LogPanel.log("FileSender: Temporary .tar.lz4 file did not exist or was not deleted by this operation (may have failed if in use): " + actualFilePathToSend);
+                    }
+
+                    Path tempDir = tempArchiveFile.getParent();
+                    // 確保父目錄是我們創建的臨時目錄
+                    if (tempDir != null && Files.isDirectory(tempDir) && tempDir.getFileName().toString().startsWith("airshit_send_temp")) {
+                        // 嘗試刪除臨時目錄 (通常在 .tar.lz4 檔案被刪除後，這個目錄應該是空的)
+                        boolean deletedDir = Files.deleteIfExists(tempDir); 
+                        if (deletedDir) {
+                            LogPanel.log("FileSender: Successfully deleted temporary directory: " + tempDir);
+                        } else {
+                            LogPanel.log("FileSender: Temporary directory did not exist or was not deleted (may not be empty or access issue): " + tempDir);
+                        }
                     }
                 } catch (IOException ex) {
-                    LogPanel.log("FileSender: Error deleting temporary compressed file: " + ex.getMessage());
+                    LogPanel.log("FileSender: Error during cleanup of temporary compressed file/dir (" + actualFilePathToSend + "): " + ex.getMessage());
                 }
             }
-            return;
+            return; // 處理完錯誤後退出 sendFiles 方法
         }
 
         String initialHandshakeString = handshakeBuilder.toString();
+
         LogPanel.log("FileSender: Prepared initial handshake: " + initialHandshakeString);
-        LogPanel.log("FileSender: Actual file to send: " + fileToSend.getAbsolutePath() + ", size: " + currentTotalFileSize);
+
+        if (fileCount > 0) {
+            if (!isCompressed) { // Single file
+                 LogPanel.log("FileSender: File to send: " + fileToSend[0].getAbsolutePath() + ", total size: " + currentTotalFileSize);
+            } else { // Directory with large files and potentially an archive
+                 LogPanel.log("FileSender: Preparing to send " + fileCount + " large file(s) and an archive. Total size: " + currentTotalFileSize);
+                 // For more detail, you could list fileToSend[0] if it's the first of many, or the archive path.
+                 // Example: LogPanel.log("FileSender: First large file: " + fileToSend[0].getAbsolutePath());
+                 // if (actualFilePathToSend != null) LogPanel.log("FileSender: Archive file: " + actualFilePathToSend);
+            }
+        } else if (isCompressed && actualFilePathToSend != null) { // Empty directory resulting in only an archive
+            LogPanel.log("FileSender: File to send (archive of small/empty dir): " + actualFilePathToSend + ", total size: " + currentTotalFileSize);
+        } else if (isCompressed) { // Empty directory, no archive created (should ideally not happen if compression is attempted)
+            LogPanel.log("FileSender: Sending an empty directory (no large files, no archive generated). Total size: " + currentTotalFileSize);
+        } else { // Should not happen if fileCount is 0 and not isCompressed
+            LogPanel.log("FileSender: No files to send. Total size: " + currentTotalFileSize);
+        }
 
 
         try (Socket socket = new Socket(host, port);
@@ -175,48 +245,62 @@ public class FileSender {
 
             if (transferAcceptedByReceiver) {
                 // Send the name of the file that is ACTUALLY being sent (e.g., the .tar.lz4 name if compressed)
-                String finalFileNameToSend = fileToSend.getName();
-                LogPanel.log("FileSender: Sending final filename to receiver: " + finalFileNameToSend);
-                dos.writeUTF(finalFileNameToSend); 
-                dos.flush();
+                for(int i = 0 ; i < fileCount ; i++) {
+                    String finalFileNameToSend = fileToSend[i].getName();
+                    LogPanel.log("FileSender: Sending final filename to receiver: " + finalFileNameToSend);
+                    dos.writeUTF(finalFileNameToSend); 
+                    dos.flush();
 
-                LogPanel.log("FileSender: Waiting for receiver's ACK for the filename...");
-                String filenameAck = dis.readUTF(); 
-                if (!"ACK".equals(filenameAck)) {
-                    throw new IOException("FileSender: Receiver did not ACK filename. Received: " + filenameAck);
-                }
-                LogPanel.log("FileSender: Receiver ACKed filename. Handshake complete. Starting data transfer.");
+                    LogPanel.log("FileSender: Waiting for receiver's ACK for the filename...");
+                    String filenameAck = dis.readUTF(); 
+                    if (!"ACK".equals(filenameAck)) {
+                        throw new IOException("FileSender: Receiver did not ACK filename. Received: " + filenameAck);
+                    }
+                    LogPanel.log("FileSender: Receiver ACKed filename. Handshake complete. Starting data transfer.");
 
-                if (callback != null) callback.onStart(currentTotalFileSize);
-                senderInstance = new SendFile(this.host, this.port, fileToSend, negotiatedThreadCount, callback);
-                
-                Thread senderOperationThread = new Thread(() -> {
-                    try {
-                        senderInstance.start();
-                    } catch (Exception e) {
-                        LogPanel.log("FileSender: Exception in SendFile operation thread: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                        // e.printStackTrace();
-                        if (callback != null) {
-                            callback.onError(e);
-                        }
-                    } finally {
-                        if (isCompressed && actualFilePathToSend != null) {
-                            LogPanel.log("FileSender: Deleting temporary compressed file: " + actualFilePathToSend);
-                            try {
-                                Files.deleteIfExists(Paths.get(actualFilePathToSend));
-                                Path parentDir = Paths.get(actualFilePathToSend).getParent();
-                                if (parentDir != null && Files.isDirectory(parentDir) && parentDir.getFileName().toString().startsWith("airshit_send_temp")) {
-                                     Files.deleteIfExists(parentDir); // Clean up temp dir if it's ours
-                                     LogPanel.log("FileSender: Deleted temporary directory: " + parentDir);
+                    if (callback != null) callback.onStart(currentTotalFileSize);
+                    senderInstance = new SendFile(this.host, this.port, fileToSend[i], negotiatedThreadCount, callback);
+                    
+                    // Create final copies of variables to be used in the lambda
+                    final boolean lambdaIsCompressed = isCompressed;
+                    final String lambdaActualFilePathToSend = actualFilePathToSend;
+
+                    Thread senderOperationThread = new Thread(() -> {
+                        try {
+                            senderInstance.start();
+                        } catch (Exception e) {
+                            LogPanel.log("FileSender: Exception in SendFile operation thread: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                            // e.printStackTrace();
+                            if (callback != null) {
+                                callback.onError(e);
+                            }
+                        } finally {
+                            // Use the final copies within the lambda
+                            if (lambdaIsCompressed && lambdaActualFilePathToSend != null) {
+                                LogPanel.log("FileSender: Deleting temporary compressed file: " + lambdaActualFilePathToSend);
+                                try {
+                                    Path tempFileToDeletePath = Paths.get(lambdaActualFilePathToSend);
+                                    Files.deleteIfExists(tempFileToDeletePath);
+                                    Path parentDir = tempFileToDeletePath.getParent();
+                                    // Ensure parentDir is not null and is the temp directory we created
+                                    if (parentDir != null && Files.isDirectory(parentDir) && parentDir.getFileName().toString().startsWith("airshit_send_temp")) {
+                                        try {
+                                            Files.deleteIfExists(parentDir); // Attempt to delete the directory.
+                                            LogPanel.log("FileSender: Deleted temporary directory: " + parentDir);
+                                        } catch (IOException exDelDir) {
+                                            // Log if directory deletion fails (e.g., not empty, permissions)
+                                            LogPanel.log("FileSender: Could not delete temporary directory (it might not be empty or access issue): " + parentDir + " - " + exDelDir.getMessage());
+                                        }
+                                    }
+                                } catch (IOException ex) {
+                                    LogPanel.log("FileSender: Error deleting temporary compressed file/dir: " + ex.getMessage());
                                 }
-                            } catch (IOException ex) {
-                                LogPanel.log("FileSender: Error deleting temporary compressed file/dir: " + ex.getMessage());
                             }
                         }
-                    }
-                });
-                senderOperationThread.setName("FileSender-SendFile-Operation-Thread");
-                senderOperationThread.start();
+                    });
+                    senderOperationThread.setName("FileSender-SendFile-Operation-Thread");
+                    senderOperationThread.start();
+                }
             }
         } catch (IOException e) {
             LogPanel.log("FileSender: IOException during sendFiles: " + e.getClass().getSimpleName() + " - " + e.getMessage());

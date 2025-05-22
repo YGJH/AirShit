@@ -14,6 +14,7 @@ import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.IOUtils; // Add this line
 
 public class LZ4FileCompressor {
 
@@ -24,11 +25,11 @@ public class LZ4FileCompressor {
      * @param outputTarLz4FilePath 輸出的 .tar.lz4 檔案的完整路徑。
      * @return 成功時返回輸出的檔案路徑，失敗時返回 null。
      */
-    public static String compressFolderToTarLz4(String sourceFolderPath, String outputTarLz4FilePath) {
+    public static int compressFolderToTarLz4(String sourceFolderPath, String outputTarLz4FilePath , File[] files) {
         File sourceFolder = new File(sourceFolderPath);
         if (!sourceFolder.exists() || !sourceFolder.isDirectory()) {
             System.err.println("錯誤：來源資料夾不存在或不是一個有效的資料夾 -> " + sourceFolderPath);
-            return null;
+            return 0;
         }
 
         try (FileOutputStream fos = new FileOutputStream(outputTarLz4FilePath);
@@ -38,10 +39,14 @@ public class LZ4FileCompressor {
             // TAR 檔案中的條目名稱需要是相對路徑
             // TarArchiveOutputStream 預設使用 UTF-8 編碼條目名稱
             taros.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU); // 支援長檔名
-            addFolderToTar(sourceFolder.getAbsolutePath(), sourceFolder, taros);
-
+            int fileCount = addFolderToTar(sourceFolder.getAbsolutePath(), sourceFolder, taros , files);
+            files[fileCount++] = new File(outputTarLz4FilePath);
             System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
-            return outputTarLz4FilePath;
+            System.out.println("files: ");
+            for (int i = 0; i < files.length; i++) {
+                    System.out.println(files[i].getName());
+            }
+            return fileCount;
 
         } catch (IOException e) {
             System.err.println("壓縮資料夾 " + sourceFolderPath + " 時發生錯誤：" + e.getMessage());
@@ -51,7 +56,7 @@ public class LZ4FileCompressor {
             if (partialOutputFile.exists()) {
                 partialOutputFile.delete();
             }
-            return null;
+            return 0;
         }
     }
 
@@ -63,7 +68,8 @@ public class LZ4FileCompressor {
      * @param taros      TAR 輸出流。
      * @throws IOException 如果發生 I/O 錯誤。
      */
-    private static void addFolderToTar(String basePath, File current, TarArchiveOutputStream taros) throws IOException {
+    private static int addFolderToTar(String basePath, File current, TarArchiveOutputStream taros , File[] retFiles) throws IOException {
+        int fileCount = 0 ;
         Path currentPath = current.toPath();
         Path baseDirPath = Paths.get(basePath);
         // 確保 basePath 是 current 的父路徑或自身，以正確計算相對路徑
@@ -83,7 +89,11 @@ public class LZ4FileCompressor {
             File[] files = current.listFiles();
             if (files != null) {
                 for (File file : files) {
-                    addFolderToTar(basePath, file, taros); // 遞迴處理子檔案/資料夾
+                    if(file.isFile() && file.length() > 3 * 1024 * 1024) { // 如果ㄊㄞ
+                        retFiles[fileCount++] = file;
+                        continue;
+                    }
+                    fileCount += addFolderToTar(basePath, file, taros , retFiles); // 遞迴處理子檔案/資料夾
                 }
             }
         } else if (current.isFile()) {
@@ -91,10 +101,12 @@ public class LZ4FileCompressor {
             // entry.setSize(current.length()); // TarArchiveEntry(File, String) 建構函式會自動設定大小
             taros.putArchiveEntry(entry);
             try (FileInputStream fis = new FileInputStream(current)) {
-                IOUtils.copy(fis, taros);
+                // The call itself remains the same, but it will now use org.apache.commons.io.IOUtils
+                IOUtils.copy(fis, taros, 8192); 
             }
             taros.closeArchiveEntry();
         }
+        return fileCount;
     }
 
 
