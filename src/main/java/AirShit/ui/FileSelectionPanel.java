@@ -194,7 +194,7 @@ public class FileSelectionPanel extends JPanel {
         firePropertyChange("selectedFile", oldSelected, selected);
     }
 
-    public File getSelectedFile() {
+    public File getSelectedFiles() {
         return selected;
     }
 
