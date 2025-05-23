@@ -263,6 +263,7 @@ public class FileReceiver {
                                 }
                             } // End of loop for filesExpected
 
+
                             if (overallSuccess && callback != null) {
                                 callback.onComplete();
                             } else if (!overallSuccess && callback != null) {
