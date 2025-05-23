@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class FileChooserDialog {
+    private static HBox breadcrumbBarContainer;
 
     // private static Image folderIcon; // Will use system icons
     // private static Image fileIcon; // Will use system icons
@@ -116,9 +117,9 @@ public class FileChooserDialog {
         }
         upButton.getStyleClass().add("up-button");
         upButton.setTooltip(new Tooltip("Go to parent directory"));
-
-        HBox breadcrumbBarContainer = new HBox();
+        breadcrumbBarContainer = new HBox();
         breadcrumbBarContainer.getStyleClass().add("breadcrumb-bar");
+        HBox.setHgrow(breadcrumbBarContainer, Priority.ALWAYS);
         HBox.setHgrow(breadcrumbBarContainer, Priority.ALWAYS);
 
         HBox pathBar = new HBox(5, upButton, breadcrumbBarContainer);
@@ -296,7 +297,7 @@ public class FileChooserDialog {
                     updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane,
                             treeView);
                     updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView,
-                            conceptualRootNode, currentDirectoryWrapper);
+                            treeView.getRoot(), currentDirectoryWrapper);
                     // No need to call selectPathInTree here, as this event comes from tree
                     // selection
                 } else if (selectedDirInTree.isFile()) {
@@ -443,18 +444,22 @@ public class FileChooserDialog {
             tile.setPrefSize(100, 100); // Example: 100x100px tiles
 
             tile.setOnMouseClicked(event -> {
-                // Clear previous selection visuals from all tiles
+                // 清除先前選擇的樣式
                 tilePane.getChildren().forEach(node -> node.getStyleClass().remove("selected"));
-                // Apply selection visual to current tile
                 tile.getStyleClass().add("selected");
-                selectedFileProperty.set(file); // Update the shared selection property
+                selectedFileProperty.set(file); // 更新選擇的檔案
 
                 if (event.getButton().equals(MouseButton.PRIMARY) && event.getClickCount() == 2) {
                     if (file.isDirectory()) {
-                        // Navigate into directory by selecting it in the TreeView
+                        // 如果是目錄，導航到該目錄
+                        currentDirectoryWrapper[0] = file;
+                        updateFilePane(currentDirectoryWrapper[0], tilePane, currentDirectoryWrapper,
+                                selectedFileProperty, treeView);
+                        updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView,
+                                treeView.getRoot(), currentDirectoryWrapper);
                         selectPathInTree(treeView.getRoot(), file, treeView, true);
                     } else {
-                        // If it's a file, find the "Select" button and fire it
+                        // 如果是檔案，觸發 "Select" 按鈕
                         Node parent = tile.getScene().lookup(".dialog-button-bar");
                         if (parent instanceof HBox) {
                             for (Node buttonNode : ((HBox) parent).getChildren()) {
@@ -481,25 +486,25 @@ public class FileChooserDialog {
     private static void updateBreadcrumbBar(HBox breadcrumbGuiContainer, File currentPath,
             TreeView<File> treeView, TreeItem<File> conceptualRootNode,
             final File[] currentSelectedDirWrapper) {
-        breadcrumbGuiContainer.getChildren().clear();
+        breadcrumbGuiContainer.getChildren().clear(); // 清空舊的 Breadcrumb
         if (currentPath == null)
             return;
 
         List<File> pathParts = new ArrayList<>();
         File temp = currentPath;
         while (temp != null) {
-            pathParts.add(0, temp); // Add to beginning to reverse order
+            pathParts.add(0, temp); // 從根目錄開始加入
             temp = temp.getParentFile();
         }
 
         for (int i = 0; i < pathParts.size(); i++) {
             File part = pathParts.get(i);
             String displayName = fileSystemView.getSystemDisplayName(part);
-            if (displayName.isEmpty() && part.toPath().getNameCount() == 0) { // Root directory (e.g., "C:\")
-                displayName = part.getAbsolutePath(); // Show "C:\" instead of empty string
+            if (displayName.isEmpty() && part.toPath().getNameCount() == 0) { // 根目錄 (例如 "C:\")
+                displayName = part.getAbsolutePath();
             }
 
-            if (i == pathParts.size() - 1) { // Last part, current directory
+            if (i == pathParts.size() - 1) { // 最後一部分，表示當前目錄
                 Label currentLabel = new Label(displayName);
                 currentLabel.getStyleClass().add("breadcrumb-current-location");
                 breadcrumbGuiContainer.getChildren().add(currentLabel);
@@ -507,17 +512,27 @@ public class FileChooserDialog {
                 Hyperlink link = new Hyperlink(displayName);
                 link.getStyleClass().add("breadcrumb-link");
                 link.setOnAction(e -> {
-                    // Navigate to this part of the path
+                    // 更新當前目錄
+                    currentSelectedDirWrapper[0] = part;
+
+                    // 更新檔案面板
+                    updateFilePane(currentSelectedDirWrapper[0], filePane, currentSelectedDirWrapper,
+                            selectedFileInPane, treeView);
+
+                    // 更新 Breadcrumb Bar
+                    updateBreadcrumbBar(breadcrumbGuiContainer, currentSelectedDirWrapper[0], treeView,
+                            conceptualRootNode, currentSelectedDirWrapper);
+
+                    // 在樹狀視圖中選中對應的節點
                     selectPathInTree(conceptualRootNode, part, treeView, true);
-                    // updateFilePane will be called by treeView selection listener
                 });
                 breadcrumbGuiContainer.getChildren().add(link);
-                Label separator = new Label(">"); // Or use a styled separator
+                Label separator = new Label(">"); // 使用 ">" 作為分隔符號
                 separator.getStyleClass().add("breadcrumb-separator");
                 breadcrumbGuiContainer.getChildren().add(separator);
             }
         }
-        currentSelectedDirWrapper[0] = currentPath; // Ensure current directory is updated
+        currentSelectedDirWrapper[0] = currentPath; // 確保當前目錄已更新
     }
 
     // ... (selectPathInTree and createNode methods remain largely the same, ensure
@@ -527,16 +542,15 @@ public class FileChooserDialog {
         if (root == null || targetPath == null)
             return false;
 
-        // Special handling for root drives, as their path might be "C:\" vs "C:"
         String targetPathStr = targetPath.getAbsolutePath();
-        if (targetPath.getParentFile() == null && targetPathStr.endsWith("\\")) { // e.g. C:\
+        if (targetPath.getParentFile() == null && targetPathStr.endsWith(File.separator)) {
             targetPathStr = targetPathStr.substring(0, targetPathStr.length() - 1);
         }
 
         for (TreeItem<File> childNode : root.getChildren()) {
             if (childNode.getValue() != null) {
                 String childPathStr = childNode.getValue().getAbsolutePath();
-                if (childNode.getValue().getParentFile() == null && childPathStr.endsWith("\\")) {
+                if (childNode.getValue().getParentFile() == null && childPathStr.endsWith(File.separator)) {
                     childPathStr = childPathStr.substring(0, childPathStr.length() - 1);
                 }
 
@@ -544,16 +558,21 @@ public class FileChooserDialog {
                     treeView.getSelectionModel().select(childNode);
                     if (expandTarget)
                         childNode.setExpanded(true);
-                    // Scroll to the selected item
+
+                    // 更新檔案面板
+                    updateFilePane(targetPath, filePane, new File[] { targetPath }, selectedFileInPane, treeView);
+
+                    // 滾動到選中的節點
                     int rowIndex = treeView.getRow(childNode);
                     if (rowIndex != -1) {
                         treeView.scrollTo(rowIndex);
                     }
                     return true;
                 }
-                // If targetPath is a descendant of childNode
+
+                // 如果目標路徑是子節點的後代
                 if (targetPathStr.toLowerCase().startsWith(childPathStr.toLowerCase() + File.separator)) {
-                    childNode.setExpanded(true); // Expand parent
+                    childNode.setExpanded(true); // 展開父節點
                     if (selectPathInTree(childNode, targetPath, treeView, expandTarget)) {
                         return true;
                     }
