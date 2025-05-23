@@ -1,13 +1,14 @@
 package AirShit.ui;
 
-import AirShit.FolderSelector;
+import AirShit.FileChooserDialog;
 import AirShit.SendFileGUI;
-import AirShit.NoFileSelectedException;
+import javafx.stage.FileChooser;
 
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileSystemView;
+import javax.swing.TransferHandler.TransferSupport;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.UnsupportedFlavorException;
@@ -88,6 +89,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
                 if (!canImport(support))
                     return false;
                 try {
+                    @SuppressWarnings("unchecked")
                     List<File> files = (List<File>) support.getTransferable()
                             .getTransferData(DataFlavor.javaFileListFlavor);
                     if (!files.isEmpty()) {
@@ -175,22 +177,23 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         if (browseBtn == null) {
             browseBtn = new JButton("Browse Files...");
             try {
-                java.net.URL folderIconURL = getClass().getResource("/asset/folder.png");
-                if (folderIconURL != null) {
-                    ImageIcon folderIcon = new ImageIcon(folderIconURL);
-                    Image scaledImg = folderIcon.getImage().getScaledInstance(20, 20, Image.SCALE_SMOOTH);
-                    browseBtn.setIcon(new ImageIcon(scaledImg));
-                } else {
-                    System.err.println("Browse button icon '/asset/folder.png' not found.");
+                // Load and set icon for browse button
+                java.net.URL browseIconUrl = getClass().getResource("/asset/folder-open.png");
+                if (browseIconUrl != null) {
+                    ImageIcon browseIcon = new ImageIcon(browseIconUrl);
+                    Image scaledBrowseIcon = browseIcon.getImage().getScaledInstance(16, 16, Image.SCALE_SMOOTH);
+                    browseBtn.setIcon(new ImageIcon(scaledBrowseIcon));
                 }
             } catch (Exception e) {
                 System.err.println("Error loading browse button icon: " + e.getMessage());
             }
             browseBtn.addActionListener(e -> {
-                File sel = FolderSelector.selectFolderOrFiles(this);
-                if (sel != null) {
-                    handleSelectedFile(sel);
-                }
+                SwingUtilities.invokeLater(() -> {
+                    File selectedFile = FileChooser.showDialog();
+                    if (selectedFile != null) {
+                        handleSelectedFile(selectedFile);
+                    }
+                });
             });
         }
         browseBtn.setFont(SendFileGUI.FONT_PRIMARY_BOLD);
@@ -254,7 +257,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
 
         if (sel.isDirectory()) {
             // 顯示資料夾內的部分檔案列表
-            String[] filesInFolder = FolderSelector.listFilesRecursivelyWithRelativePaths(sel);
+            String[] filesInFolder = 
             StringBuilder sb = new StringBuilder("<html><b>Folder:</b> " + sel.getName() + "<br>");
             int count = 0;
             for (String f : filesInFolder) {

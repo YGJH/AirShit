@@ -1,0 +1,430 @@
+/* filepath: c:\\Users\\charless\\Documents\\airshit\\master\\src\\main\\resources\\css\\file-chooser-dialog.css */
+.file-chooser-dialog-root {
+    -fx-background-color: #3A3A3A; /* Warm Dark Gray Base */
+    background-color: #3A3A3A;
+    -fx-font-family: "Inter", "Roboto", sans-serif;
+    font-family: "Inter", "Roboto", sans-serif;
+    -fx-font-size: 13px;
+    font-size: 13px;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+}
+
+/* Header Styling */
+.file-chooser-header {
+    -fx-background-color: #404040; /* Slightly Lighter Warm Gray */
+    background-color: #404040;
+    -fx-padding: 12px 15px;
+    padding: 12px 15px;
+    -fx-border-color: #505050; /* Medium Warm Gray Border */
+    border-color: #505050;
+    -fx-border-width: 0 0 1px 0; 
+    border-width: 0 0 1px 0;
+}
+
+.dialog-title-label {
+    -fx-font-size: 16px;
+    font-size: 16px;
+    -fx-font-weight: bold;
+    font-weight: bold;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+    -fx-padding: 0 0 0 5px; 
+    padding: 0 0 0 5px;
+}
+
+/* Left Pane Container (Favorites + TreeView) */
+.left-pane-container {
+    -fx-background-color: #3A3A3A; /* Warm Dark Gray Base */
+    background-color: #3A3A3A;
+    -fx-padding: 0;
+    padding: 0;
+}
+
+/* Favorites Pane Styling */
+.favorites-pane {
+    -fx-background-color: #3D3D3D; /* Slightly different Warm Gray */
+    background-color: #3D3D3D;
+    -fx-padding: 10px 5px 10px 10px; 
+    padding: 10px 5px 10px 10px;
+    -fx-border-color: #505050; /* Medium Warm Gray Border */
+    border-color: #505050;
+    -fx-border-width: 0 0 1px 0; 
+    border-width: 0 0 1px 0;
+}
+
+.favorites-title {
+    -fx-font-size: 16px; /* Increased from 14px */
+    font-size: 16px; /* Increased from 14px */
+    -fx-font-weight: bold;
+    font-weight: bold;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+    -fx-padding: 0 0 8px 0; 
+    padding: 0 0 8px 0;
+}
+
+.favorite-link {
+    -fx-text-fill: #FFA500; /* Orange Link */
+    -fx-underline: false;
+    text-decoration: none;
+    -fx-padding: 4px 8px;
+    padding: 4px 8px;
+    -fx-background-radius: 3px;
+    border-radius: 3px;
+    -fx-graphic-text-gap: 8px;
+    -fx-cursor: hand;
+    cursor: pointer;
+    -fx-alignment: center-left;
+}
+
+.favorite-link:hover {
+    -fx-background-color: #505050; /* Medium Warm Gray Hover */
+    background-color: #505050;
+    -fx-text-fill: #FFC04D; /* Lighter Orange on Hover */
+}
+
+/* TreeView Styling */
+.tree-view {
+    -fx-background-color: #3A3A3A; /* Warm Dark Gray Base */
+    background-color: #3A3A3A;
+    -fx-padding: 8px; 
+    padding: 8px;
+}
+
+.tree-cell {
+    -fx-padding: 6px 10px; 
+    padding: 6px 10px;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+    -fx-background-color: transparent;
+    background-color: transparent;
+    -fx-border-width: 0;
+    border-width: 0;
+    -fx-background-radius: 3px; 
+    border-radius: 3px;
+    -fx-graphic-text-gap: 8px; 
+}
+
+.tree-cell:filled:hover {
+    -fx-background-color: #505050; /* Medium Warm Gray Hover */
+    background-color: #505050;
+    -fx-text-fill: #FFFFFF;
+}
+
+.tree-cell:filled:selected {
+    -fx-background-color: #FF8C00; /* DarkOrange Selection */
+    background-color: #FF8C00;
+    -fx-text-fill: #FFFFFF;
+}
+
+.tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: #FFA500; /* Orange Arrow */
+    background-color: #FFA500;
+    -fx-shape: "M 0 -3 L 5 2 L 0 7 Z"; 
+}
+
+/* ListView Styling (for files) - Applying new theme */
+.list-view {
+    -fx-background-color: #3A3A3A; /* Warm Dark Gray Base */
+    background-color: #3A3A3A;
+    -fx-padding: 8px;
+    padding: 8px;
+}
+
+.list-cell {
+    -fx-padding: 6px 10px;
+    padding: 6px 10px;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+    -fx-background-color: transparent;
+    background-color: transparent;
+    -fx-border-width: 0;
+    border-width: 0;
+    -fx-background-radius: 3px;
+    border-radius: 3px;
+    -fx-graphic-text-gap: 8px; 
+}
+
+.list-cell:filled:hover {
+    -fx-background-color: #505050; /* Medium Warm Gray Hover */
+    background-color: #505050;
+    -fx-text-fill: #FFFFFF;
+}
+
+.list-cell:filled:selected {
+    -fx-background-color: #FF8C00; /* DarkOrange Selection */
+    background-color: #FF8C00;
+    -fx-text-fill: #FFFFFF;
+}
+
+.list-view .placeholder .label {
+    -fx-text-fill: #A0A0A0; /* Dimmer Gray for placeholder */
+    color: #A0A0A0;
+}
+
+/* Button Bar Styling */
+.dialog-button-bar { 
+    -fx-padding: 25px 15px 12px 15px; /* Decreased top padding from 30px to 25px */
+    padding: 25px 15px 12px 15px; /* Decreased top padding from 30px to 25px */
+    -fx-spacing: 10px;
+    -fx-alignment: center-right;
+    -fx-background-color: #404040; /* Slightly Lighter Warm Gray */
+    background-color: #404040;
+    -fx-border-color: #505050; /* Medium Warm Gray Border */
+    border-color: #505050;
+    -fx-border-width: 1px 0 0 0; 
+    border-width: 1px 0 0 0;
+}
+
+/* JFXButton Styling */
+.jfx-button {
+    -fx-background-color: #FF8C00; /* DarkOrange Button */
+    background-color: #FF8C00;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-weight: bold;
+    font-weight: bold;
+    -fx-padding: 8px 18px; 
+    padding: 8px 18px;
+    -fx-background-radius: 4px;
+    border-radius: 4px;
+    -jfx-button-type: RAISED;
+    -fx-cursor: hand;
+    cursor: pointer;
+    -fx-font-family: "Inter", "Roboto", sans-serif;
+    font-family: "Inter", "Roboto", sans-serif;
+    -fx-font-size: 13px;
+    font-size: 13px;
+}
+
+.jfx-button:hover {
+    -fx-background-color: #E07B00; /* Darker Orange on Hover */
+    background-color: #E07B00;
+}
+
+.jfx-button.cancel-button {
+    -fx-background-color: #606060; /* Medium Gray Cancel Button */
+    background-color: #606060;
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+}
+
+.jfx-button.cancel-button:hover {
+    -fx-background-color: #707070; /* Lighter Gray Hover for Cancel */
+    background-color: #707070;
+}
+
+/* Path Bar Styling */
+.path-bar {
+    -fx-background-color: #404040; /* Slightly Lighter Warm Gray */
+    background-color: #404040;
+    -fx-padding: 5px 10px; /* Retain padding from original if any */
+    padding: 5px 10px;
+}
+
+.breadcrumb-bar {
+    -fx-background-color: transparent; 
+    background-color: transparent; 
+}
+
+.breadcrumb-link {
+    -fx-text-fill: #FFA500; /* Orange Link */
+    -fx-padding: 3px 5px;
+    padding: 3px 5px;
+    -fx-background-radius: 2px;
+    border-radius: 2px;
+}
+
+.breadcrumb-link:hover {
+    -fx-background-color: #505050; /* Medium Warm Gray Hover */
+    background-color: #505050;
+    -fx-text-fill: #FFC04D; /* Lighter Orange on Hover */
+}
+
+.breadcrumb-separator {
+    -fx-text-fill: #A0A0A0; /* Dimmer Gray for separator */
+    -fx-padding: 0 5px;
+    padding: 0 5px;
+}
+
+.breadcrumb-current-location {
+    -fx-text-fill: #F0F0F0; /* Off-White for current location */
+    -fx-font-weight: bold;
+    font-weight: bold;
+    -fx-padding: 3px 5px;
+    padding: 3px 5px;
+}
+
+.up-button {
+    -fx-background-color: transparent; /* Assuming it's an icon button */
+    background-color: transparent;
+    -fx-padding: 5px;
+    padding: 5px;
+    -fx-text-fill: #FFA500; /* Orange for icon if it's text-based, or for tint if applicable */
+}
+
+.up-button:hover {
+    -fx-background-color: #505050; /* Medium Warm Gray Hover */
+    background-color: #505050;
+}
+
+/* up-button icon styling might need specific selectors if using an icon font or SVG */
+.up-button .ikonli-font-icon { 
+    -fx-icon-color: #FFA500; /* Example if using Ikonli and it supports this */
+    /* icon-color: #FFA500; */ /* Standard property if applicable */
+}
+/* .up-button ImageView { */ /* If it's an ImageView, this won't directly color it unless effects are used */
+    /* -fx-effect: ... ; */
+/* } */
+
+
+/* Split Pane Divider */
+.main-split-pane > .split-pane-divider {
+    -fx-background-color: #505050; /* Medium Warm Gray for divider line */
+    background-color: #505050;
+    -fx-padding: 0 1px; /* Make divider thin */
+    padding: 0 1px;
+}
+.main-split-pane > .split-pane-divider:hover {
+    -fx-background-color: #FF8C00; /* DarkOrange on hover for visibility */
+    background-color: #FF8C00;
+}
+
+
+/* ScrollBar Styling */
+.scroll-bar {
+    -fx-background-color: #404040; /* Match nearby background */
+    background-color: #404040;
+    -fx-background-insets: 0;
+    -fx-padding: 2;
+    padding: 2;
+}
+.scroll-bar:horizontal .track,
+.scroll-bar:vertical .track{
+    -fx-background-color: #303030; /* Darker Warm Gray for track */
+    background-color: #303030;
+    -fx-border-color: transparent;
+    border-color: transparent;
+    -fx-background-radius: 2;
+    border-radius: 2;
+}
+
+.scroll-bar:horizontal .increment-button ,
+.scroll-bar:horizontal .decrement-button {
+    -fx-background-color: #404040;
+    background-color: #404040;
+    -fx-background-radius: 0;
+    border-radius: 0;
+    -fx-padding: 5;
+    padding: 5;
+}
+
+.scroll-bar:vertical .increment-button ,
+.scroll-bar:vertical .decrement-button {
+    -fx-background-color: #404040;
+    background-color: #404040;
+    -fx-background-radius: 0;
+    border-radius: 0;
+    -fx-padding: 5;
+    padding: 5;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow{
+    -fx-shape: " "; /* Hide default arrows if using custom or simple thumbs */
+    -fx-padding: 0;
+    padding: 0;
+}
+
+.scroll-bar:horizontal .thumb,
+.scroll-bar:vertical .thumb {
+    -fx-background-color: #606060; /* Medium Gray Thumb */
+    background-color: #606060;
+    -fx-background-insets: 2;
+    -fx-background-radius: 2;
+    border-radius: 2;
+}
+
+.scroll-bar:horizontal .thumb:hover,
+.scroll-bar:vertical .thumb:hover {
+    -fx-background-color: #707070; /* Lighter Gray Thumb on Hover */
+    background-color: #707070;
+}
+
+/* Tooltip Styling */
+.tooltip {
+    -fx-background-color: #2B2B2B; /* Darker for tooltip */
+    background-color: #2B2B2B;
+    -fx-text-fill: #E0E0E0; /* Light text */
+    -fx-background-radius: 3px;
+    border-radius: 3px;
+    -fx-padding: 6px 10px;
+    padding: 6px 10px;
+    -fx-font-size: 12px;
+    font-size: 12px;
+}
+
+/* Placeholder Label (e.g., for empty TilePane) */
+.placeholder-label {
+    -fx-text-fill: #A0A0A0; /* Dimmer Gray */
+    -fx-font-size: 14px;
+    font-size: 14px;
+}
+
+/* ScrollPane for File Tiles */
+.file-scroll-pane {
+    -fx-background: #3A3A3A; /* Warm Dark Gray Base */
+    background: #3A3A3A;
+    -fx-background-color: #3A3A3A; /* Ensure consistency */
+    background-color: #3A3A3A;
+    -fx-padding: 0; /* Remove padding if tiles have their own */
+    padding: 0;
+}
+
+/* TilePane for File Display */
+.file-tile-pane {
+    -fx-background-color: #3A3A3A; /* Warm Dark Gray Base */
+    background-color: #3A3A3A;
+    -fx-padding: 10px; /* Padding around the group of tiles */
+    padding: 10px;
+    -fx-hgap: 10;
+    -fx-vgap: 10;
+}
+
+/* Individual File/Folder Tile */
+.file-tile {
+    -fx-background-color: #454545; /* Slightly lighter than base for tile background */
+    background-color: #454545;
+    -fx-padding: 8px;
+    padding: 8px;
+    -fx-background-radius: 4px;
+    border-radius: 4px;
+    -fx-alignment: center;
+    -fx-min-width: 90px; 
+    min-width: 90px;
+    -fx-max-width: 90px;
+    max-width: 90px;
+    -fx-min-height: 90px;
+    min-height: 90px;
+    -fx-max-height: 90px;
+    max-height: 90px;
+}
+
+.file-tile:hover {
+    -fx-background-color: #555555; /* Lighter on hover */
+    background-color: #555555;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 1); /* Subtle shadow on hover */
+}
+
+.file-tile.selected {
+    -fx-background-color: #FF8C00; /* DarkOrange for selected tile */
+    background-color: #FF8C00;
+    -fx-effect: dropshadow(gaussian, rgba(255,140,0,0.5), 8, 0, 0, 2); /* Orange glow for selected */
+}
+
+/* Label within the File Tile */
+.file-tile .label {
+    -fx-text-fill: #F0F0F0; /* Off-White Text */
+    -fx-text-alignment: center;
+    -fx-wrap-text: true;
+    -fx-max-width: 80px; 
+    max-width: 80px;
+}
+
+.file-tile.selected .label {
+    -fx-text-fill: #FFFFFF; /* White text on selected tile */
+}

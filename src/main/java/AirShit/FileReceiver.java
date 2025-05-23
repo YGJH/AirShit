@@ -130,7 +130,7 @@ public class FileReceiver {
                         if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-")) {
                             fileListForDialog.append("Folder: ").append(originalFolderNameFromSender).append("\nContaining:\n");
                         }
-                        for(FileInfo fi : filesExpected) {
+                        for (FileInfo fi : filesExpected) {
                             fileListForDialog.append("  ").append(fi.name).append(" (").append(SendFileGUI.formatFileSize(fi.size)).append(")\n");
                         }
 
@@ -138,36 +138,12 @@ public class FileReceiver {
                         boolean userAccepted = dialog.showDialog();
 
                         if (userAccepted) {
-                            JFileChooser saveLocationChooser = new JFileChooser();
-                            saveLocationChooser.setDialogTitle("Select Save Location for files from " + senderNameFromSender);
-                            saveLocationChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                            saveLocationChooser.setAcceptAllFileFilterUsed(false);
-                            File defaultSaveDir = new File(System.getProperty("user.home") + File.separator + "Downloads");
-                            if (!defaultSaveDir.exists()) defaultSaveDir.mkdirs();
-                            saveLocationChooser.setCurrentDirectory(defaultSaveDir);
-                            int chooserResult = saveLocationChooser.showDialog(Main.GUI, "Select Folder");
-                            if (chooserResult == JFileChooser.APPROVE_OPTION) {
-                                selectedSaveDirectory = saveLocationChooser.getSelectedFile(); // This is the base directory chosen by user
-                                LogPanel.log("User selected base save directory: " + selectedSaveDirectory.getAbsolutePath());
-
-                                if (isDirectoryTransferFromSender && originalFolderNameFromSender != null && !originalFolderNameFromSender.equals("-") && hasLz4) {
-                                    File targetFolder = new File(selectedSaveDirectory, originalFolderNameFromSender);
-                                    if (!targetFolder.exists()) {
-                                        if (targetFolder.mkdirs()) {
-                                            LogPanel.log("Created target sub-directory: " + targetFolder.getAbsolutePath());
-                                            selectedSaveDirectory = targetFolder; // Update selectedSaveDirectory to be the new sub-folder
-                                        } else {
-                                            LogPanel.log("Error: Failed to create target sub-directory: " + targetFolder.getAbsolutePath() + ". Files will be saved in the parent directory.");
-                                            // Optionally, set userAccepted = false or show an error to the user
-                                            // For now, we'll proceed to save in the parent if sub-folder creation fails.
-                                        }
-                                    } else {
-                                        LogPanel.log("Target sub-directory already exists: " + targetFolder.getAbsolutePath());
-                                        selectedSaveDirectory = targetFolder; // Update selectedSaveDirectory to use the existing sub-folder
-                                    }
-                                }
+                            File selectedPath = FileChooserDialog.showDialog(null, null); // Show file chooser dialog
+                            if (selectedPath != null && selectedPath.isDirectory() && selectedPath.canWrite()) {
+                                selectedSaveDirectory = selectedPath;
+                                LogPanel.log("User selected save directory: " + selectedSaveDirectory.getAbsolutePath());
                             } else {
-                                LogPanel.log("User cancelled save location selection.");
+                                LogPanel.log("Invalid save directory selected or user canceled.");
                                 userAccepted = false;
                             }
                         }

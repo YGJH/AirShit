@@ -8,15 +8,16 @@
     <version>1.0-SNAPSHOT</version> <!-- 請替換成您的版本 -->
 
     <properties>
-        <maven.compiler.source>1.8</maven.compiler.source> <!-- 或您專案使用的 Java 版本 -->
-        <maven.compiler.target>1.8</maven.compiler.target> <!-- 或您專案使用的 Java 版本 -->
+        <maven.compiler.source>11</maven.compiler.source> <!-- Updated to Java 11 -->
+        <maven.compiler.target>11</maven.compiler.target> <!-- Updated to Java 11 -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javafx.version>11.0.2</javafx.version> <!-- Define JavaFX version -->
     </properties>
     <dependencies>
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
-            <version>2.16.0</version> <!-- Or a newer compatible version -->
+            <version>2.16.0</version>
         </dependency>
         <dependency>
             <groupId>org.lz4</groupId>
@@ -31,8 +32,57 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>
-            <version>1.26.1</version> <!-- 您可以檢查並使用最新的穩定版本 -->
+            <version>1.26.1</version>
         </dependency>
+        <dependency>
+            <groupId>com.jfoenix</groupId>
+            <artifactId>jfoenix</artifactId>
+            <version>9.0.10</version> <!-- Updated JFoenix for JavaFX 9+ -->
+        </dependency>
+
+        <!-- Add JavaFX dependencies -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier> <!-- Add classifiers for your target platforms -->
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>linux</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>mac</classifier>
+        </dependency>
+
+        <!-- Added for SwingFXUtils -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf-extras</artifactId>
+            <version>3.4.1</version> 
+        </dependency>
+
         <!-- 其他依賴項可以加在這裡 -->
     </dependencies>
 
@@ -42,19 +92,49 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version> <!-- 或您偏好的版本 -->
+                <version>3.11.0</version>
                 <configuration>
-                    <source>1.8</source> <!-- 與 properties 中一致 -->
-                    <target>1.8</target> <!-- 與 properties 中一致 -->
+                    <source>11</source> <!-- Ensure consistency -->
+                    <target>11</target> <!-- Ensure consistency -->
                 </configuration>
             </plugin>
 
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version> <!-- 或更新版本 -->
+                <version>3.1.0</version>
                 <configuration>
                     <mainClass>AirShit.Main</mainClass>
+                    <systemProperties>
+                        <systemProperty>
+                            <key>file.encoding</key>
+                            <value>UTF-8</value>
+                        </systemProperty>
+                    </systemProperties>
+                </configuration>
+            </plugin>
+
+            <!-- JavaFX Maven Plugin -->
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>AirShit.Main</mainClass>
+                    <options>
+                        <option>-Dfile.encoding=UTF-8</option>
+                        <option>-Dprism.order=sw</option> <!-- Force software rendering pipeline -->
+                        <option>--add-opens=javafx.controls/com.sun.javafx.scene.control.behavior=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.scene=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.scene.traversal=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.base/com.sun.javafx.event=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.base/com.sun.javafx.collections=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.base/com.sun.javafx.runtime=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.css=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.geom=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.text=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.graphics/com.sun.javafx.tk=ALL-UNNAMED</option>
+                    </options>
                 </configuration>
             </plugin>
 
