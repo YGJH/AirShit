@@ -23,7 +23,7 @@ import org.apache.commons.io.IOUtils;
 
 public class LZ4FileCompressor {
 
-    private static final long LARGE_FILE_THRESHOLD = 2 * 1024 * 1024 * 1024; // 2GB
+    private static final long LARGE_FILE_THRESHOLD = 2L * 1024L * 1024L * 1024L; // 2GB
     private static final int TAR_BUFFER_SIZE = 8192;
     private static final int QUEUE_CAPACITY = 100; // Capacity for the blocking queue
 
