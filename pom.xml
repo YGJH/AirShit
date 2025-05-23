@@ -71,7 +71,7 @@
                     <configuration>
                         <transformers>
                         <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <mainClass>AirShit.GenerateTestFolder</mainClass> <!-- 改成你要跑的主類別 -->
+                            <mainClass>AirShit.Main</mainClass> <!-- 改成你要跑的主類別 -->
                         </transformer>
                         </transformers>
                     </configuration>
