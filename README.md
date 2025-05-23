@@ -6,7 +6,7 @@
 
 Version: 1.0.0
 
-Last Updated: 2025-05-18
+Last Updated: 2025-05-23
 
 =====================================================
 
@@ -79,65 +79,29 @@ convenient for users to track the transfer process.
 
 ```
 AirShit/
-├── AirShit/                      # Main Java source code and compiled .class file root directory
-│   ├── Client.java               # Class representing a remote client node
-│   ├── FileReceiver.java         # (Possibly related to or part of Receiver.java functionality)
-│   ├── FileSender.java           # (Possibly related to or part of SendFile.java functionality)
-│   ├── FolderSelector.java       # Helper class for folder selection logic
-│   ├── Main.java                 # Main application entry point class, handles node discovery, heartbeat, multi-threading
-│   ├── Receiver.java             # Class handling file reception logic, includes ChunkReceiver
-│   ├── SendFile.java             # Class handling file sending logic, includes ChunkSender
-│   ├── SendFileGUI.java          # Main GUI window class, integrates all UI panels
-│   ├── TransferCallback.java     # (Possibly an interface for callbacks during transfer)
-│   │
-│   ├── ui/                       # Directory for GUI component related classes
-│   │   ├── ClientCellRenderer.java # Custom renderer for client entries in JList
-│   │   ├── ClientPanel.java      # Panel displaying available client list
-│   │   ├── FileSelectionPanel.java # File/folder selection panel
-│   │   ├── LogPanel.java         # Panel displaying status logs
-│   │   ├── ReceiveProgressPanel.java # Panel displaying receive/send progress bar
-│   │   └── SendControlPanel.java # Control panel containing the send button
-│   │
-│   └── (Compiled .class files will be in the same directory structure as .java files)
-│       ├── Client.class
-│       ├── FileReceiver.class
-│       ├── FileSender.class
-│       ├── FolderSelector.class
-│       ├── Main.class
-│       ├── Main$1.class
-│       ├── Main$SEND_STATUS.class
-│       ├── Receiver.class
-│       ├── Receiver$ChunkReceiver.class
-│       ├── SendFile.class
-│       ├── SendFile$ChunkSender.class
-│       ├── SendFileGUI.class
-│       ├── SendFileGUI$1.class
-│       ├── SendFileGUI$2.class
-│       ├── SendFileGUI$ClientCellRenderer.class (Should be ui/ClientCellRenderer.class)
-│       ├── TransferCallback.class
-│       └── ui/
-│           ├── ClientCellRenderer.class
-│           ├── ClientPanel.class
-│           ├── FileSelectionPanel.class
-│           ├── LogPanel.class
-│           ├── ReceiveProgressPanel.class
-│           └── SendControlPanel.class
-│
-│
-├──── generate Test folder ( just for test case )
-│      └── GenerateTestFolder.java
-│
-│
-│
-│
-├── libs/                         # Directory for external libraries (e.g., FlatLaf)
-│   └── flatlaf-3.4.1.jar         # FlatLaf Look and Feel library
-│
-├── build.ps1                     # Windows PowerShell build script (compile, run, package, git operations)
-├── build.sh                      # Linux/macOS Bash build script (compile, run, git operations)
-├── build_mac.sh                  # (Possibly a macOS-specific build script)
-├── bypass.cmd                    # Windows CMD script to bypass PowerShell execution policy for build.ps1
-└── README.md                     # Markdown formatted README file (This file)
+├── pom.xml                          # Maven Project Object Model file
+└── src/
+    └── main/
+        ├── java/
+        │   └── AirShit/
+        │       ├── Main.java                  # Main application entry point class
+        │       ├── Client.java                # Class representing a remote client node
+        │       ├── FileReceiver.java          # Class handling file reception logic
+        │       ├── FileSender.java            # Class handling file sending logic
+        │       ├── SendFile.java              # Class handling file sending logic, includes ChunkSender
+        │       ├── FolderSelector.java        # Helper class for folder selection logic
+        │       ├── LZ4FileCompressor.java     # Class for compressing files to .tar.lz4
+        │       ├── LZ4FileDecompressor.java   # Class for decompressing .tar.lz4 files
+        │       ├── TransferCallback.java       # Interface for transfer callbacks
+        │       ├── NoFileSelectedException.java # Custom exception for no file selected
+        │       └── Receiver.java               # Class handling file reception logic, includes ChunkReceiver
+        │
+        └── resources/                        # Resource files (if any)
+            └── (any resource files, e.g., images, configuration files)
+        └── test/                            # Test files (if any)
+            └── java/
+                └── AirShit/
+                    └── (test classes)
 ```
 
 (Note: The .class file list above is inferred from the provided folder content.
@@ -158,74 +122,17 @@ SendFileGUI$ClientCellRenderer.class should be under the ui/ subdirectory.)
 
 ### General Build and Execution Steps (Using Provided Scripts)
 
-#### Linux / macOS
+#### Linux / macOS / Windows (Using PowerShell)
 
-1.  Open Terminal.
-2.  Navigate to the project root directory (containing `build.sh`):
-    `cd /path/to/AirShit`
-3.  Grant execution permission to the script (if not already set):
-    `chmod +x build.sh`
-    `chmod +x build_mac.sh` (if using the macOS specific script)
-4.  **Compile and run the application:**
-    `./build.sh`
-    Or for macOS: `./build_mac.sh`
-5.  **Compile only (if supported by the script):** Check script content; usually,
-    running without arguments compiles and runs.
-6.  **Execute Git push:**
-    `./build.sh push`
-7.  **Execute Git pull and reset:**
-    `./build.sh pull`
-8.  **Package the application (if the script supports `wraping` or similar):**
-    `./build.sh wraping` (This parameter is used in your script to create a JAR)
+Use maven to compile and run
+```
+mvn compile exec:java
+```
 
-#### Windows (Using PowerShell)
+#### require
+allow your ipv6 network interface
 
-1.  Open PowerShell.
-2.  Navigate to the project root directory (containing `build.ps1`):
-    `cd C:\path\to\AirShit`
-3.  **PowerShell script execution permission:**
-    If you encounter execution policy issues, you can temporarily set the
-    execution policy for the current process:
-    `Set-ExecutionPolicy Unrestricted -Scope Process -Force`
-    Alternatively, use the provided `bypass.cmd` script to execute commands
-    from `build.ps1`.
-4.  **Compile and run the application (default action):**
-    `.\build.ps1`
-    Or via bypass: `.\bypass.cmd` (without arguments, executes the default block)
-5.  **Execute Git push:**
-    `.\build.ps1 push`
-    Or via bypass: `.\bypass.cmd push`
-6.  **Execute Git pull and reset:**
-    `.\build.ps1 pull`
-    Or via bypass: `.\bypass.cmd pull`
-7.  **Package the application as an executable installer (EXE):**
-    `.\build.ps1 packing`
-    Or via bypass: `.\bypass.cmd packing`
-    (This uses `jpackage`; ensure your JDK includes this tool and environment
-    variables are set correctly.)
 
-### Manual Compilation and Execution (Without Scripts)
-
-Assuming you are in the project root directory (`AirShit/`):
-
-1.  **Compile:**
-    Based on your `.class` file structure, the most likely compilation command (executed from the `AirShit/` root directory, with .java files in this root and the `ui/` subdirectory, outputting .class files to the same locations):
-    ```bash
-    # Linux/macOS (from AirShit/ directory)
-    javac -cp ".:libs/flatlaf-3.4.1.jar" -encoding UTF-8 *.java ui/*.java
-
-    # Windows (from AirShit/ directory)
-    javac -cp ".;libs/flatlaf-3.4.1.jar" -encoding UTF-8 *.java ui\*.java
-    ```
-
-2.  **Execute:**
-    ```bash
-    # Linux/macOS
-    java -cp ".:libs/flatlaf-3.4.1.jar" -Dfile.encoding=UTF-8 AirShit.Main
-
-    # Windows
-    java -cp ".;libs/flatlaf-3.4.1.jar" -Dfile.encoding=UTF-8 AirShit.Main
-    ```
 
 ## Issues
 
@@ -239,17 +146,5 @@ Assuming you are in the project root directory (`AirShit/`):
     `findCorrectNetworkInterface()` attempts to handle this.
 *   **Encoding:** The application internally and the build scripts specify UTF-8
     encoding to ensure correct handling of cross-platform file names and messages.
-*   **FlatLaf:** GUI theming relies on the FlatLaf library. Ensure
-    `flatlaf-3.4.1.jar` (or a newer version) is in the correct `libs` directory
-    and the classpath is set correctly.
 *   **jpackage (Packaging):** The `jpackage` tool is part of JDK 14 and later.
     The `packing` feature might not be available if using an older JDK.
-
-
-## Warning
-
-- build.sh
-- build_mac.sh
-- build.ps1
-
-**This three scripts will reset all of your modify which in your local file, and pull new commit to your local file. Please use it carefully.**
