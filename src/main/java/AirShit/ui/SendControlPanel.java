@@ -39,18 +39,21 @@ public class SendControlPanel extends JPanel {
     private void styleComponents() {
         setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
         setBackground(currentAppBg);
-        setBorder(BorderFactory.createEmptyBorder(5,0,5,0));
+        setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
 
         sendButton.setFont(SendFileGUI.FONT_PRIMARY_BOLD);
         sendButton.setBackground(currentAccentSuccess);
         sendButton.setForeground(Color.WHITE); // Assuming white text on accent is always good
         sendButton.setFocusPainted(false);
-        // Adjust preferred size if icon makes it too cramped, or let layout manager decide
-        // sendButton.setPreferredSize(new Dimension(150, 40)); 
+        // Adjust preferred size if icon makes it too cramped, or let layout manager
+        // decide
+        // sendButton.setPreferredSize(new Dimension(150, 40));
         sendButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         sendButton.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20)); // Increased padding for icon
+        sendButton.setToolTipText("Send the selected file to the chosen client"); // Added tooltip
 
-        // Ensure button is added (it might be removed if panel structure changes, though not here)
+        // Ensure button is added (it might be removed if panel structure changes,
+        // though not here)
         removeAll(); // Good practice if structure could change
         add(sendButton);
         revalidate();

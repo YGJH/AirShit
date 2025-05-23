@@ -1,4 +1,5 @@
 package AirShit;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
@@ -15,7 +16,6 @@ public class FolderSelector {
         System.out.println(str);
     }
 
-
     /**
      * 顯示一個資料夾選擇對話框，讓使用者選擇資料夾後，
      * 回傳該資料夾底下所有檔案與子資料夾的 List<File>。
@@ -27,19 +27,45 @@ public class FolderSelector {
         JFileChooser chooser = new JFileChooser();
         // 選擇目錄
         chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-        chooser.setDialogTitle("請選擇一個資料夾或檔案");
+        chooser.setDialogTitle("請選擇一個檔案或資料夾");
+
+        // --- 建議加入或修改的設定 ---
+        // 1. 設定預設開啟的目錄 (例如：使用者的桌面或文件資料夾)
+        File defaultDirectory = new File(System.getProperty("user.home") + File.separator + "Desktop");
+        if (!defaultDirectory.exists() || !defaultDirectory.isDirectory()) {
+            defaultDirectory = new File(System.getProperty("user.home")); // 若桌面不存在，則退回使用者家目錄
+        }
+        chooser.setCurrentDirectory(defaultDirectory);
+
+        // 2. 設定「開啟」按鈕的文字，使其更明確
+        chooser.setApproveButtonText("選擇此項");
+        chooser.setApproveButtonToolTipText("確定選擇目前反白的檔案或資料夾");
+
+        // 3. 新增檔案類型過濾器 (範例：只顯示圖片檔案)
+        // javax.swing.filechooser.FileNameExtensionFilter imageFilter = new
+        // javax.swing.filechooser.FileNameExtensionFilter(
+        // "圖片檔案 (*.jpg, *.png, *.gif)", "jpg", "png", "gif");
+        // chooser.addChoosableFileFilter(imageFilter);
+        // chooser.setFileFilter(imageFilter); // 將此過濾器設為預設 (可選)
+
+        // 4. 允許多選 (如果您的邏輯支援)
+        // chooser.setMultiSelectionEnabled(true);
+
+        // 5. 設定是否顯示隱藏檔案
+        // chooser.setFileHidingEnabled(false); // 設定為 false 以顯示隱藏檔案
+
+        // --- 設定結束 ---
 
         int result = chooser.showOpenDialog(parentComponent);
         // System.out.println(result);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFileOrFolder = chooser.getSelectedFile();
-            if(selectedFileOrFolder != null) {
+            if (selectedFileOrFolder != null) {
                 return selectedFileOrFolder;
             }
         }
         return null; // User cancelled or closed dialog
     }
-
 
     /**
      * 列出指定目录下所有文件的相对路径（不包含目录本身）。
@@ -57,8 +83,8 @@ public class FolderSelector {
 
         Path basePath = folder.toPath();
         collectRelPaths(folder, basePath, relPaths);
-        for(File f : folder.listFiles()) {
-            if(f.isFile()) {
+        for (File f : folder.listFiles()) {
+            if (f.isFile()) {
                 relPaths.add(f.getName());
             }
         }
@@ -86,7 +112,6 @@ public class FolderSelector {
             }
         }
     }
-
 
     public static String selectFolder() {
         JFileChooser chooser = new JFileChooser();
