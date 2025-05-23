@@ -68,27 +68,33 @@ public class FileChooserDialog {
     }
 
     private static Image getFileIcon(File file) {
-        String extension = "";
-        String name = file.getName();
-        int lastDot = name.lastIndexOf('.');
-        if (lastDot > 0 && lastDot < name.length() - 1) {
-            extension = name.substring(lastDot + 1).toLowerCase();
+        if (file.isDirectory()) {
+            // Use folder.png for directories
+            String defaultIconPath = "/icons/folder.png";
+            return iconCache.computeIfAbsent("_default_folder_icon_", k -> {
+                try {
+                    return new Image(FileChooserDialog.class.getResource(defaultIconPath).toExternalForm());
+                } catch (Exception e) {
+                    System.err.println("Error loading default folder icon: " + e.getMessage());
+                    return null;
+                }
+            });
+        } else {
+            // Use system icon for files
+            return iconCache.computeIfAbsent(file.getName(), k -> {
+                javax.swing.Icon swingIcon = fileSystemView.getSystemIcon(file);
+                if (swingIcon != null) {
+                    try {
+                        BufferedImage bImg = new BufferedImage(swingIcon.getIconWidth(), swingIcon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
+                        swingIcon.paintIcon(null, bImg.getGraphics(), 0, 0);
+                        return SwingFXUtils.toFXImage(bImg, null);
+                    } catch (Exception e) {
+                        System.err.println("Error converting system icon for " + file.getName() + ": " + e.getMessage());
+                    }
+                }
+                return null;
+            });
         }
-        String cacheKey = file.isDirectory() ? "_directory_" : "_file_" + extension;
-
-        return iconCache.computeIfAbsent(cacheKey, k -> {
-            javax.swing.Icon swingIcon = fileSystemView.getSystemIcon(file);
-            if (swingIcon != null) {
-                // Convert Swing Icon to BufferedImage
-                BufferedImage bImg = new BufferedImage(swingIcon.getIconWidth(), swingIcon.getIconHeight(),
-                        BufferedImage.TYPE_INT_ARGB);
-                swingIcon.paintIcon(null, bImg.getGraphics(), 0, 0);
-                return SwingFXUtils.toFXImage(bImg, null);
-            }
-            // Fallback if system icon is not available (should not happen for basic types)
-            // You might want a default folder/file icon here from your resources
-            return null; // Or a default image
-        });
     }
 
     public static File showDialog(Stage owner, File initialStartDir) {
