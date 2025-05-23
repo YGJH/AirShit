@@ -2,15 +2,14 @@ package AirShit.ui;
 
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
-import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
 
 public class FXFileChooserAdapter {
     static {
-        // 確保 JavaFX 初始化（Swing 應用中必要）
-        new JFXPanel(); // 初始化 JavaFX 平台
+        new JFXPanel(); // 確保 JavaFX 平台初始化
+        Platform.setImplicitExit(false); // 防止 JavaFX 平台在所有視窗關閉後退出
     }
 
     public static File showFileChooser() {
@@ -20,10 +19,8 @@ public class FXFileChooserAdapter {
         final Object lock = new Object();
 
         Platform.runLater(() -> {
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Select a File");
-
-            File selected = fileChooser.showOpenDialog(new Stage());
+            Stage stage = new Stage();
+            File selected = FileChooserDialog.showDialog(stage, null); // 使用自定義的 FileChooserDialog
             synchronized (lock) {
                 result[0] = selected;
                 lock.notify();

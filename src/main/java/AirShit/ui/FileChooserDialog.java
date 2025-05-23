@@ -1,4 +1,4 @@
-package AirShit;
+package AirShit.ui;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.assets.JFoenixResources; // Added for JFoenix CSS
@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
 public class FileChooserDialog {
 
     // private static Image folderIcon; // Will use system icons
-    // private static Image fileIcon;   // Will use system icons
+    // private static Image fileIcon; // Will use system icons
     private static Image upIcon;
     private static FileSystemView fileSystemView = FileSystemView.getFileSystemView();
     private static Map<String, Image> iconCache = new ConcurrentHashMap<>();
@@ -79,7 +79,8 @@ public class FileChooserDialog {
             javax.swing.Icon swingIcon = fileSystemView.getSystemIcon(file);
             if (swingIcon != null) {
                 // Convert Swing Icon to BufferedImage
-                BufferedImage bImg = new BufferedImage(swingIcon.getIconWidth(), swingIcon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
+                BufferedImage bImg = new BufferedImage(swingIcon.getIconWidth(), swingIcon.getIconHeight(),
+                        BufferedImage.TYPE_INT_ARGB);
                 swingIcon.paintIcon(null, bImg.getGraphics(), 0, 0);
                 return SwingFXUtils.toFXImage(bImg, null);
             }
@@ -91,7 +92,7 @@ public class FileChooserDialog {
 
     public static File showDialog(Stage owner, File initialStartDir) {
         final File[] result = new File[1];
-        final Stage dialog = new Stage(StageStyle.DECORATED);
+        final Stage dialog = new Stage(StageStyle.DECORATED); // 每次建立新的 Stage
         dialog.setTitle("Select File or Directory");
         dialog.initOwner(owner);
         dialog.initModality(Modality.APPLICATION_MODAL);
@@ -102,7 +103,7 @@ public class FileChooserDialog {
         dialog.setMinHeight(400);
 
         final File[] currentDirectoryWrapper = new File[1];
-        selectedFileInPane.set(null); // Reset selection
+        selectedFileInPane.set(null); // 重置選擇的檔案
 
         JFXButton upButton = new JFXButton();
         if (upIcon != null) {
@@ -115,7 +116,7 @@ public class FileChooserDialog {
         }
         upButton.getStyleClass().add("up-button");
         upButton.setTooltip(new Tooltip("Go to parent directory"));
-        
+
         HBox breadcrumbBarContainer = new HBox();
         breadcrumbBarContainer.getStyleClass().add("breadcrumb-bar");
         HBox.setHgrow(breadcrumbBarContainer, Priority.ALWAYS);
@@ -123,10 +124,10 @@ public class FileChooserDialog {
         HBox pathBar = new HBox(5, upButton, breadcrumbBarContainer);
         pathBar.setPadding(new Insets(5, 10, 5, 10));
         pathBar.setAlignment(Pos.CENTER_LEFT);
-        
+
         // Conceptual root for TreeView, needed for selectPathInTree
-        TreeItem<File> conceptualRootNode = new TreeItem<>(); 
-        TreeView<File> treeView = new TreeView<>(conceptualRootNode); 
+        TreeItem<File> conceptualRootNode = new TreeItem<>();
+        TreeView<File> treeView = new TreeView<>(conceptualRootNode);
 
         // TreeView setup
         File[] systemRoots = File.listRoots();
@@ -138,7 +139,7 @@ public class FileChooserDialog {
             }
         }
         treeView.setShowRoot(false);
-        treeView.getStyleClass().add("directory-tree-view"); 
+        treeView.getStyleClass().add("directory-tree-view");
 
         treeView.setCellFactory(tv -> {
             TreeCell<File> cell = new TreeCell<File>() { // Explicitly specify type argument
@@ -160,7 +161,8 @@ public class FileChooserDialog {
             // Double click to expand/collapse
             cell.setOnMouseClicked(event -> {
                 if (!cell.isEmpty() && event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
-                    if (cell.getTreeItem() != null && cell.getTreeItem().isLeaf() && cell.getTreeItem().getValue().isFile()) {
+                    if (cell.getTreeItem() != null && cell.getTreeItem().isLeaf()
+                            && cell.getTreeItem().getValue().isFile()) {
                         // If it's a file, select it and close dialog on double click
                         result[0] = cell.getTreeItem().getValue();
                         selectedFileInPane.set(result[0]); // Update selection in TilePane as well
@@ -169,20 +171,21 @@ public class FileChooserDialog {
                     }
                     // If it's a directory, toggle expansion
                     if (cell.getTreeItem() != null && !cell.getTreeItem().isLeaf()) {
-                         cell.getTreeItem().setExpanded(!cell.getTreeItem().isExpanded());
+                        cell.getTreeItem().setExpanded(!cell.getTreeItem().isExpanded());
                     }
                 }
             });
             return cell;
         });
-        
+
         // Wrap TreeView in a ScrollPane
         ScrollPane treeViewScrollPane = new ScrollPane(treeView);
         treeViewScrollPane.setFitToWidth(true);
         treeViewScrollPane.setFitToHeight(true);
-        treeViewScrollPane.getStyleClass().add("tree-view-scroll-pane"); // Add style class if needed for specific ScrollPane styling
+        treeViewScrollPane.getStyleClass().add("tree-view-scroll-pane"); // Add style class if needed for specific
+                                                                         // ScrollPane styling
 
-        // --- Quick Access Pane --- 
+        // --- Quick Access Pane ---
         VBox favoritesPane = new VBox(5);
         favoritesPane.setPadding(new Insets(10, 5, 10, 10)); // top, right, bottom, left
         favoritesPane.getStyleClass().add("favorites-pane");
@@ -195,28 +198,33 @@ public class FileChooserDialog {
         List<File> favoriteDirs = new ArrayList<>();
         File desktopDir = new File(userHome, "Desktop");
         File downloadsDir = new File(userHome, "Downloads");
-        File documentsDir = new File(userHome, "Documents"); 
+        File documentsDir = new File(userHome, "Documents");
         File picturesDir = new File(userHome, "Pictures");
         File musicDir = new File(userHome, "Music");
         File videosDir = new File(userHome, "Videos");
 
-        if (desktopDir.exists() && desktopDir.isDirectory()) favoriteDirs.add(desktopDir);
-        if (downloadsDir.exists() && downloadsDir.isDirectory()) favoriteDirs.add(downloadsDir);
-        if (documentsDir.exists() && documentsDir.isDirectory()) favoriteDirs.add(documentsDir);
-        if (picturesDir.exists() && picturesDir.isDirectory()) favoriteDirs.add(picturesDir);
-        if (musicDir.exists() && musicDir.isDirectory()) favoriteDirs.add(musicDir);
-        if (videosDir.exists() && videosDir.isDirectory()) favoriteDirs.add(videosDir);
+        if (desktopDir.exists() && desktopDir.isDirectory())
+            favoriteDirs.add(desktopDir);
+        if (downloadsDir.exists() && downloadsDir.isDirectory())
+            favoriteDirs.add(downloadsDir);
+        if (documentsDir.exists() && documentsDir.isDirectory())
+            favoriteDirs.add(documentsDir);
+        if (picturesDir.exists() && picturesDir.isDirectory())
+            favoriteDirs.add(picturesDir);
+        if (musicDir.exists() && musicDir.isDirectory())
+            favoriteDirs.add(musicDir);
+        if (videosDir.exists() && videosDir.isDirectory())
+            favoriteDirs.add(videosDir);
         // Add more common directories if needed
-
 
         // Add system roots (Drives) to Quick Access as well, if desired
         // File[] roots = File.listRoots();
         // if (roots != null) {
-        //     for (File root : roots) {
-        //         if (root.exists() && root.isDirectory()) {
-        //             favoriteDirs.add(root);
-        //         }
-        //     }
+        // for (File root : roots) {
+        // if (root.exists() && root.isDirectory()) {
+        // favoriteDirs.add(root);
+        // }
+        // }
         // }
 
         for (File dir : favoriteDirs) {
@@ -229,8 +237,10 @@ public class FileChooserDialog {
             favLabel.getStyleClass().add("favorite-link");
             favLabel.setOnMouseClicked(event -> {
                 currentDirectoryWrapper[0] = dir;
-                updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane, treeView);
-                updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode, currentDirectoryWrapper);
+                updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane,
+                        treeView);
+                updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode,
+                        currentDirectoryWrapper);
                 selectPathInTree(conceptualRootNode, dir, treeView, true);
             });
             favoritesPane.getChildren().add(favLabel);
@@ -256,22 +266,24 @@ public class FileChooserDialog {
         StackPane filePaneContainer = new StackPane(fileScrollPane, filePanePlaceholder);
         filePanePlaceholder.visibleProperty().bind(Bindings.isEmpty(filePane.getChildren()));
 
-
         // Set initial directory
-        currentDirectoryWrapper[0] = initialStartDir != null && initialStartDir.exists() ? initialStartDir : new File(System.getProperty("user.home"));
+        currentDirectoryWrapper[0] = initialStartDir != null && initialStartDir.exists() ? initialStartDir
+                : new File(System.getProperty("user.home"));
         updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane, treeView);
-        updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode, currentDirectoryWrapper);
+        updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode,
+                currentDirectoryWrapper);
         // Ensure the initial path is selected and expanded in the TreeView
         Platform.runLater(() -> selectPathInTree(conceptualRootNode, currentDirectoryWrapper[0], treeView, true));
-
 
         // Listeners and event handlers
         upButton.setOnAction(e -> {
             File parent = currentDirectoryWrapper[0].getParentFile();
             if (parent != null) {
                 currentDirectoryWrapper[0] = parent;
-                updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane, treeView);
-                updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode, currentDirectoryWrapper);
+                updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane,
+                        treeView);
+                updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode,
+                        currentDirectoryWrapper);
                 selectPathInTree(conceptualRootNode, parent, treeView, true);
             }
         });
@@ -281,22 +293,26 @@ public class FileChooserDialog {
                 File selectedDirInTree = newValue.getValue();
                 if (selectedDirInTree.isDirectory()) {
                     currentDirectoryWrapper[0] = selectedDirInTree;
-                    updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane, treeView);
-                    updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView, conceptualRootNode, currentDirectoryWrapper);
-                    // No need to call selectPathInTree here, as this event comes from tree selection
+                    updateFilePane(currentDirectoryWrapper[0], filePane, currentDirectoryWrapper, selectedFileInPane,
+                            treeView);
+                    updateBreadcrumbBar(breadcrumbBarContainer, currentDirectoryWrapper[0], treeView,
+                            conceptualRootNode, currentDirectoryWrapper);
+                    // No need to call selectPathInTree here, as this event comes from tree
+                    // selection
                 } else if (selectedDirInTree.isFile()) {
                     // If a file is selected in the tree, update the selectedFileInPane
-                    // This might be less common UX for a tree, usually files are shown in the list/tile view
+                    // This might be less common UX for a tree, usually files are shown in the
+                    // list/tile view
                     selectedFileInPane.set(selectedDirInTree);
                 }
             }
         });
-        
+
         // Main layout
         BorderPane rootLayout = new BorderPane();
         // rootLayout.setTop(headerPane); // Header at the top
         // Path bar below header
-        VBox topSection = new VBox(pathBar); 
+        VBox topSection = new VBox(pathBar);
         rootLayout.setCenter(topSection); // Temporarily put pathBar here, will be part of main content area
 
         // Create SplitPane for the main content area (Favorites | Tree | Files)
@@ -343,31 +359,36 @@ public class FileChooserDialog {
 
         rootLayout.setBottom(buttonBar);
 
-        // Scene scene = new Scene(rootPane); // Scene uses the rootPane -- OLD, rootPane was used when header was part of it.
-                                            // Now, rootLayout is the main container for the scene.
+        // Scene scene = new Scene(rootPane); // Scene uses the rootPane -- OLD,
+        // rootPane was used when header was part of it.
+        // Now, rootLayout is the main container for the scene.
 
         // If headerPane is not used, rootLayout is the direct root for the scene.
-        // Ensure rootLayout is what's passed to the Scene constructor if headerPane is removed.
-        Scene scene = new Scene(rootLayout); 
+        // Ensure rootLayout is what's passed to the Scene constructor if headerPane is
+        // removed.
+        Scene scene = new Scene(rootLayout);
 
         // Load JFoenix and custom CSS
         try {
-            scene.getStylesheets().add(JFoenixResources.class.getResource("/com/jfoenix/assets/css/jfoenix-fonts.css").toExternalForm());
-            scene.getStylesheets().add(JFoenixResources.class.getResource("/com/jfoenix/assets/css/jfoenix-design.css").toExternalForm());
-            scene.getStylesheets().add(FileChooserDialog.class.getResource("/css/file-chooser-dialog.css").toExternalForm());
+            scene.getStylesheets().add(
+                    JFoenixResources.class.getResource("/com/jfoenix/assets/css/jfoenix-fonts.css").toExternalForm());
+            scene.getStylesheets().add(
+                    JFoenixResources.class.getResource("/com/jfoenix/assets/css/jfoenix-design.css").toExternalForm());
+            scene.getStylesheets()
+                    .add(FileChooserDialog.class.getResource("/css/file-chooser-dialog.css").toExternalForm());
         } catch (Exception cssEx) {
             System.err.println("Error loading CSS files: " + cssEx.getMessage());
             cssEx.printStackTrace();
         }
-        
+
         dialog.setScene(scene);
-        dialog.showAndWait();
+        dialog.showAndWait(); // 等待視窗關閉
         return result[0];
     }
 
     // New method to update TilePane
     private static void updateFilePane(File directory, TilePane tilePane, final File[] currentDirectoryWrapper,
-                                       ObjectProperty<File> selectedFileProperty, TreeView<File> treeView) {
+            ObjectProperty<File> selectedFileProperty, TreeView<File> treeView) {
         currentDirectoryWrapper[0] = directory;
         tilePane.getChildren().clear();
         selectedFileProperty.set(null); // Clear selection when directory changes
@@ -384,10 +405,10 @@ public class FileChooserDialog {
         }
 
         List<File> sortedFiles = Arrays.stream(files)
-            .filter(f -> !f.isHidden())
-            .sorted(Comparator.comparing(File::isDirectory).reversed()
-                              .thenComparing(File::getName, String.CASE_INSENSITIVE_ORDER))
-            .collect(Collectors.toList());
+                .filter(f -> !f.isHidden())
+                .sorted(Comparator.comparing(File::isDirectory).reversed()
+                        .thenComparing(File::getName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
 
         if (sortedFiles.isEmpty()) {
             // Placeholder will be visible
@@ -402,10 +423,9 @@ public class FileChooserDialog {
 
             Label nameLabel = new Label(file.getName());
             nameLabel.setWrapText(true); // Allow text to wrap
-            nameLabel.setMaxWidth(80);   // Max width for the label within the tile
+            nameLabel.setMaxWidth(80); // Max width for the label within the tile
             nameLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER); // Center text
             nameLabel.setAlignment(Pos.CENTER);
-
 
             VBox tile = new VBox(5, iconView, nameLabel);
             tile.setAlignment(Pos.CENTER);
@@ -430,9 +450,10 @@ public class FileChooserDialog {
                         // If it's a file, find the "Select" button and fire it
                         Node parent = tile.getScene().lookup(".dialog-button-bar");
                         if (parent instanceof HBox) {
-                            for (Node buttonNode : ((HBox)parent).getChildren()) {
-                                if (buttonNode instanceof JFXButton && "Select".equals(((JFXButton)buttonNode).getText())) {
-                                    ((JFXButton)buttonNode).fire();
+                            for (Node buttonNode : ((HBox) parent).getChildren()) {
+                                if (buttonNode instanceof JFXButton
+                                        && "Select".equals(((JFXButton) buttonNode).getText())) {
+                                    ((JFXButton) buttonNode).fire();
                                     break;
                                 }
                             }
@@ -443,16 +464,19 @@ public class FileChooserDialog {
             tilePane.getChildren().add(tile);
         }
     }
-    
-    // updateListView method is now replaced by updateFilePane, so it should be removed or commented out.
-    // private static void updateListView(File directory, ListView<File> listView) {…}
+
+    // updateListView method is now replaced by updateFilePane, so it should be
+    // removed or commented out.
+    // private static void updateListView(File directory, ListView<File> listView)
+    // {…}
 
     // Update updateBreadcrumbBar to not require ListView
     private static void updateBreadcrumbBar(HBox breadcrumbGuiContainer, File currentPath,
-                                            TreeView<File> treeView, TreeItem<File> conceptualRootNode,
-                                            final File[] currentSelectedDirWrapper) {
+            TreeView<File> treeView, TreeItem<File> conceptualRootNode,
+            final File[] currentSelectedDirWrapper) {
         breadcrumbGuiContainer.getChildren().clear();
-        if (currentPath == null) return;
+        if (currentPath == null)
+            return;
 
         List<File> pathParts = new ArrayList<>();
         File temp = currentPath;
@@ -465,9 +489,8 @@ public class FileChooserDialog {
             File part = pathParts.get(i);
             String displayName = fileSystemView.getSystemDisplayName(part);
             if (displayName.isEmpty() && part.toPath().getNameCount() == 0) { // Root directory (e.g., "C:\")
-                 displayName = part.getAbsolutePath(); // Show "C:\" instead of empty string
+                displayName = part.getAbsolutePath(); // Show "C:\" instead of empty string
             }
-
 
             if (i == pathParts.size() - 1) { // Last part, current directory
                 Label currentLabel = new Label(displayName);
@@ -490,27 +513,30 @@ public class FileChooserDialog {
         currentSelectedDirWrapper[0] = currentPath; // Ensure current directory is updated
     }
 
-    // ... (selectPathInTree and createNode methods remain largely the same, ensure they are compatible)
-    private static boolean selectPathInTree(TreeItem<File> root, File targetPath, TreeView<File> treeView, boolean expandTarget) {
-        if (root == null || targetPath == null) return false;
+    // ... (selectPathInTree and createNode methods remain largely the same, ensure
+    // they are compatible)
+    private static boolean selectPathInTree(TreeItem<File> root, File targetPath, TreeView<File> treeView,
+            boolean expandTarget) {
+        if (root == null || targetPath == null)
+            return false;
 
         // Special handling for root drives, as their path might be "C:\" vs "C:"
         String targetPathStr = targetPath.getAbsolutePath();
         if (targetPath.getParentFile() == null && targetPathStr.endsWith("\\")) { // e.g. C:\
-            targetPathStr = targetPathStr.substring(0, targetPathStr.length() -1);
+            targetPathStr = targetPathStr.substring(0, targetPathStr.length() - 1);
         }
-
 
         for (TreeItem<File> childNode : root.getChildren()) {
             if (childNode.getValue() != null) {
                 String childPathStr = childNode.getValue().getAbsolutePath();
-                 if (childNode.getValue().getParentFile() == null && childPathStr.endsWith("\\")) {
-                    childPathStr = childPathStr.substring(0, childPathStr.length() -1);
+                if (childNode.getValue().getParentFile() == null && childPathStr.endsWith("\\")) {
+                    childPathStr = childPathStr.substring(0, childPathStr.length() - 1);
                 }
 
                 if (childPathStr.equalsIgnoreCase(targetPathStr)) {
                     treeView.getSelectionModel().select(childNode);
-                    if (expandTarget) childNode.setExpanded(true);
+                    if (expandTarget)
+                        childNode.setExpanded(true);
                     // Scroll to the selected item
                     int rowIndex = treeView.getRow(childNode);
                     if (rowIndex != -1) {
@@ -529,7 +555,6 @@ public class FileChooserDialog {
         }
         return false;
     }
-
 
     private static TreeItem<File> createNode(final File f) {
         return new TreeItem<File>(f) {
@@ -563,9 +588,11 @@ public class FileChooserDialog {
                     if (files != null) {
                         ObservableList<TreeItem<File>> children = FXCollections.observableArrayList();
                         Arrays.stream(files)
-                              .filter(file -> file.isDirectory() && !file.isHidden()) // Only directories in tree, filter hidden
-                              .sorted(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER)) // Sort directories
-                              .forEach(file -> children.add(createNode(file)));
+                                .filter(file -> file.isDirectory() && !file.isHidden()) // Only directories in tree,
+                                                                                        // filter hidden
+                                .sorted(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER)) // Sort
+                                                                                                            // directories
+                                .forEach(file -> children.add(createNode(file)));
                         return children;
                     }
                 }
