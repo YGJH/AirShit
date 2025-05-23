@@ -44,13 +44,39 @@ public class LogPanel extends JPanel {
             SendFileGUI.FONT_TITLE, currentTextPrimary
         ));
 
-        logArea.setFont(new Font("Microsoft YaHei UI", Font.PLAIN, 13)); // 更新字體
+        logArea.setFont(new Font("Monospaced", Font.PLAIN, 12)); // Change to Monospaced for better log readability
         logArea.setForeground(currentTextPrimary);
         logArea.setBackground(currentLogAreaBg); // Use the specific log area background
         logArea.setMargin(new Insets(5,5,5,5));
 
         scroll.setBorder(BorderFactory.createLineBorder(currentBorderColor));
         scroll.getViewport().setBackground(currentLogAreaBg); // Match log area background for viewport
+
+        // Customize Scrollbar (FlatLaf provides good defaults, but can be overridden)
+        // scroll.getVerticalScrollBar().setUI(new BasicScrollBarUI() {
+        //     @Override
+        //     protected void configureScrollBarColors() {
+        //         this.thumbColor = SendFileGUI.ACCENT_PRIMARY;
+        //         this.trackColor = currentPanelBg.brighter();
+        //     }
+        //     @Override
+        //     protected JButton createDecreaseButton(int orientation) {
+        //         return createZeroButton();
+        //     }
+        //     @Override
+        //     protected JButton createIncreaseButton(int orientation) {
+        //         return createZeroButton();
+        //     }
+        //     private JButton createZeroButton() {
+        //         JButton button = new JButton();
+        //         Dimension zeroDim = new Dimension(0,0);
+        //         button.setPreferredSize(zeroDim);
+        //         button.setMinimumSize(zeroDim);
+        //         button.setMaximumSize(zeroDim);
+        //         return button;
+        //     }
+        // });
+        // scroll.getHorizontalScrollBar().setUI(new BasicScrollBarUI() { // Similar for horizontal if needed });
 
         setBorder(BorderFactory.createCompoundBorder(
             getBorder(),

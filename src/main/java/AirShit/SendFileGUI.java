@@ -64,6 +64,18 @@ public class SendFileGUI extends JFrame {
     public SendFileGUI() {
         super("AirShit File Transfer");
         INSTANCE = this;
+
+        // Set application icon
+        try {
+            java.net.URL iconURL = getClass().getResource("/asset/kitty.ico");
+            if (iconURL != null) {
+                setIconImage(new ImageIcon(iconURL).getImage());
+            } else {
+                System.err.println("Application icon '/asset/kitty.ico' not found. Ensure it's in src/main/resources/asset/");
+            }
+        } catch (Exception e) {
+            System.err.println("Error loading application icon: " + e.getMessage());
+        }
         
         setSize(750, 600);
         setLocationRelativeTo(null);

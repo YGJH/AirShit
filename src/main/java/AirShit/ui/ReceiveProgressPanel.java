@@ -40,12 +40,15 @@ public class ReceiveProgressPanel extends JPanel {
 
         label.setFont(SendFileGUI.FONT_PRIMARY_PLAIN);
         label.setForeground(currentTextPrimary);
-        // label.setVisible(true); // Visibility managed by SendFileGUI logic
+        // Add an icon to the label (optional, could be dynamic based on state)
+        // Example: label.setIcon(new ImageIcon(getClass().getResource("/asset/info.png")));
 
         progressBar.setFont(SendFileGUI.FONT_SECONDARY_PLAIN);
-        // progressBar.setStringPainted(true); // Already set
-        // progressBar.setVisible(false); // Visibility managed by SendFileGUI logic
-        progressBar.setPreferredSize(new Dimension(progressBar.getPreferredSize().width, 20));
+        progressBar.setStringPainted(true); // Ensure string is painted
+        progressBar.setPreferredSize(new Dimension(progressBar.getPreferredSize().width, 22)); // Slightly taller
+        // Customize progress bar colors (FlatLaf might override some of these)
+        // progressBar.setForeground(SendFileGUI.ACCENT_SUCCESS); // Color for the progress itself
+        // progressBar.setBackground(currentPanelBg.brighter()); // Background of the bar track
 
         // Add some internal padding to the panel itself
         setBorder(BorderFactory.createCompoundBorder(

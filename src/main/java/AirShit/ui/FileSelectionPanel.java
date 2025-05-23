@@ -147,6 +147,18 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
 
         if (browseBtn == null) {
             browseBtn = new JButton("Browse Files...");
+            try {
+                java.net.URL folderIconURL = getClass().getResource("/asset/folder.png");
+                if (folderIconURL != null) {
+                    ImageIcon folderIcon = new ImageIcon(folderIconURL);
+                    Image scaledImg = folderIcon.getImage().getScaledInstance(20, 20, Image.SCALE_SMOOTH);
+                    browseBtn.setIcon(new ImageIcon(scaledImg));
+                } else {
+                    System.err.println("Browse button icon '/asset/folder.png' not found.");
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading browse button icon: " + e.getMessage());
+            }
             browseBtn.addActionListener(e -> {
                 File sel = FolderSelector.selectFolderOrFiles(this);
                 // No need to show JOptionPane for null selection if it's a cancel action
@@ -282,6 +294,9 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
                 BorderFactory.createLineBorder(this.currentBorderColor),
                 "File Selection", TitledBorder.LEFT, TitledBorder.TOP,
                 SendFileGUI.FONT_TITLE, this.currentTextPrimary);
+        // Ensure the panel's current border is also updated to the new originalBorder
+        setBorder(this.originalBorder);
+
 
         styleComponents(); // This will re-style all components
 
@@ -304,7 +319,17 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
     public void dragEnter(DropTargetDragEvent dtde) {
         if (dtde.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
             dtde.acceptDrag(DnDConstants.ACTION_COPY);
-            setBorder(BorderFactory.createDashedBorder(currentAccentPrimary.brighter(), 5, 3, 2, false)); // Visual cue
+            if (originalBorder instanceof TitledBorder) {
+                TitledBorder tb = (TitledBorder) originalBorder;
+                Border dragOverBorder = BorderFactory.createTitledBorder(
+                        BorderFactory.createLineBorder(currentAccentPrimary, 2), // Thicker, accented line
+                        tb.getTitle(), tb.getTitleJustification(), tb.getTitlePosition(),
+                        tb.getTitleFont(), currentAccentPrimary); // Title color also accent
+                setBorder(dragOverBorder);
+            } else {
+                // Fallback for a non-TitledBorder (should not happen with current setup)
+                setBorder(BorderFactory.createLineBorder(currentAccentPrimary, 2));
+            }
             repaint();
         } else {
             dtde.rejectDrag();
@@ -313,44 +338,27 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
 
     @Override
     public void dragOver(DropTargetDragEvent dtde) {
-        // Not actively used here, but required by interface
+        // Not strictly necessary if dragEnter provides sufficient feedback
     }
 
     @Override
     public void dropActionChanged(DropTargetDragEvent dtde) {
-        // Not actively used here
+        // Not strictly necessary for simple copy actions
     }
 
     @Override
     public void dragExit(DropTargetEvent dte) {
-        setBorder(originalBorder); // Restore original border
+        setBorder(originalBorder); // Revert to the original border
         repaint();
     }
 
     @Override
     public void drop(DropTargetDropEvent dtde) {
-        setBorder(originalBorder); // Restore original border
+        // Reset border after drop attempt (TransferHandler will handle the data)
+        setBorder(originalBorder);
         repaint();
-
-        if (dtde.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-            dtde.acceptDrop(DnDConstants.ACTION_COPY);
-            try {
-                @SuppressWarnings("unchecked") // Standard cast for this DataFlavor
-                List<File> files = (List<File>) dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                if (files != null && !files.isEmpty()) {
-                    handleSelectedFile(files.get(0)); // Use existing handler
-                    dtde.dropComplete(true);
-                } else {
-                    dtde.dropComplete(false);
-                }
-            } catch (UnsupportedFlavorException | IOException ex) {
-                JOptionPane.showMessageDialog(FileSelectionPanel.this,
-                        "Error processing dropped file: " + ex.getMessage(), "Drop Error", JOptionPane.ERROR_MESSAGE);
-                dtde.dropComplete(false);
-            }
-        } else {
-            dtde.rejectDrop();
-            dtde.dropComplete(false);
-        }
+        // Note: The actual data import is handled by the TransferHandler set on this panel.
+        // The TransferHandler should call dtde.acceptDrop() or dtde.rejectDrop()
+        // and dtde.dropComplete().
     }
 }
