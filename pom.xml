@@ -33,6 +33,30 @@
             <artifactId>commons-compress</artifactId>
             <version>1.26.1</version> <!-- 您可以檢查並使用最新的穩定版本 -->
         </dependency>
+
+        <!-- JavaFX Modules -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>20</version> <!-- 使用最新版本 -->
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>20</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-base</artifactId>
+            <version>20</version>
+        </dependency>
+
+        <!-- JFoenix -->
+        <dependency>
+            <groupId>com.jfoenix</groupId>
+            <artifactId>jfoenix</artifactId>
+            <version>9.0.10</version>
+        </dependency>
         <!-- 其他依賴項可以加在這裡 -->
     </dependencies>
 
@@ -42,41 +66,32 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version> <!-- 或您偏好的版本 -->
+                <version>3.11.0</version>
                 <configuration>
-                    <source>1.8</source> <!-- 與 properties 中一致 -->
-                    <target>1.8</target> <!-- 與 properties 中一致 -->
+                    <source>17</source> <!-- 確保與您的 JDK 版本一致 -->
+                    <target>17</target>
                 </configuration>
             </plugin>
-
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version> <!-- 或更新版本 -->
-                <configuration>
-                    <mainClass>AirShit.Main</mainClass>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.4.1</version>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
                 <executions>
                     <execution>
-                    <phase>package</phase>
-                    <goals>
-                        <goal>shade</goal>
-                    </goals>
-                    <configuration>
-                        <transformers>
-                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <mainClass>AirShit.Main</mainClass> <!-- 改成你要跑的主類別 -->
-                        </transformer>
-                        </transformers>
-                    </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <mainClass>AirShit.Main</mainClass> <!-- 替換為您的主類 -->
+                    <javafx>
+                        <modules>
+                            <module>javafx.controls</module>
+                            <module>javafx.swing</module>
+                        </modules>
+                    </javafx>
+                </configuration>
             </plugin>
         </plugins>
     </build>

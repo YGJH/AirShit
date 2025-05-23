@@ -187,9 +187,10 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
                 System.err.println("Error loading browse button icon: " + e.getMessage());
             }
             browseBtn.addActionListener(e -> {
-                File sel = FolderSelector.selectFolderOrFiles(this);
-                if (sel != null) {
-                    handleSelectedFile(sel);
+                // 呼叫 JavaFX FileChooserDialog
+                File selectedFile = FXFileChooserAdapter.showFileChooser();
+                if (selectedFile != null) {
+                    handleSelectedFile(selectedFile); // 更新選擇的檔案
                 }
             });
         }
@@ -199,7 +200,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         browseBtn.setFocusPainted(false);
         browseBtn.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
         browseBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        browseBtn.setToolTipText("Select a file or folder to send"); // Added tooltip
+        browseBtn.setToolTipText("Select a file or folder to send");
 
         if (clearBtn == null) {
             clearBtn = new JButton("Clear");
