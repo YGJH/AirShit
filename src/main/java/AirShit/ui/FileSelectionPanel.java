@@ -116,13 +116,19 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
 
         if (lblIcon == null) {
             lblIcon = new JLabel();
-            lblIcon.setPreferredSize(new Dimension(70, 70));
+            lblIcon.setPreferredSize(new Dimension(70, 70)); // Keep this for layout consistency
             lblIcon.setHorizontalAlignment(SwingConstants.CENTER);
             lblIcon.setVerticalAlignment(SwingConstants.CENTER);
+            // Initial call for empty state if no file selected at startup
+            if (selected == null) {
+                setEmptyStateIcon();
+            }
         }
 
         if (lblFiles == null) {
-            lblFiles = new JLabel("No file selected. Click 'Browse' to choose.");
+            // Default text, will be updated based on selection state
+            lblFiles = new JLabel(); 
+            lblFiles.setHorizontalAlignment(SwingConstants.CENTER); // Center the text
         }
         lblFiles.setFont(SendFileGUI.FONT_PRIMARY_PLAIN);
         lblFiles.setForeground(currentTextPrimary);
@@ -132,8 +138,28 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         // fileInfoPanel is now a member, initialized in constructor
         fileInfoPanel.setBackground(selected != null ? currentAccentPrimary.darker() : currentPanelBg);
         fileInfoPanel.removeAll(); // Clear previous components if any, for re-styling
-        fileInfoPanel.add(lblIcon, BorderLayout.WEST);
-        fileInfoPanel.add(lblFiles, BorderLayout.CENTER);
+
+        if (selected == null) {
+            // Special layout for empty state
+            setEmptyStateIcon(); // Ensure icon is set for empty state
+            lblFiles.setText("<html><div style='text-align: center;'>Drag & drop a file/folder here or<br>click 'Browse' to select.</div></html>");
+            lblFiles.setForeground(currentTextPrimary); // Ensure text color is applied
+            fileInfoPanel.setLayout(new GridBagLayout()); // Use GridBagLayout for centering
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.gridwidth = GridBagConstraints.REMAINDER;
+            gbc.anchor = GridBagConstraints.CENTER;
+            gbc.insets = new Insets(5, 0, 5, 0); // Some padding
+            fileInfoPanel.add(lblIcon, gbc);
+            fileInfoPanel.add(lblFiles, gbc);
+        } else {
+            // Layout for when a file is selected
+            fileInfoPanel.setLayout(new BorderLayout(10,0)); // Revert to BorderLayout
+            // lblIcon will be set by handleSelectedFile
+            // lblFiles text will be set by handleSelectedFile
+            lblFiles.setForeground(currentTextPrimary); // Ensure text color is applied
+            fileInfoPanel.add(lblIcon, BorderLayout.WEST);
+            fileInfoPanel.add(lblFiles, BorderLayout.CENTER);
+        }
 
         if (scrollPaneFiles == null) {
             scrollPaneFiles = new JScrollPane(fileInfoPanel);
@@ -208,6 +234,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         this.folder = sel.getParentFile();
         this.folderName = sel.getName();
 
+        // Icon and text for lblFiles will be set here, then styleComponents will arrange them
         Icon fileIcon = FileSystemView.getFileSystemView().getSystemIcon(sel);
         if (fileIcon instanceof ImageIcon) {
             Image image = ((ImageIcon) fileIcon).getImage();
@@ -242,7 +269,11 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
             lblFiles.setText("<html><b>File:</b> " + sel.getName() + "<br><b>Path:</b> " + sel.getParent() + "</html>");
         }
 
-        fileInfoPanel.setBackground(currentAccentPrimary.darker()); // Highlight background
+        // Call styleComponents AFTER updating selected state and potentially lblIcon/lblFiles content
+        // so it can choose the correct layout for fileInfoPanel.
+        styleComponents(); 
+
+        fileInfoPanel.setBackground(currentAccentPrimary.darker()); // Highlight background for selected item
         if (clearBtn != null)
             clearBtn.setEnabled(true);
         firePropertyChange("selectedFile", oldSelected, selected);
@@ -256,8 +287,9 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         this.folder = null;
         this.folderName = null;
 
-        lblFiles.setText("No file selected. Click 'Browse' to choose.");
-        lblIcon.setIcon(null);
+        // Call styleComponents to revert to empty state layout and content
+        styleComponents();
+
         lblIcon.setToolTipText(null);
         lblIcon.setCursor(Cursor.getDefaultCursor());
 
@@ -268,6 +300,26 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         firePropertyChange("selectedFile", oldSelected, null);
         revalidate();
         repaint();
+    }
+
+    private void setEmptyStateIcon() {
+        if (lblIcon != null) {
+            try {
+                java.net.URL kittyIconURL = getClass().getResource("/asset/kitty.png");
+                if (kittyIconURL != null) {
+                    ImageIcon icon = new ImageIcon(kittyIconURL);
+                    // Scaled larger for empty state prominence
+                    Image scaledImg = icon.getImage().getScaledInstance(48, 48, Image.SCALE_SMOOTH); 
+                    lblIcon.setIcon(new ImageIcon(scaledImg));
+                } else {
+                    System.err.println("Empty state icon '/asset/kitty.png' not found.");
+                    lblIcon.setIcon(null); // Or a default placeholder text/icon
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading empty state icon: " + e.getMessage());
+                lblIcon.setIcon(null);
+            }
+        }
     }
 
     public File getSelectedFiles() {
@@ -318,18 +370,10 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
     @Override
     public void dragEnter(DropTargetDragEvent dtde) {
         if (dtde.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            setBorder(BorderFactory.createDashedBorder(currentAccentPrimary.brighter(), 5, 3, 2, false)); // Visual cue
+
             dtde.acceptDrag(DnDConstants.ACTION_COPY);
-            if (originalBorder instanceof TitledBorder) {
-                TitledBorder tb = (TitledBorder) originalBorder;
-                Border dragOverBorder = BorderFactory.createTitledBorder(
-                        BorderFactory.createLineBorder(currentAccentPrimary, 2), // Thicker, accented line
-                        tb.getTitle(), tb.getTitleJustification(), tb.getTitlePosition(),
-                        tb.getTitleFont(), currentAccentPrimary); // Title color also accent
-                setBorder(dragOverBorder);
-            } else {
-                // Fallback for a non-TitledBorder (should not happen with current setup)
-                setBorder(BorderFactory.createLineBorder(currentAccentPrimary, 2));
-            }
+
             repaint();
         } else {
             dtde.rejectDrag();
@@ -357,6 +401,26 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         // Reset border after drop attempt (TransferHandler will handle the data)
         setBorder(originalBorder);
         repaint();
+                if (dtde.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            dtde.acceptDrop(DnDConstants.ACTION_COPY);
+            try {
+                @SuppressWarnings("unchecked") // Standard cast for this DataFlavor
+                List<File> files = (List<File>) dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                if (files != null && !files.isEmpty()) {
+                    handleSelectedFile(files.get(0)); // Use existing handler
+                    dtde.dropComplete(true);
+                } else {
+                    dtde.dropComplete(false);
+                }
+            } catch (UnsupportedFlavorException | IOException ex) {
+                JOptionPane.showMessageDialog(FileSelectionPanel.this,
+                        "Error processing dropped file: " + ex.getMessage(), "Drop Error", JOptionPane.ERROR_MESSAGE);
+                dtde.dropComplete(false);
+            }
+        } else {
+            dtde.rejectDrop();
+            dtde.dropComplete(false);
+        }
         // Note: The actual data import is handled by the TransferHandler set on this panel.
         // The TransferHandler should call dtde.acceptDrop() or dtde.rejectDrop()
         // and dtde.dropComplete().
