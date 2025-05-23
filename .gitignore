@@ -6,3 +6,4 @@ AirShit-1/**
 GeneratedTestFiles/**
 target/**
 *.lz4
+*.DS_Store
