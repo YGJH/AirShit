@@ -100,12 +100,12 @@ public class Main { // 定義 Main 類別
     }
 
     private static NetworkInterface findCorrectNetworkInterface() {
-        System.out.println("findCorrectNetworkInterface: Searching for suitable interface for multicast...");
+        // System.out.println("findCorrectNetworkInterface: Searching for suitable interface for multicast...");
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                System.out.println("findCorrectNetworkInterface: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
-                                   ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
-                                   ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
+                // System.out.println("findCorrectNetworkInterface: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
+                //                    ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
+                //                    ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
 
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
                     System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
@@ -120,14 +120,14 @@ public class Main { // 定義 Main 類別
                 // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
                         || name.contains("vmware") || name.contains("vpn")) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore (hyper-v, virtual, filter, vmware, vpn).");
+                    // System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore (hyper-v, virtual, filter, vmware, vpn).");
                     continue;
                 }
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
-                        System.out.println("findCorrectNetworkInterface: Selected interface: '" + ni.getDisplayName() + "' with IPv4 address: " + addr.getHostAddress());
+                        // System.out.println("findCorrectNetworkInterface: Selected interface: '" + ni.getDisplayName() + "' with IPv4 address: " + addr.getHostAddress());
                         return ni;
                     }
                 }
@@ -136,7 +136,7 @@ public class Main { // 定義 Main 類別
             System.err.println("findCorrectNetworkInterface: SocketException while finding network interface: " + e.getMessage());
             e.printStackTrace();
         }
-        System.err.println("findCorrectNetworkInterface: No suitable network interface found after checking all interfaces.");
+        // System.err.println("findCorrectNetworkInterface: No suitable network interface found after checking all interfaces.");
         return null;
     }
 
@@ -367,16 +367,16 @@ public class Main { // 定義 Main 類別
         }
 
         System.setProperty("file.encoding", "UTF-8");
-        ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
-                .redirectErrorStream(true)
-                .inheritIO();
-        try {
-            pb.start().waitFor();
-            System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
-            System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-        }
+        // ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
+        //         .redirectErrorStream(true)
+        //         .inheritIO();
+        // try {
+        //     pb.start().waitFor();
+        //     System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
+        //     System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
+        // } catch (IOException | InterruptedException e) {
+        //     e.printStackTrace();
+        // }
 
         // 2) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft
         // YaHei, or Noto)
