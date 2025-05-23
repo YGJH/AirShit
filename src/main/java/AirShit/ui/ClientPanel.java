@@ -100,7 +100,7 @@ public class ClientPanel extends JPanel {
 
         // Schedule a GUI update after a short delay to allow Main to populate its list
         // from responses or existing knowledge.
-        Timer timer = new Timer(500, e -> SwingUtilities.invokeLater(this::refreshGuiListOnly)); // 0.5 second delay
+        Timer timer = new Timer(50, e -> SwingUtilities.invokeLater(this::refreshGuiListOnly)); // 0.5 second delay
         timer.setRepeats(false);
         timer.start();
     }

@@ -114,7 +114,7 @@ public class LZ4FileCompressor {
             File[] filesInDir = currentFileOrDir.listFiles();
             if (filesInDir != null) {
                 for (File itemInDir : filesInDir) {
-                    if (itemInDir.isFile() && itemInDir.length() > 1 * 1024 * 1024) { // 大型檔案
+                    if (itemInDir.isFile() && itemInDir.length() > 1 * 1024 * 1024 * 1024) { // 大型檔案
                         if (currentIndex < retFilesArray.length) {
                             retFilesArray[currentIndex++] = itemInDir;
                         } else {

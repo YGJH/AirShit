@@ -46,6 +46,17 @@ public class GenerateTestFolder {
                 System.out.println("Created: " + smallSubDir.getFileName());
             }
 
+            // Create a deeply nested folder structure
+            System.out.println("\nCreating deeply nested folder structure (100 levels)...");
+            Path currentNestedPath = rootPath;
+            for (int i = 1; i <= 100; i++) {
+                currentNestedPath = currentNestedPath.resolve("nested_dir_" + i);
+                Files.createDirectories(currentNestedPath);
+            }
+            // Optionally, create a file in the deepest directory
+            createFile(currentNestedPath.resolve("deep_file_in_nested_dir_100.txt"), 1 * KB);
+            System.out.println("Created 100 levels of nested directories, deepest point: " + currentNestedPath.getFileName());
+
             // 3. Create subfolders with files (total >= 600KB)
             System.out.println("\nCreating subfolders with total size >= 600KB each...");
             for (int i = 1; i <= 3; i++) {
