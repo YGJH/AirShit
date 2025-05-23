@@ -148,3 +148,16 @@ allow your ipv6 network interface
     encoding to ensure correct handling of cross-platform file names and messages.
 *   **jpackage (Packaging):** The `jpackage` tool is part of JDK 14 and later.
     The `packing` feature might not be available if using an older JDK.
+
+
+### packing
+jpackage --type exe `
+>>             --dest "dist" `
+>>             --input "target"`
+>>             --name "AirShit" `
+>>             --main-jar AirShit-1.0-SNAPSHOT.jar `
+>>             --java-options "-Dfile.encoding=UTF-8" `
+>>             --app-version 1.0.0 `
+>>             --vendor "AirShit Project" `
+>>             --win-menu `
+>>             --win-shortcut `
