@@ -92,7 +92,7 @@ public class Main { // 定義 Main 類別
 
     public static InetAddress getMulticastAddress() {
         try {
-            return InetAddress.getByName("239.255.42.99"); // Valid multicast address
+            return InetAddress.getByName("all-routers.mcast.net"); // Valid multicast address
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
