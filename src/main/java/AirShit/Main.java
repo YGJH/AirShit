@@ -27,7 +27,7 @@ public class Main { // 定義 Main 類別
         clientList.clear(); // 清空客戶端哈希表
     }
 
-    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
+    public static final int DISCOVERY_PORT = 23333; // Or any other unused port
 
     static {
         String userName;
@@ -55,27 +55,35 @@ public class Main { // 定義 Main 類別
 
     public static String getNonLoopbackIP() {
         try {
+            System.out.println("getNonLoopbackIP: Searching for suitable non-loopback IP...");
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
+                System.out.println("getNonLoopbackIP: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
+                                   ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
+                                   ", Virtual: " + ni.isVirtual() + ")");
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
+                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
                     continue;
+                }
                 String name = ni.getDisplayName().toLowerCase();
-                // skip Hyper-V, WFP filter drivers, virtual adapters
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
-                        || name.contains("vmware"))
+                // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
+                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vpn")
+                        || name.contains("vmware")) {
+                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore.");
                     continue;
+                }
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
-                        System.out.println("Picked Wi-Fi IP on " + ni.getDisplayName() + ": "
+                        System.out.println("getNonLoopbackIP: Picked IP on '" + ni.getDisplayName() + "': "
                                 + addr.getHostAddress());
-                        System.out.println(name);
                         return addr.getHostAddress();
                     }
                 }
             }
-
+            System.err.println("getNonLoopbackIP: No suitable non-loopback IPv4 address found. Falling back.");
         } catch (Exception e) {
+            System.err.println("getNonLoopbackIP: Exception while finding IP: " + e.getMessage());
             e.printStackTrace();
         }
         // fallback
@@ -92,81 +100,159 @@ public class Main { // 定義 Main 類別
     }
 
     private static NetworkInterface findCorrectNetworkInterface() {
+        System.out.println("findCorrectNetworkInterface: Searching for suitable interface for multicast...");
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
+                System.out.println("findCorrectNetworkInterface: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
+                                   ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
+                                   ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
+
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
                     continue;
+                }
+                if (!ni.supportsMulticast()) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Does not support multicast.");
+                    continue;
+                }
+
                 String name = ni.getDisplayName().toLowerCase();
-                // skip Hyper-V, WFP filter drivers, virtual adapters
+                // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
-                        || name.contains("vmware"))
+                        || name.contains("vmware") || name.contains("vpn")) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore (hyper-v, virtual, filter, vmware, vpn).");
                     continue;
+                }
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
+                        System.out.println("findCorrectNetworkInterface: Selected interface: '" + ni.getDisplayName() + "' with IPv4 address: " + addr.getHostAddress());
                         return ni;
                     }
                 }
             }
-
         } catch (SocketException e) {
+            System.err.println("findCorrectNetworkInterface: SocketException while finding network interface: " + e.getMessage());
             e.printStackTrace();
         }
+        System.err.println("findCorrectNetworkInterface: No suitable network interface found after checking all interfaces.");
         return null;
     }
 
     public static void multicastHello() {
         try (
-                MulticastSocket socket = new MulticastSocket();) {
+            MulticastSocket socket = new MulticastSocket();) { // Sender socket binds to any free port
             InetAddress group = getMulticastAddress();
-            if (group == null)
+            if (group == null) {
+                System.err.println("Sender: Multicast group address is null. Cannot send HELLO.");
                 return;
+            }
 
             byte[] sendData = client.getHelloMessage().getBytes("UTF-8");
-            socket.setTimeToLive(32);
-            socket.setNetworkInterface(findCorrectNetworkInterface());
-            socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), findCorrectNetworkInterface());
+            socket.setTimeToLive(32); // TTL for multicast packets
+            socket.setReuseAddress(true); // Good practice for multicast sending sockets, before any bind/send.
 
-            socket.setLoopbackMode(true); // true to disable loopback, equivalent to IP_MULTICAST_LOOP = false
-            // println(sendData.length + " bytes sent to multicast group " +
-            // group.getHostAddress() + ":" + DISCOVERY_PORT);
+            NetworkInterface nif = findCorrectNetworkInterface();
+
+            if (nif != null) {
+                System.out.println("Sender: Attempting to use network interface: '" + nif.getDisplayName() + "' for sending HELLO.");
+                try {
+                    socket.setNetworkInterface(nif);
+                    System.out.println("Sender: Successfully set network interface to '" + nif.getDisplayName() + "'.");
+                } catch (SocketException e) {
+                    System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
+                    // Fall through, OS will pick.
+                }
+                // Joining the group on the sender can be important for some OSes to correctly source the packet
+                try {
+                    socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), nif);
+                    System.out.println("Sender: Successfully joined multicast group on interface: '" + nif.getDisplayName() + "'.");
+                } catch (IOException e) {
+                    System.err.println("Sender: WARN - Failed to join multicast group on specific interface '" +
+                                       nif.getDisplayName() + "': " + e.getMessage() + ". Sending might still work.");
+                }
+            } else {
+                System.err.println("Sender: WARN - No specific network interface found. OS will choose the outgoing interface for HELLO.");
+                // Attempt to join group on default interface if no specific one found
+                try {
+                    socket.joinGroup(group); 
+                    System.out.println("Sender: Joined multicast group on default interfaces as fallback.");
+                } catch (IOException e) {
+                    System.err.println("Sender: WARN - Failed to join multicast group on default interfaces: " + e.getMessage());
+                }
+            }
+            
+            System.out.println("Sender: Sending HELLO message: " + client.getHelloMessage() + " to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
+            System.out.println("Sender: HELLO message sent.");
 
-            socket.close();
+            // socket.close() will handle leaving the group.
         } catch (Exception e) {
-            e.printStackTrace(); // Uncommented for better error handling
+            System.err.println("Sender: Exception in multicastHello: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public static void startMulticastListener() {
         Thread MultiCast = new Thread(() -> {
-            try (
-                    MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);) {
+            try (MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);) {
+                // MulticastSocket(int port) constructor calls setReuseAddress(true) internally.
+
                 InetAddress group = getMulticastAddress();
-                if (group == null)
+                if (group == null) {
+                    System.err.println("Listener: Multicast group address is null. Cannot start listener.");
                     return;
+                }
 
-                // *** CHANGE THIS: Listen on the DISCOVERY_PORT ***
-                socket.setTimeToLive(32);
+                socket.setTimeToLive(32); // For any replies, though listener primarily receives.
 
-                // --- Improved Interface Selection ---
                 NetworkInterface iface = findCorrectNetworkInterface();
+                boolean joinedGroup = false;
                 if (iface != null) {
-                    socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
+                    System.out.println("Listener: Attempting to join multicast group on interface: '" + iface.getDisplayName() + "'.");
+                    try {
+                        socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
+                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
+                                           " on interface '" + iface.getDisplayName() + "'.");
+                        joinedGroup = true;
+                    } catch (IOException e) {
+                        System.err.println("Listener: FAILED to join multicast group on specific interface '" +
+                                           iface.getDisplayName() + "': " + e.getMessage() + ". Trying fallback to default interfaces.");
+                        // Fallback handled below if joinedGroup is still false
+                    }
+                } else {
+                    System.err.println("Listener: WARN - No specific network interface found. Attempting to join multicast group on default interfaces.");
+                }
+
+                if (!joinedGroup) { // If specific interface wasn't found or failed to join on it
+                    try {
+                        socket.joinGroup(group); // Join on all interfaces that support multicast for the given address family
+                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
+                                           " on default interfaces (either as primary choice or fallback).");
+                        joinedGroup = true;
+                    } catch (IOException e) {
+                        System.err.println("Listener: FAILED to join multicast group on default interfaces: " + e.getMessage());
+                        e.printStackTrace();
+                        return; // Critical failure if cannot join group at all
+                    }
+                }
+                
+                if (!joinedGroup) { // Should not happen if the above logic is correct, but as a safeguard:
+                    System.err.println("Listener: CRITICAL - Could not join multicast group. Listener cannot start.");
+                    return;
                 }
 
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started on port " + DISCOVERY_PORT);
-                while (true) {
+                System.out.println("Multicast listener started on port " + DISCOVERY_PORT + " for group " + group.getHostAddress());
+                while (true) { // Main listening loop
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
 
-                    String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8); // Specify
-                                                                                                                  // UTF-8
-                    // System.out.println("Received multicast: " + message); // Log received message
+                    String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                    System.out.println("Received multicast ("+ packet.getAddress().getHostAddress() + ":" + packet.getPort() + "): " + message);
 
                     boolean listChanged = false;
 
@@ -197,16 +283,19 @@ public class Main { // 定義 Main 類別
                     } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
                         Client tempClient = Client.parseMessage(message);
                         if (tempClient != null) {
-                            // Check if client is self OR already known
                             if (tempClient.getIPAddr().equals(client.getIPAddr())
                                     && tempClient.getUserName().equals(client.getUserName())) {
                                 // It's our own HELLO message
+                                System.out.println("Listener: Received own HELLO message. Ignoring.");
                             } else if (!clientList.containsKey(tempClient.getUserName())) {
                                 clientList.put(tempClient.getUserName(), tempClient);
-                                // System.out.println("Main: Added new client from HELLO: " + tempClient.getUserName());
+                                System.out.println("Listener: Added new client from HELLO: " + tempClient.getUserName() + " @ " + tempClient.getIPAddr());
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 responseNewClient(packet.getAddress(), packet.getPort());
+                            } else {
+                                // Client already known, maybe update timestamp or ignore
+                                System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
                             }
                         }
                     }
@@ -221,9 +310,13 @@ public class Main { // 定義 Main 類別
                     }
                 }
             } catch (Exception e) {
+                System.err.println("Listener: Exception in startMulticastListener run loop: " + e.getMessage());
                 e.printStackTrace();
             }
+            // Socket is closed by try-with-resources
+            System.out.println("Listener: Multicast listener thread finished.");
         });
+        MultiCast.setName("AirShit-MulticastListener");
         MultiCast.start(); // 啟動多播監聽執行緒
     }
 

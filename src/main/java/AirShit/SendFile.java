@@ -44,9 +44,9 @@ public class SendFile {
         this.host = host;
         this.port = port;
         this.file = file;
-        LogPanel.log("SendFile 建構函式: 收到 threadCount=" + threadCount);
+        // LogPanel.log("SendFile 建構函式: 收到 threadCount=" + threadCount);
         this.threadCount = Math.max(1, threadCount); // 確保至少有一個執行緒
-        LogPanel.log("SendFile 建構函式: 設定 SendFile.this.threadCount=" + this.threadCount);
+        // LogPanel.log("SendFile 建構函式: 設定 SendFile.this.threadCount=" + this.threadCount);
     }
 
     /**
@@ -95,14 +95,14 @@ public class SendFile {
         long fileLength = file.length(); // 獲取檔案長度
         TransferCallback workerCallback = getWrappedCallback(); // 使用包裝後的回呼給 worker
 
-        LogPanel.log("SendFile 開始。檔案: " + file.getName() + ", 大小: " + fileLength + ", 執行緒數: " + threadCount);
+        // LogPanel.log("SendFile 開始。檔案: " + file.getName() + ", 大小: " + fileLength + ", 執行緒數: " + threadCount);
 
         ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>(); // 儲存檔案區塊的佇列
         populateChunkQueue(fileLength, chunkQueue); // 填充區塊佇列
 
         // 檢查檔案長度與區塊生成情況
         if (fileLength > 0 && chunkQueue.isEmpty()) {
-            LogPanel.log("錯誤: 檔案長度為 " + fileLength + " 但沒有生成任何區塊。");
+            // LogPanel.log("錯誤: 檔案長度為 " + fileLength + " 但沒有生成任何區塊。");
             if (workerCallback != null) workerCallback.onError(new IOException("對於非空檔案，沒有生成區塊。"));
             return;
         }
@@ -112,7 +112,7 @@ public class SendFile {
             // LogPanel.log("SendFile: 為空檔案添加了一個零長度區塊。");
         }
         if (chunkQueue.isEmpty() && fileLength > 0){ // 理論上如果上述邏輯正確，不應發生
-             LogPanel.log("錯誤: 對於非空檔案，在啟動 worker 前區塊佇列為空。");
+            //  LogPanel.log("錯誤: 對於非空檔案，在啟動 worker 前區塊佇列為空。");
              if (workerCallback != null) workerCallback.onError(new IOException("對於非空檔案，區塊佇列意外為空。"));
              return;
         }
@@ -124,7 +124,7 @@ public class SendFile {
         int poolSize = Math.min(this.threadCount, chunkQueue.size());
         poolSize = Math.max(1, poolSize); // 確保執行緒池中至少有一個執行緒。
 
-        LogPanel.log("SendFile: Sender workers 的有效執行緒池大小: " + poolSize);
+        // LogPanel.log("SendFile: Sender workers 的有效執行緒池大小: " + poolSize);
         ExecutorService pool = Executors.newFixedThreadPool(poolSize); // 創建固定大小的執行緒池
         // AtomicInteger workersToStart = new AtomicInteger(poolSize); // 這個變數似乎未使用
 
@@ -141,9 +141,13 @@ public class SendFile {
                     // LogPanel.log("SendFile: Worker " + i + " 已連接到 " + host + ":" + port + " (本地: " + socketChannel.getLocalAddress() + ")");
                     pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, workerCallback /*, workersToStart*/)); // 提交 SenderWorker 任務
                 } catch (IOException e) {
-                    LogPanel.log("SendFile: Worker " + i + " 連接或啟動失敗: " + e.getMessage());
+                    // LogPanel.log("SendFile: Worker " + i + " 連接或啟動失敗: " + e.getMessage());
                     if (socketChannel != null && socketChannel.isOpen()) {
-                        try { socketChannel.close(); } catch (IOException sce) { LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());}
+                        try { 
+                            socketChannel.close();
+                        } catch (IOException sce) { 
+                            LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());
+                        }
                     }
                     // workersToStart.decrementAndGet();
                     if (workerCallback != null) workerCallback.onError(new IOException("Worker " + i + " 連接失敗: " + e.getMessage(), e));
@@ -153,7 +157,7 @@ public class SendFile {
             // LogPanel.log("SendFile: 成功初始化的 sender workers 數量: " + channels.size() + " (預期啟動: " + poolSize + ")");
 
             if (channels.isEmpty() && (fileLength > 0 || poolSize > 0)) { // 如果沒有任何 worker 成功連接
-                LogPanel.log("SendFile: 沒有 sender workers 可以連接。中止操作。");
+                // LogPanel.log("SendFile: 沒有 sender workers 可以連接。中止操作。");
                 // workerCallback.onError 會為每個失敗的連接呼叫
                 pool.shutdownNow(); // 確保執行緒池被關閉
                 // errorReportedByWorker 應該為 true，所以下面的邏輯不會呼叫 onComplete。
@@ -163,7 +167,7 @@ public class SendFile {
             pool.shutdown(); // 關閉執行緒池，不再接受新任務，但會完成已提交的任務
             // LogPanel.log("SendFile: 執行緒池關閉已啟動。等待終止...");
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // 等待所有任務完成，設定了超長超時時間
-                LogPanel.log("SendFile: 執行緒池終止超時。強制關閉。");
+                // LogPanel.log("SendFile: 執行緒池終止超時。強制關閉。");
                 pool.shutdownNow(); // 強制關閉
                 // 如果超時，並且之前沒有 worker 報告錯誤，則將此超時報告為錯誤。
                 if (workerCallback != null && !errorReportedByWorker.get()) {
@@ -173,15 +177,15 @@ public class SendFile {
                 // LogPanel.log("SendFile: 所有 sender worker 任務已完成執行 (執行緒池已終止)。");
                 // 檢查是否所有區塊都已處理且沒有 worker 報告錯誤
                 if (!chunkQueue.isEmpty() && !errorReportedByWorker.get()) {
-                    LogPanel.log("警告: SendFile workers 完成，但區塊佇列不為空。大小: " + chunkQueue.size());
+                    // LogPanel.log("警告: SendFile workers 完成，但區塊佇列不為空。大小: " + chunkQueue.size());
                     if (workerCallback != null) {
                          workerCallback.onError(new IOException("傳輸未完成：workers 完成後仍有剩餘區塊。"));
                     }
                 } else if (!errorReportedByWorker.get()) { // 如果佇列為空且沒有 worker 報告錯誤
-                    LogPanel.log("SendFile: 所有資料已發送，無 worker 報告錯誤且佇列為空。呼叫 onComplete。");
+                    // LogPanel.log("SendFile: 所有資料已發送，無 worker 報告錯誤且佇列為空。呼叫 onComplete。");
                     // if (originalCallback != null) originalCallback.onComplete(); // 呼叫原始的 onComplete
                 } else { // 如果有錯誤或佇列不為空
-                    LogPanel.log("SendFile: 執行緒池已終止，但一個或多個 workers 報告錯誤或仍有剩餘區塊。SendFile 不會呼叫 onComplete。");
+                    // LogPanel.log("SendFile: 執行緒池已終止，但一個或多個 workers 報告錯誤或仍有剩餘區塊。SendFile 不會呼叫 onComplete。");
                 }
             }
 
@@ -192,14 +196,14 @@ public class SendFile {
                     try {
                         sc.close();
                     } catch (IOException e) {
-                        LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
+                        // LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
                     }
                 }
             }
             // LogPanel.log("SendFile: 所有 sender socket channels 已嘗試關閉。");
             // 確保執行緒池最終被關閉
             if (!pool.isTerminated()) {
-                LogPanel.log("SendFile: 在 final finally 區塊中強制關閉執行緒池。");
+                // LogPanel.log("SendFile: 在 final finally 區塊中強制關閉執行緒池。");
                 pool.shutdownNow();
             }
         }
@@ -214,15 +218,15 @@ public class SendFile {
         if (fileLength == 0) {
             // 對於零位元組檔案，SendFile.start() 會添加一個 (0,0) 的區塊。
             // 因此這裡可以直接返回，避免添加重複的 (0,0) 區塊或不必要的日誌。
-            LogPanel.log("SendFile.populateChunkQueue: fileLength 為 0。單一 (0,0) 區塊將由 SendFile.start() 處理。");
+            // LogPanel.log("SendFile.populateChunkQueue: fileLength 為 0。單一 (0,0) 區塊將由 SendFile.start() 處理。");
             return;
         }
-        LogPanel.log("SendFile.populateChunkQueue: 計算檔案長度為 " + fileLength + " 的區塊, SendFile.this.threadCount=" + this.threadCount);
+        // LogPanel.log("SendFile.populateChunkQueue: 計算檔案長度為 " + fileLength + " 的區塊, SendFile.this.threadCount=" + this.threadCount);
 
         if (this.threadCount <= 0) { // 理論上建構函式已修正，但做防禦性檢查。
-            LogPanel.log("SendFile.populateChunkQueue: 錯誤 - threadCount 為 " + this.threadCount + "。預設為 1 個區塊。");
+            // LogPanel.log("SendFile.populateChunkQueue: 錯誤 - threadCount 為 " + this.threadCount + "。預設為 1 個區塊。");
             chunkQueue.offer(new ChunkInfo(0, fileLength));
-            LogPanel.log("SendFile.populateChunkQueue: 完成。最終區塊佇列大小: " + chunkQueue.size());
+            // LogPanel.log("SendFile.populateChunkQueue: 完成。最終區塊佇列大小: " + chunkQueue.size());
             return;
         }
         
@@ -268,12 +272,12 @@ public class SendFile {
                             totalChunksGenerated++;
                             // LogPanel.log("SendFile.populateChunkQueue: 加入子區塊: offset=" + (currentOverallOffset + offsetWithinSuperChunk) + ", length=" + lengthForThisSubChunk);
                         } else if (offsetWithinSuperChunk < currentSuperChunkLength) {
-                            LogPanel.log("SendFile.populateChunkQueue: 警告 - 在超級區塊內偏移量 " + offsetWithinSuperChunk + " 處計算出零長度子區塊。");
+                            // LogPanel.log("SendFile.populateChunkQueue: 警告 - 在超級區塊內偏移量 " + offsetWithinSuperChunk + " 處計算出零長度子區塊。");
                             break; 
                         }
                         offsetWithinSuperChunk += lengthForThisSubChunk;
                         if (lengthForThisSubChunk == 0 && offsetWithinSuperChunk < currentSuperChunkLength) { 
-                             LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 子區塊長度為0但未完成超級區塊的分割。");
+                            //  LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 子區塊長度為0但未完成超級區塊的分割。");
                              break;
                         }
                     }
@@ -281,11 +285,11 @@ public class SendFile {
             }
             currentOverallOffset += currentSuperChunkLength; 
             if (currentSuperChunkLength == 0 && currentOverallOffset < fileLength) { 
-                LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 超級區塊長度為0但未完成檔案的分割。");
+                // LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 超級區塊長度為0但未完成檔案的分割。");
                 break;
             }
         }
-        LogPanel.log("SendFile.populateChunkQueue: 完成。總共生成了 " + totalChunksGenerated + " 個區塊。最終區塊佇列大小: " + chunkQueue.size());
+        // LogPanel.log("SendFile.populateChunkQueue: 完成。總共生成了 " + totalChunksGenerated + " 個區塊。最終區塊佇列大小: " + chunkQueue.size());
     }
 
     /**
@@ -321,7 +325,7 @@ public class SendFile {
             
             // 檢查 SocketChannel 狀態
             if (!socketChannel.isOpen() || !socketChannel.isConnected()) {
-                LogPanel.log("錯誤在 SenderWorker (" + workerName + "): SocketChannel 在啟動時未開啟或未連接。");
+                // LogPanel.log("錯誤在 SenderWorker (" + workerName + "): SocketChannel 在啟動時未開啟或未連接。");
                 if (callback != null) {
                     callback.onError(new IOException("SocketChannel 在 worker " + workerName + " 啟動時未開啟/連接"));
                 }
@@ -339,9 +343,9 @@ public class SendFile {
                         throw new IOException("SocketChannel 在處理區塊 " + chunk + " 前已關閉 (worker " + workerName + ")");
                     }
                     processedAtLeastOneChunk = true;
-                    LogPanel.log("SenderWorker (" + workerName + "): 取出區塊 " + chunk + ". 佇列近似大小: " + chunkQueue.size());
+                    // LogPanel.log("SenderWorker (" + workerName + "): 取出區塊 " + chunk + ". 佇列近似大小: " + chunkQueue.size());
                     if (chunk.length < 0) { // 防禦性檢查，理論上不應有負長度區塊
-                        LogPanel.log("SenderWorker (" + workerName + "): 跳過無效的負長度區塊: " + chunk);
+                        // LogPanel.log("SenderWorker (" + workerName + "): 跳過無效的負長度區塊: " + chunk);
                         continue;
                     }
 
@@ -350,7 +354,7 @@ public class SendFile {
                     headerBuffer.putLong(chunk.offset); // 寫入偏移量
                     headerBuffer.putLong(chunk.length); // 寫入長度
                     headerBuffer.flip(); // 切換到讀取模式，準備從緩衝區讀取資料進行傳送
-                    LogPanel.log("SenderWorker (" + workerName + "): 正在為 " + chunk + " 傳送頭部資訊");
+                    // LogPanel.log("SenderWorker (" + workerName + "): 正在為 " + chunk + " 傳送頭部資訊");
                     while (headerBuffer.hasRemaining()) { // 確保頭部資訊完全寫出
                         if (!socketChannel.isOpen()) throw new IOException("SocketChannel 在為區塊 " + chunk + " 傳送頭部資訊時關閉");
                         socketChannel.write(headerBuffer);
@@ -358,7 +362,7 @@ public class SendFile {
 
                     // 如果區塊長度為0 (例如，零位元組檔案的唯一區塊)，則只傳送頭部，不傳送資料主體
                     if (chunk.length == 0) {
-                        LogPanel.log("SenderWorker (" + workerName + "): 已為 " + chunk + " 傳送零長度區塊頭部。無需傳送資料主體。");
+                        // LogPanel.log("SenderWorker (" + workerName + "): 已為 " + chunk + " 傳送零長度區塊頭部。無需傳送資料主體。");
                         continue; // 繼續處理下一個區塊
                     }
 
@@ -387,7 +391,7 @@ public class SendFile {
                              // 如果 transferTo 返回 0，表示 Socket 的傳送緩衝區可能已滿。
                              // 短暫休眠可以避免忙等待循環。
                              // 如果連接已斷開，後續的嘗試或超時會拋出 IOException。
-                             LogPanel.log("SenderWorker (" + workerName + "): transferTo 為區塊 " + chunk + " 返回 0，剩餘 " + (chunk.length - bytesTransferredForThisChunk) + " 位元組。Socket 緩衝區可能已滿。短暫休眠。");
+                            //  LogPanel.log("SenderWorker (" + workerName + "): transferTo 為區塊 " + chunk + " 返回 0，剩餘 " + (chunk.length - bytesTransferredForThisChunk) + " 位元組。Socket 緩衝區可能已滿。短暫休眠。");
                              Thread.sleep(20); // 減少休眠時間，更頻繁地檢查。
                         } else if (transferredThisCall < 0) {
                             // transferTo 返回負值通常不正常，表示源通道 (檔案) 出錯或 EOF (對檔案不應發生)。
@@ -399,14 +403,14 @@ public class SendFile {
                             callback.onProgress(transferredThisCall); // 報告進度
                         }
                     }
-                    LogPanel.log("SenderWorker (" + workerName + "): 完成為區塊 " + chunk + " 傳送資料。此區塊總共傳送: " + bytesTransferredForThisChunk);
+                    // LogPanel.log("SenderWorker (" + workerName + "): 完成為區塊 " + chunk + " 傳送資料。此區塊總共傳送: " + bytesTransferredForThisChunk);
                 }
 
                 // 迴圈結束後，檢查此 worker 是否處理過任何區塊
                 if (!processedAtLeastOneChunk) {
-                    LogPanel.log("SenderWorker (" + workerName + "): 未處理任何區塊。佇列為空或 worker 啟動較晚。如果其他 workers 已處理所有區塊，則此情況正常。");
+                    // LogPanel.log("SenderWorker (" + workerName + "): 未處理任何區塊。佇列為空或 worker 啟動較晚。如果其他 workers 已處理所有區塊，則此情況正常。");
                 }
-                LogPanel.log("SenderWorker (" + workerName + "): 此 worker 的佇列中沒有更多區塊，或 worker 未處理任何區塊。Worker 即將結束。");
+                // LogPanel.log("SenderWorker (" + workerName + "): 此 worker 的佇列中沒有更多區塊，或 worker 未處理任何區塊。Worker 即將結束。");
 
             } catch (IOException e) { // 捕獲 I/O 異常
                 // 檢查異常是否由於通道關閉導致，這在接收端中止時很常見。
@@ -415,13 +419,13 @@ public class SendFile {
                     socketState = "isOpen=" + socketChannel.isOpen() + ", isConnected=" + socketChannel.isConnected() + 
                                   (socketChannel.socket() != null ? ", remoteAddr=" + socketChannel.socket().getRemoteSocketAddress() : "");
                 }
-                LogPanel.log("錯誤在 SenderWorker (" + workerName + "): " + e.getClass().getSimpleName() + " - " + e.getMessage() + ". Socket 狀態: " + socketState);
+                // LogPanel.log("錯誤在 SenderWorker (" + workerName + "): " + e.getClass().getSimpleName() + " - " + e.getMessage() + ". Socket 狀態: " + socketState);
                 // e.printStackTrace(); // 如果需要更詳細的堆疊追蹤
                 if (callback != null) {
                     callback.onError(e); // 報告錯誤
                 }
             } catch (InterruptedException e) { // 捕獲中斷異常
-                LogPanel.log("SenderWorker (" + workerName + ") 被中斷: " + e.getMessage());
+                // LogPanel.log("SenderWorker (" + workerName + ") 被中斷: " + e.getMessage());
                 Thread.currentThread().interrupt(); // 重設中斷狀態
                 if (callback != null) {
                     callback.onError(e); // 報告錯誤
@@ -429,7 +433,7 @@ public class SendFile {
             } finally {
                 // SenderWorker 的 run 方法結束，無論成功或失敗。
                 // SocketChannel 的關閉由 SendFile 主類的 finally 區塊統一處理。
-                LogPanel.log("SenderWorker (" + workerName + ") run 方法完成。");
+                // LogPanel.log("SenderWorker (" + workerName + ") run 方法完成。");
             }
         }
     }
