@@ -277,7 +277,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         // so it can choose the correct layout for fileInfoPanel.
         styleComponents();
 
-        fileInfoPanel.setBackground(currentAccentPrimary.darker()); // Highlight background for selected item
+        fileInfoPanel.setBackground(currentPanelBg); // 保持背景與面板一致
         if (clearBtn != null)
             clearBtn.setEnabled(true);
         firePropertyChange("selectedFile", oldSelected, selected);
