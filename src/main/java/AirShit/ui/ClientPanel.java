@@ -51,6 +51,22 @@ public class ClientPanel extends JPanel {
         if (list == null) {
             list = new JList<>(model);
             list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+            // 添加 MouseListener 以在點擊空白區域時取消選擇
+            list.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    int index = list.locationToIndex(e.getPoint());
+                    if (index == -1) { // 檢查是否點擊在空白區域
+                        list.clearSelection(); // 清除選擇
+                    } else {
+                        Rectangle cellBounds = list.getCellBounds(index, index);
+                        if (cellBounds == null || !cellBounds.contains(e.getPoint())) {
+                            list.clearSelection(); // 點擊在項目範圍外也清除選擇
+                        }
+                    }
+                }
+            });
         }
         list.setCellRenderer(
                 new ClientCellRenderer(currentAccentPrimary, currentPanelBg, currentTextPrimary, currentTextSecondary));
