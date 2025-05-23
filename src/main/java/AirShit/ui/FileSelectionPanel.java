@@ -2,13 +2,11 @@ package AirShit.ui;
 
 import AirShit.FileChooserDialog;
 import AirShit.SendFileGUI;
-import javafx.stage.FileChooser;
 
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileSystemView;
-import javax.swing.TransferHandler.TransferSupport;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.UnsupportedFlavorException;
@@ -23,6 +21,7 @@ import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import javafx.application.Platform;
 
 public class FileSelectionPanel extends JPanel implements DropTargetListener {
     private JLabel lblFiles;
@@ -189,10 +188,12 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
             }
             browseBtn.addActionListener(e -> {
                 SwingUtilities.invokeLater(() -> {
-                    File selectedFile = FileChooser.showDialog();
-                    if (selectedFile != null) {
-                        handleSelectedFile(selectedFile);
-                    }
+                    Platform.runLater(() -> {
+                        File selectedFile = FileChooserDialog.showDialog(null, new File(System.getProperty("user.home")));
+                        if (selectedFile != null) {
+                            handleSelectedFile(selectedFile);
+                        }
+                    });
                 });
             });
         }
@@ -257,7 +258,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
 
         if (sel.isDirectory()) {
             // 顯示資料夾內的部分檔案列表
-            String[] filesInFolder = 
+            String[] filesInFolder = sel.list();
             StringBuilder sb = new StringBuilder("<html><b>Folder:</b> " + sel.getName() + "<br>");
             int count = 0;
             for (String f : filesInFolder) {

@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
+import javafx.application.Platform;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -491,6 +492,7 @@ public class Main { // 定義 Main 類別
         // 註冊一個關閉鉤子，在應用程式退出時釋放鎖
         Runtime.getRuntime().addShutdownHook(new Thread(Main::releaseSingleInstanceLock));
 
+        Platform.startup(() -> {});
     }
 
     private static boolean acquireSingleInstanceLock() {
