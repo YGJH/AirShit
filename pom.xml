@@ -54,7 +54,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version> <!-- 或更新版本 -->
                 <configuration>
-                    <mainClass>AirShit.GenerateTestFolder</mainClass>
+                    <mainClass>AirShit.Main</mainClass>
                 </configuration>
             </plugin>
 
