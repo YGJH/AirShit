@@ -55,11 +55,11 @@ public class FileChooserDialog {
 
     static {
         try {
-            java.net.URL upIconUrl = FileChooserDialog.class.getResource("/icons/up_arrow.png");
+            java.net.URL upIconUrl = FileChooserDialog.class.getResource("/icons/up-arrow.png");
             if (upIconUrl != null) {
                 upIcon = new Image(upIconUrl.toExternalForm());
             } else {
-                System.err.println("Could not find up arrow icon: /icons/up_arrow.png");
+                System.err.println("Could not find up arrow icon: /icons/up-arrow.png");
             }
         } catch (Exception e) {
             System.err.println("Error loading up icon: " + e.getMessage());
@@ -378,6 +378,13 @@ public class FileChooserDialog {
                     .add(FileChooserDialog.class.getResource("/css/file-chooser-dialog.css").toExternalForm());
         } catch (Exception cssEx) {
             System.err.println("Error loading CSS files: " + cssEx.getMessage());
+            cssEx.printStackTrace();
+        }
+        try {
+            scene.getStylesheets().add(
+                    FileChooserDialog.class.getResource("/css/dark-theme.css").toExternalForm());
+        } catch (Exception cssEx) {
+            System.err.println("Error loading dark theme CSS file: " + cssEx.getMessage());
             cssEx.printStackTrace();
         }
 
