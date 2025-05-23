@@ -4,177 +4,19 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 import net.jpountz.lz4.LZ4FrameOutputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.io.IOUtils;
+// import org.apache.commons.compress.utils.IOUtils; // Remove this line
+import org.apache.commons.io.IOUtils; 
 
 public class LZ4FileCompressor {
-
-    private static final long LARGE_FILE_THRESHOLD = 2L * 1024L * 1024L * 1024L; // 2GB
-    private static final int TAR_BUFFER_SIZE = 8192;
-    private static final int QUEUE_CAPACITY = 100; // Capacity for the blocking queue
-
-    // Helper class to pass data to TarWriterThread
-    private static class TarEntryData {
-        final File file; // Source file, null for directory entries not directly from a File object or for sentinel
-        final String entryName;
-        final boolean isDirectory;
-        final boolean isSentinel; // Signal to stop
-
-        // Constructor for files/directories
-        public TarEntryData(File file, String entryName, boolean isDirectory) {
-            this.file = file;
-            this.entryName = entryName;
-            this.isDirectory = isDirectory;
-            this.isSentinel = false;
-        }
-
-        // Constructor for sentinel
-        private TarEntryData() {
-            this.file = null;
-            this.entryName = null;
-            this.isDirectory = false;
-            this.isSentinel = true;
-        }
-
-        public static TarEntryData sentinel() {
-            return new TarEntryData();
-        }
-    }
-
-    // Thread to write entries to TarArchiveOutputStream
-    private static class TarWriterThread extends Thread {
-        private final TarArchiveOutputStream taros;
-        private final BlockingQueue<TarEntryData> queue;
-        private volatile IOException exception = null;
-
-        public TarWriterThread(TarArchiveOutputStream taros, BlockingQueue<TarEntryData> queue) {
-            this.taros = taros;
-            this.queue = queue;
-            this.setName("TarWriterThread");
-        }
-
-        @Override
-        public void run() {
-            try {
-                while (true) {
-                    TarEntryData data = queue.take(); // Blocks if queue is empty
-                    if (data.isSentinel) {
-                        break; // End of processing
-                    }
-
-                    TarArchiveEntry entry;
-                    if (data.isDirectory) {
-                        entry = new TarArchiveEntry(data.file, data.entryName);
-                        taros.putArchiveEntry(entry);
-                        taros.closeArchiveEntry();
-                    } else { // Is a file
-                        entry = new TarArchiveEntry(data.file, data.entryName);
-                        taros.putArchiveEntry(entry);
-                        try (FileInputStream fis = new FileInputStream(data.file)) {
-                            IOUtils.copy(fis, taros, TAR_BUFFER_SIZE);
-                        }
-                        taros.closeArchiveEntry();
-                    }
-                }
-            } catch (IOException e) {
-                this.exception = e;
-                System.err.println("Error in TarWriterThread: " + e.getMessage());
-                // e.printStackTrace(); // Main thread will print stack trace
-            } catch (InterruptedException e) {
-                System.err.println("TarWriterThread interrupted: " + e.getMessage());
-                Thread.currentThread().interrupt(); // Preserve interrupt status
-                this.exception = new IOException("TarWriterThread was interrupted", e);
-            }
-        }
-        
-        public IOException getException() {
-            return exception;
-        }
-    }
-
-    // Task to scan folders
-    private static class FolderScannerTask implements Runnable {
-        private final File currentDir;
-        private final String baseArchiveDirPath; // Absolute path of the source folder being archived.
-        private final BlockingQueue<TarEntryData> queue;
-        private final List<File> largeFilesList; // Synchronized list
-        private final ExecutorService executor;
-
-        public FolderScannerTask(File currentDir, String baseArchiveDirPath,
-                                 BlockingQueue<TarEntryData> queue, List<File> largeFilesList,
-                                 ExecutorService executor) {
-            this.currentDir = currentDir;
-            this.baseArchiveDirPath = baseArchiveDirPath;
-            this.queue = queue;
-            this.largeFilesList = largeFilesList;
-            this.executor = executor;
-        }
-
-        @Override
-        public void run() {
-            try {
-                Path rootArchiveSourcePath = Paths.get(baseArchiveDirPath);
-                Path relativizationBase = rootArchiveSourcePath.getParent();
-
-                File[] items = currentDir.listFiles();
-                if (items == null) return;
-
-                for (File item : items) {
-                    if (Thread.currentThread().isInterrupted()) { // Check for interruption
-                        System.err.println("FolderScannerTask for " + currentDir.getPath() + " detected interruption, stopping.");
-                        return;
-                    }
-                    Path itemPath = item.toPath();
-                    String entryName;
-
-                    if (relativizationBase != null) {
-                        entryName = relativizationBase.relativize(itemPath).toString();
-                    } else { // sourceFolder is a root like "C:\\"
-                        entryName = rootArchiveSourcePath.relativize(itemPath).toString();
-                    }
-                    entryName = entryName.replace(File.separatorChar, '/');
-
-                    if (item.isDirectory()) {
-                        String dirEntryName = entryName.endsWith("/") ? entryName : entryName + "/";
-                        queue.put(new TarEntryData(item, dirEntryName, true));
-                        if (!executor.isShutdown()) {
-                           executor.submit(new FolderScannerTask(item, baseArchiveDirPath, queue, largeFilesList, executor));
-                        }
-                    } else if (item.isFile()) {
-                        if (item.length() > LARGE_FILE_THRESHOLD) {
-                            // largeFilesList is a synchronized list, direct add is thread-safe
-                            largeFilesList.add(item);
-                        } else {
-                            queue.put(new TarEntryData(item, entryName, false));
-                        }
-                    }
-                }
-            } catch (InterruptedException e) {
-                System.err.println("FolderScannerTask for " + currentDir.getPath() + " interrupted: " + e.getMessage());
-                Thread.currentThread().interrupt(); 
-            } catch (Exception e) { 
-                 System.err.println("Error in FolderScannerTask for " + currentDir.getPath() + ": " + e.getMessage());
-                 // e.printStackTrace(); // Avoid excessive logging from worker threads, main thread handles overall error
-                 // To propagate this error, the task could return a Future<Boolean> or similar,
-                 // or set a shared volatile error flag. For now, logging it.
-                 // If queue.put fails due to InterruptedException from writer thread dying, this task will also terminate.
-            }
-        }
-    }
 
     /**
      * 將指定的資料夾壓縮成一個 .tar.lz4 檔案。
@@ -193,149 +35,111 @@ public class LZ4FileCompressor {
             return 0;
         }
 
-        List<File> largeFilesList = Collections.synchronizedList(new ArrayList<>());
-        BlockingQueue<TarEntryData> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
-        int numThreads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2); // Conservative thread count
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-        
-        int filesArrayPopulatedCount = 0;
+        int countOfItemsInFilesArray = 0;
 
         try (FileOutputStream fos = new FileOutputStream(outputTarLz4FilePath);
              LZ4FrameOutputStream lz4os = new LZ4FrameOutputStream(fos, BLOCKSIZE.SIZE_64KB);
              TarArchiveOutputStream taros = new TarArchiveOutputStream(lz4os)) {
 
-            taros.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
+            taros.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU); // 支援長檔名
 
-            TarWriterThread writerThread = new TarWriterThread(taros, queue);
-            writerThread.start();
-
-            // Add the root source folder itself as the first entry to the TAR
-            Path sourceFolderPathObj = sourceFolder.toPath();
-            Path parentOfSourceFolder = sourceFolderPathObj.getParent();
-            String rootEntryName;
-
-            if (parentOfSourceFolder != null) {
-                rootEntryName = parentOfSourceFolder.relativize(sourceFolderPathObj).toString();
-            } else { // sourceFolder is a root like "C:\\"
-                // For a root source folder, its name in the archive is just its own name.
-                // e.g. if source is "D:", entry is "D/" (or whatever File#getName returns for a root)
-                // If source is "/", entry is "/" (or name of root)
-                // TarArchiveEntry usually expects relative paths.
-                // Let's use the folder's name.
-                String name = sourceFolder.getName();
-                if (name.isEmpty() && sourceFolderPathObj.getNameCount() == 0) { // e.g. "C:\" -> getName() is "", path name count is 0
-                    name = sourceFolderPathObj.toString().replace(File.separatorChar, '/'); // Use "C:/" or "/"
-                     if (name.endsWith("/") && name.length() > 1) name = name.substring(0, name.length() -1); // Avoid "C://", prefer "C:" then add "/"
-                }
-                 rootEntryName = name;
-            }
-            rootEntryName = rootEntryName.replace(File.separatorChar, '/');
-            if (!rootEntryName.endsWith("/")) {
-                rootEntryName += "/";
-            }
-            queue.put(new TarEntryData(sourceFolder, rootEntryName, true));
-
-            // Submit initial task for the source folder's contents
-            executor.submit(new FolderScannerTask(sourceFolder, sourceFolder.getAbsolutePath(), queue, largeFilesList, executor));
+            // 遞迴處理資料夾，將小型檔案加入 taros，大型檔案加入 filesArray
+            // addFolderToTarRecursive 會返回加入到 filesArray 中的大型檔案數量 (即下一個可用的索引)
+            countOfItemsInFilesArray = addFolderToTarRecursive(sourceFolder.getAbsolutePath(), sourceFolder, taros, filesArray, 0);
             
-            executor.shutdown(); // No new tasks will be accepted
-            try {
-                // Wait for all scanning tasks to complete or timeout
-                if (!executor.awaitTermination(1, TimeUnit.HOURS)) { // Generous timeout
-                    System.err.println("Timeout waiting for folder scan to complete. Forcing shutdown.");
-                    executor.shutdownNow(); // Attempt to stop all actively executing tasks
-                    // Wait a bit for tasks to respond to interruption
-                    if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                        System.err.println("Executor did not terminate after force shutdown.");
-                    }
-                    throw new IOException("Compression timed out during folder scan.");
-                }
-            } catch (InterruptedException e) {
-                System.err.println("Interrupted while waiting for folder scan completion.");
-                executor.shutdownNow();
-                Thread.currentThread().interrupt();
-                throw new IOException("Compression interrupted during folder scan.", e);
-            }
-
-            // All scanning tasks are done, or timed out/interrupted.
-            // Tell TarWriterThread to finish processing whatever is in the queue.
-            queue.put(TarEntryData.sentinel());
-            writerThread.join(60000); // Wait for writer thread to finish, with a timeout
-
-            if (writerThread.isAlive()) {
-                System.err.println("TarWriterThread did not finish in time. Interrupting.");
-                writerThread.interrupt();
-                writerThread.join(5000); // Wait a bit more
-                 if (writerThread.isAlive()) System.err.println("TarWriterThread still alive after interrupt.");
-            }
-            
-            if (writerThread.getException() != null) {
-                throw writerThread.getException();
-            }
-            // taros, lz4os, fos will be closed by try-with-resources
-
-            // Populate filesArray: large files first, then the archive file.
-            int currentIdx = 0;
-            for (File largeFile : largeFilesList) {
-                if (currentIdx < filesArray.length) {
-                    filesArray[currentIdx++] = largeFile;
-                } else {
-                    System.err.println("錯誤：filesArray 陣列空間不足以加入大型檔案: " + largeFile.getName() + ". Skipping remaining large files.");
-                    break; 
-                }
-            }
-            
+            // 將 .tar.lz4 壓縮檔案本身也加入到 filesArray 中
+            // (即使 .tar.lz4 是空的，如果來源資料夾只包含大型檔案或本身為空，也應該將其視為一個處理結果)
             File archiveFile = new File(outputTarLz4FilePath);
-            if (archiveFile.exists() && archiveFile.length() > 0) { // Ensure archive file was created and is not empty
-                if (currentIdx < filesArray.length) {
-                    filesArray[currentIdx++] = archiveFile;
-                } else {
-                    System.err.println("錯誤：filesArray 陣列空間不足以加入壓縮檔案本身 (" + outputTarLz4FilePath + ")。");
-                }
+            // 檢查 archiveFile 是否真的被創建 (例如，如果 taros 從未寫入任何 entry，檔案可能為0字節或不存在)
+            // 但即使是0字節的tar.lz4，如果LZ4FileCompressor的邏輯是創建它，就應該將其加入列表
+            if (countOfItemsInFilesArray < filesArray.length) {
+                filesArray[countOfItemsInFilesArray++] = filesArray[0] ;
+                filesArray[0] = archiveFile;
             } else {
-                 System.err.println("警告：壓縮檔案 " + outputTarLz4FilePath + " 未創建或為空，將不會加入到 filesArray。");
+                System.err.println("錯誤：filesArray 陣列空間不足以加入壓縮檔案本身 (" + outputTarLz4FilePath + ")。");
+                // 根據需求，這裡可以拋出異常或採取其他錯誤處理
             }
-            filesArrayPopulatedCount = currentIdx;
-            return filesArrayPopulatedCount;
+            
+            // System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
+            // System.out.println("files (大型檔案 + 壓縮檔): ");
+            // for (int i = 0; i < countOfItemsInFilesArray; i++) {
+            //     if (filesArray[i] != null) { // 防禦性檢查
+            //         System.out.println(filesArray[i].getName());
+            //     }
+            // }
+
+            return countOfItemsInFilesArray; // 返回 filesArray 中實際填充的項目數量
 
         } catch (IOException e) {
             System.err.println("壓縮資料夾 " + sourceFolderPath + " 時發生錯誤：" + e.getMessage());
             e.printStackTrace();
-            cleanupPartialFile(outputTarLz4FilePath, executor);
-            return 0; 
-        } catch (InterruptedException e) { // From queue.put or writerThread.join
-            System.err.println("壓縮資料夾 " + sourceFolderPath + " 時被中斷：" + e.getMessage());
-            e.printStackTrace();
-            Thread.currentThread().interrupt();
-            cleanupPartialFile(outputTarLz4FilePath, executor);
-            return 0;
-        } finally {
-            // Ensure executor is shutdown if not already
-            if (executor != null && !executor.isTerminated()) {
-                executor.shutdownNow();
+            // 刪除可能已部分創建的輸出檔案
+            File partialOutputFile = new File(outputTarLz4FilePath);
+            if (partialOutputFile.exists()) {
+                partialOutputFile.delete();
             }
-        }
-    }
-    
-    private static void cleanupPartialFile(String outputFilePath, ExecutorService executor) {
-        if (executor != null && !executor.isTerminated()) {
-            executor.shutdownNow();
-            try {
-                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    System.err.println("Executor did not terminate cleanly during cleanup.");
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        File partialOutputFile = new File(outputFilePath);
-        if (partialOutputFile.exists()) {
-            if (!partialOutputFile.delete()) {
-                 System.err.println("Warning: Could not delete partial output file: " + outputFilePath);
-            }
+            return 0; // 或許應該返回 countOfItemsInFilesArray，如果部分大型檔案已收集
         }
     }
 
+    /**
+     * 遞迴地將檔案和資料夾加入到 TAR 輸出流中。
+     * 大於2MB的檔案會被加入到 retFilesArray 中，而不是 TAR 流。
+     *
+     * @param basePath          來源根資料夾的絕對路徑，用於計算相對路徑。
+     * @param currentFileOrDir  目前處理的檔案或資料夾。
+     * @param taros             TAR 輸出流 (用於存放小型檔案)。
+     * @param retFilesArray     用於存放大型檔案 File 物件的陣列。
+     * @param currentIndex      目前在 retFilesArray 中用於存放下一個大型檔案的索引。
+     * @return                  處理完畢後，retFilesArray 中下一個可用的索引。
+     * @throws IOException      如果發生 I/O 錯誤。
+     */
+    private static int addFolderToTarRecursive(String basePath, File currentFileOrDir, TarArchiveOutputStream taros, File[] retFilesArray, int currentIndex) throws IOException {
+        Path currentPath = currentFileOrDir.toPath();
+        Path baseDirPath = Paths.get(basePath);
+        // 確保 basePath 是 current 的父路徑或自身，以正確計算相對路徑
+        String entryName = baseDirPath.getParent() != null ? baseDirPath.getParent().relativize(currentPath).toString() : currentPath.getFileName().toString();
+        // 確保 Windows 路徑分隔符轉換為 Unix 風格
+        entryName = entryName.replace(File.separatorChar, '/');
+
+        if (currentFileOrDir.isDirectory()) {
+            // 對於目錄，即使其內容可能被單獨處理 (大型檔案)，目錄本身的條目也應加入TAR
+            if (!entryName.isEmpty() && !entryName.endsWith("/")) {
+                entryName += "/"; // 目錄條目應以 "/" 結尾
+            }
+            TarArchiveEntry entry = new TarArchiveEntry(currentFileOrDir, entryName);
+            taros.putArchiveEntry(entry);
+            taros.closeArchiveEntry();
+
+            File[] filesInDir = currentFileOrDir.listFiles();
+            if (filesInDir != null) {
+                for (File itemInDir : filesInDir) {
+                    if (itemInDir.isFile() && itemInDir.length() > 1 * 1024 * 1024) { // 大型檔案
+                        if (currentIndex < retFilesArray.length) {
+                            retFilesArray[currentIndex++] = itemInDir;
+                        } else {
+                            System.err.println("錯誤：retFilesArray 陣列空間不足以加入大型檔案: " + itemInDir.getName());
+                            // 根據需求，這裡可以拋出異常
+                        }
+                    } else { // 小型檔案或子目錄
+                        // 遞迴處理，小型檔案會被加入 taros，子目錄會進一步遞迴
+                        // currentIndex 會被正確地傳遞和更新
+                        currentIndex = addFolderToTarRecursive(basePath, itemInDir, taros, retFilesArray, currentIndex);
+                    }
+                }
+            }
+        } else if (currentFileOrDir.isFile()) { // 這是要加入到 TAR 的小型檔案
+            TarArchiveEntry entry = new TarArchiveEntry(currentFileOrDir, entryName);
+            taros.putArchiveEntry(entry);
+            try (FileInputStream fis = new FileInputStream(currentFileOrDir)) {
+                IOUtils.copy(fis, taros, 8192); 
+            }
+            taros.closeArchiveEntry();
+        }
+        return currentIndex; // 返回更新後的索引，供上一層呼叫使用
+    }
+
+// ... (deleteDirectory 和 main 方法等其他程式碼) ...
     /**
      * 輔助方法：遞迴刪除資料夾及其內容。
      */
@@ -346,14 +150,10 @@ public class LZ4FileCompressor {
                 if (file.isDirectory()) {
                     deleteDirectory(file);
                 } else {
-                    if (!file.delete()) {
-                        System.err.println("Warning: Could not delete file " + file.getAbsolutePath());
-                    }
+                    file.delete();
                 }
             }
         }
-        if (!directory.delete()) {
-            System.err.println("Warning: Could not delete directory " + directory.getAbsolutePath());
-        }
+        directory.delete(); 
     }
 }
