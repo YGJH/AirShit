@@ -301,7 +301,9 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         if (clearBtn != null)
             clearBtn.setEnabled(false);
 
+        // 通知屬性變更，讓其他元件知道檔案已被清除
         firePropertyChange("selectedFile", oldSelected, null);
+
         revalidate();
         repaint();
     }

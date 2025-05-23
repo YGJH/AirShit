@@ -52,14 +52,13 @@ public class SendFileGUI extends JFrame {
     public static final Font FONT_SECONDARY_PLAIN = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
     public static final Font FONT_TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 16);
 
-
-    private ClientPanel          clientPanel;
-    private FileSelectionPanel   filePanel;
-    public  SendControlPanel     sendPanel;
+    private ClientPanel clientPanel;
+    private FileSelectionPanel filePanel;
+    public SendControlPanel sendPanel;
     public ReceiveProgressPanel recvPanel;
-    private LogPanel             logPanel;
-    private JToggleButton        themeToggleButton;
-    private boolean              isDarkMode = true;
+    private LogPanel logPanel;
+    private JToggleButton themeToggleButton;
+    private boolean isDarkMode = true;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
@@ -71,16 +70,17 @@ public class SendFileGUI extends JFrame {
             if (iconURL != null) {
                 setIconImage(new ImageIcon(iconURL).getImage());
             } else {
-                System.err.println("Application icon '/asset/kitty.ico' not found. Ensure it's in src/main/resources/asset/");
+                System.err.println(
+                        "Application icon '/asset/kitty.ico' not found. Ensure it's in src/main/resources/asset/");
             }
         } catch (Exception e) {
             System.err.println("Error loading application icon: " + e.getMessage());
         }
-        
+
         setSize(750, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        
+
         initComponents();
         layoutComponents();
         bindEvents();
@@ -116,22 +116,26 @@ public class SendFileGUI extends JFrame {
 
         if (themeToggleButton != null) {
             themeToggleButton.setText(dark ? "Switch to Light Mode" : "Switch to Dark Mode");
-            // Also update the toggle button's own background if it's part of a panel that doesn't get APP_BACKGROUND
+            // Also update the toggle button's own background if it's part of a panel that
+            // doesn't get APP_BACKGROUND
             // For example, if it's directly on a topBar that should match APP_BACKGROUND:
             if (themeToggleButton.getParent() != null) {
-                 themeToggleButton.getParent().setBackground(APP_BACKGROUND);
+                themeToggleButton.getParent().setBackground(APP_BACKGROUND);
             }
         }
-        
+
         // Update the look and feel of all components
         SwingUtilities.updateComponentTreeUI(this);
 
-        // Explicitly update the background of the content pane and its direct children if necessary
+        // Explicitly update the background of the content pane and its direct children
+        // if necessary
         if (getContentPane() != null) {
             getContentPane().setBackground(APP_BACKGROUND);
-            // If the contentPane has direct children that need APP_BACKGROUND, update them too.
+            // If the contentPane has direct children that need APP_BACKGROUND, update them
+            // too.
             // In your case, the 'container' JPanel is the contentPane.
-            // Its children (topBar and mainContentPanel) also need their backgrounds updated.
+            // Its children (topBar and mainContentPanel) also need their backgrounds
+            // updated.
             Component[] components = getContentPane().getComponents();
             for (Component component : components) {
                 if (component instanceof JPanel) {
@@ -141,7 +145,7 @@ public class SendFileGUI extends JFrame {
                 }
             }
         }
-        
+
         // Then tell custom panels to update their specific colors
         updateUIsOfChildPanels();
     }
@@ -151,26 +155,30 @@ public class SendFileGUI extends JFrame {
         themeToggleButton.setSelected(isDarkMode);
 
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
-        filePanel   = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
-        sendPanel   = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
-        recvPanel   = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        filePanel = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        sendPanel = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
+        recvPanel = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
         // Pass the specific LOG_AREA_BACKGROUND to LogPanel constructor
-        logPanel    = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
+        logPanel = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
 
         receiveProgressBar = recvPanel.getProgressBar();
         sendPanel.getSendButton().setEnabled(false);
         sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
     }
-    
-    private void updateUIsOfChildPanels() {
-        if (clientPanel != null) clientPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
-        if (filePanel != null) filePanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
-        if (sendPanel != null) sendPanel.updateThemeColors(APP_BACKGROUND, ACCENT_SUCCESS);
-        if (recvPanel != null) recvPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
-        // Pass the specific LOG_AREA_BACKGROUND to LogPanel's update method
-        if (logPanel != null) logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
-    }
 
+    private void updateUIsOfChildPanels() {
+        if (clientPanel != null)
+            clientPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (filePanel != null)
+            filePanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
+        if (sendPanel != null)
+            sendPanel.updateThemeColors(APP_BACKGROUND, ACCENT_SUCCESS);
+        if (recvPanel != null)
+            recvPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
+        // Pass the specific LOG_AREA_BACKGROUND to LogPanel's update method
+        if (logPanel != null)
+            logPanel.updateThemeColors(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
+    }
 
     private void layoutComponents() {
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -180,7 +188,8 @@ public class SendFileGUI extends JFrame {
         topBar.add(themeToggleButton);
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
-        // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by applyTheme
+        // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by
+        // applyTheme
         mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
 
         mainContentPanel.add(clientPanel, BorderLayout.WEST);
@@ -201,7 +210,7 @@ public class SendFileGUI extends JFrame {
         // container.setBackground(APP_BACKGROUND); // This will be set by applyTheme
         container.add(topBar, BorderLayout.NORTH);
         container.add(mainContentPanel, BorderLayout.CENTER);
-        
+
         setContentPane(container); // 'container' is now the contentPane
     }
 
@@ -211,14 +220,14 @@ public class SendFileGUI extends JFrame {
         });
 
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
-        filePanel.addPropertyChangeListener("selectedFiles", ev -> updateSendState());
+        filePanel.addPropertyChangeListener("selectedFile", ev -> updateSendState()); // 監聽檔案選擇變更
         sendPanel.getSendButton().addActionListener(e -> doSend());
     }
 
     private void updateSendState() {
         boolean ok = clientPanel.getList().getSelectedValue() != null
-                  && filePanel.getSelectedFiles() != null;
-        sendPanel.getSendButton().setEnabled(ok);
+                && filePanel.getSelectedFiles() != null; // 檢查是否有選擇檔案和客戶端
+        sendPanel.getSendButton().setEnabled(ok); // 根據狀態啟用或禁用按鈕
     }
 
     private void doSend() {
@@ -229,8 +238,9 @@ public class SendFileGUI extends JFrame {
         } catch (NoSuchFieldError e) {
             LogPanel.log(e.toString());
             return;
-        } 
-        if (target == null || file == null) return;
+        }
+        if (target == null || file == null)
+            return;
 
         LogPanel.log("Sending files to " + target.getUserName() + "...");
 
@@ -239,7 +249,8 @@ public class SendFileGUI extends JFrame {
             long totalBytes;
             int lastPct = -1;
 
-            @Override public void onStart(long totalBytes) {
+            @Override
+            public void onStart(long totalBytes) {
                 this.totalBytes = totalBytes;
                 sentSoFar.set(0);
                 SwingUtilities.invokeLater(() -> {
@@ -252,6 +263,7 @@ public class SendFileGUI extends JFrame {
                 LogPanel.log("Total size: " + totalBytes + " bytes");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
+
             @Override
             public void onComplete(String name) {
                 SwingUtilities.invokeLater(() -> {
@@ -265,9 +277,10 @@ public class SendFileGUI extends JFrame {
 
             }
 
-            @Override public void onProgress(long bytesTransferred) {
+            @Override
+            public void onProgress(long bytesTransferred) {
                 long cumul = sentSoFar.addAndGet(bytesTransferred);
-                int pct = (int)(cumul * 100 / totalBytes);
+                int pct = (int) (cumul * 100 / totalBytes);
                 SwingUtilities.invokeLater(() -> recvPanel.getProgressBar().setValue(pct));
                 if (pct % 10 == 0 && pct != lastPct) {
                     lastPct = pct;
@@ -275,7 +288,8 @@ public class SendFileGUI extends JFrame {
                 }
             }
 
-            @Override public void onComplete() {
+            @Override
+            public void onComplete() {
                 SwingUtilities.invokeLater(() -> {
                     recvPanel.getLabel().setVisible(false);
                     recvPanel.getProgressBar().setVisible(false);
@@ -284,13 +298,14 @@ public class SendFileGUI extends JFrame {
                 LogPanel.log("File transfer complete.");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
-            
-            @Override public void onError(Exception e) {
+
+            @Override
+            public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     recvPanel.getLabel().setVisible(false);
                     recvPanel.getProgressBar().setVisible(false);
                     sendPanel.getSendButton().setEnabled(true);
-                    
+
                 });
                 LogPanel.log("Error: " + e);
                 StringWriter sw = new StringWriter();
@@ -302,12 +317,11 @@ public class SendFileGUI extends JFrame {
         new Thread(() -> {
             try {
                 FileSender sender = new FileSender(
-                    target.getIPAddr(),
-                    target.getTCPPort()
-                );
+                        target.getIPAddr(),
+                        target.getTCPPort());
                 sender.sendFiles(file,
-                                 Main.getClient().getUserName(),
-                                 callback);
+                        Main.getClient().getUserName(),
+                        callback);
             } catch (Exception ex) {
                 callback.onError(ex);
             }
@@ -319,15 +333,15 @@ public class SendFileGUI extends JFrame {
         if (logPanel != null) {
             LogPanel.log(msg);
         } else {
-            System.out.println(msg); 
+            System.out.println(msg);
         }
     }
 
     public static String formatFileSize(long size) {
-        String[] units = {"B","KB","MB","GB"};
+        String[] units = { "B", "KB", "MB", "GB" };
         double val = size;
         int idx = 0;
-        while (val > 1024 && idx < units.length-1) {
+        while (val > 1024 && idx < units.length - 1) {
             val /= 1024;
             idx++;
         }
