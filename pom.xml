@@ -72,6 +72,27 @@
                     <target>17</target>
                 </configuration>
             </plugin>
+              <!-- 終極武器：shade plugin，會打出 fat jar -->
+            <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>3.4.1</version>
+            <executions>
+                <execution>
+                <phase>package</phase>
+                <goals>
+                    <goal>shade</goal>
+                </goals>
+                <configuration>
+                    <transformers>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                        <mainClass>AirShit.Main</mainClass> <!-- 改成你要跑的主類別 -->
+                    </transformer>
+                    </transformers>
+                </configuration>
+                </execution>
+            </executions>
+            </plugin>
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
