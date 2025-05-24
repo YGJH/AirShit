@@ -267,7 +267,7 @@ public class FileSender {
                 } else { // 未知的決定
                     throw new IOException("FileSender: 收到來自接收端的未知決定: " + receiverDecision);
                 }
-
+                System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);
                 // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
                     if (callback != null)

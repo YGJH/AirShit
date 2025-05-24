@@ -212,7 +212,11 @@ public class Receiver {
             } catch (IOException e) {
                 LogPanel.log("ReceiverWorker error: " + e.getMessage());
                 if (callback != null) {
-                    callback.onError(e);
+                    try {
+                        callback.onError(e);
+                    } catch (Exception cbEx) {
+                        LogPanel.log("Exception in ReceiverWorker\'s onError callback: " + cbEx.getMessage());
+                    }
                 }
             } finally {
                 // 確保關閉 socket
