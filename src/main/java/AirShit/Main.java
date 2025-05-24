@@ -27,7 +27,7 @@ public class Main { // 定義 Main 類別
         clientList.clear(); // 清空客戶端哈希表
     }
 
-    public static final int DISCOVERY_PORT = 23333; // Or any other unused port
+    public static final int DISCOVERY_PORT = 50000; // Or any other unused port
 
     static {
         String userName;
@@ -156,10 +156,10 @@ public class Main { // 定義 Main 類別
             NetworkInterface nif = findCorrectNetworkInterface();
 
             if (nif != null) {
-                System.out.println("Sender: Attempting to use network interface: '" + nif.getDisplayName() + "' for sending HELLO.");
+                // System.out.println("Sender: Attempting to use network interface: '" + nif.getDisplayName() + "' for sending HELLO.");
                 try {
                     socket.setNetworkInterface(nif);
-                    System.out.println("Sender: Successfully set network interface to '" + nif.getDisplayName() + "'.");
+                    // System.out.println("Sender: Successfully set network interface to '" + nif.getDisplayName() + "'.");
                 } catch (SocketException e) {
                     System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
                     // Fall through, OS will pick.
@@ -167,7 +167,7 @@ public class Main { // 定義 Main 類別
                 // Joining the group on the sender can be important for some OSes to correctly source the packet
                 try {
                     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), nif);
-                    System.out.println("Sender: Successfully joined multicast group on interface: '" + nif.getDisplayName() + "'.");
+                    // System.out.println("Sender: Successfully joined multicast group on interface: '" + nif.getDisplayName() + "'.");
                 } catch (IOException e) {
                     System.err.println("Sender: WARN - Failed to join multicast group on specific interface '" +
                                        nif.getDisplayName() + "': " + e.getMessage() + ". Sending might still work.");
@@ -183,7 +183,7 @@ public class Main { // 定義 Main 類別
                 }
             }
             
-            System.out.println("Sender: Sending HELLO message: " + client.getHelloMessage() + " to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
+            // System.out.println("Sender: Sending HELLO message: " + client.getHelloMessage() + " to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
