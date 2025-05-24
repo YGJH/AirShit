@@ -151,13 +151,17 @@ allow your ipv6 network interface
 
 
 ### packing
+```windows
+mvn clean package
 jpackage --type exe `
->>             --dest "dist" `
->>             --input "target"`
->>             --name "AirShit" `
->>             --main-jar AirShit-1.0-SNAPSHOT.jar `
->>             --java-options "-Dfile.encoding=UTF-8" `
->>             --app-version 1.0.0 `
->>             --vendor "AirShit Project" `
->>             --win-menu `
->>             --win-shortcut `
+             --dest "dist" `
+             --input "target"`
+             --name "AirShit" `
+             --main-jar AirShit-1.0-SNAPSHOT.jar `
+             --java-options "-Dfile.encoding=UTF-8" `
+             --app-version 1.0.0 `
+             --vendor "AirShit Project" `
+             --win-menu `
+             --win-shortcut `
+             --icon ".\src\main\resources\asset\kitty.png"
+```
