@@ -267,7 +267,7 @@ public class FileSender {
                 } else { // 未知的決定
                     throw new IOException("FileSender: 收到來自接收端的未知決定: " + receiverDecision);
                 }
-                System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);
+
                 // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
                     if (callback != null)
@@ -295,6 +295,7 @@ public class FileSender {
 
                         // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
                         // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
+                        final File currentFileForThread = fileToActuallySend; // Lambda 表達式中使用的變數需為 final 或 effectively
                                                                               // final
                         final String finalDisplayName = displayName; // 用於日誌
                         Thread senderOperationThread = new Thread(() -> {
