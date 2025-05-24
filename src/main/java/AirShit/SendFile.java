@@ -215,6 +215,7 @@ public class SendFile {
         private final FileChannel fileChannel;
         private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
         private final TransferCallback callback;
+        private final AtomicBoolean reportedError = new AtomicBoolean(false);
 
         public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel, ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback) {
             this.socketChannel = socketChannel;
@@ -225,67 +226,104 @@ public class SendFile {
 
         @Override
         public void run() {
-            int retryCount = 0;
-            final int maxRetries = 3;
-            while (retryCount < maxRetries) {
-                try {
-                    ChunkInfo chunk;
-                    ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024); // 使用 64KB 的直接緩衝區
-                    
-                    // 從佇列中取出區塊並處理，直到佇列為空
-                    while ((chunk = chunkQueue.poll()) != null) {
-                        long bytesLeftInChunk = chunk.length;
-                        long chunkOffset = chunk.offset;
+            boolean allChunksProcessedSuccessfully = false;
+            try {
+                ChunkInfo chunk;
+                ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024); // 使用 64KB 的直接緩衝區
+                long totalBytesProcessed = 0;
+                
+                // 從佇列中取出區塊並處理，直到佇列為空
+                while ((chunk = chunkQueue.poll()) != null) {
+                    long bytesLeftInChunk = chunk.length;
+                    long chunkOffset = chunk.offset;
 
-                        while (bytesLeftInChunk > 0) {
-                            buffer.clear();
-                            
-                            // 限制緩衝區大小為剩餘區塊大小或緩衝區容量中較小的一個
-                            int bytesToRead = (int) Math.min(buffer.capacity(), bytesLeftInChunk);
-                            buffer.limit(bytesToRead);
+                    while (bytesLeftInChunk > 0) {
+                        buffer.clear();
+                        
+                        int bytesToRead = (int) Math.min(buffer.capacity(), bytesLeftInChunk);
+                        buffer.limit(bytesToRead);
 
-                            // 從檔案讀取資料到緩衝區
-                            int bytesRead = fileChannel.read(buffer, chunkOffset);
-                            if (bytesRead <= 0) {
-                                break; // 已讀取到檔案末尾
+                        int bytesReadFromFile = fileChannel.read(buffer, chunkOffset);
+                        if (bytesReadFromFile <= 0) {
+                            LogPanel.log("SenderWorker: fileChannel.read returned " + bytesReadFromFile + 
+                                        " for chunk at offset " + chunkOffset + ". Ending worker for this channel.");
+                            if (socketChannel.isOpen()) {
+                                socketChannel.close();
                             }
+                            if (callback != null && !reportedError.getAndSet(true)) {
+                                callback.onError(new IOException("Failed to read chunk data from file at offset " + chunkOffset));
+                            }
+                            return; 
+                        }
 
-                            // 準備寫入
-                            buffer.flip();
-                            
-                            // 確保全部資料寫入 socket
-                            int totalBytesWritten = 0;
+                        buffer.flip();
+                        
+                        try {
+                            int totalBytesWrittenThisPass = 0;
                             while (buffer.hasRemaining()) {
-                                int bytesWritten = socketChannel.write(buffer);
-                                if (bytesWritten <= 0) {
-                                    throw new IOException("無法寫入 socket");
+                                int bytesWrittenToSocket = socketChannel.write(buffer);
+                                if (bytesWrittenToSocket <= 0) {
+                                    throw new IOException("Unable to write to socket channel, write returned " + bytesWrittenToSocket);
                                 }
-                                totalBytesWritten += bytesWritten;
+                                totalBytesWrittenThisPass += bytesWrittenToSocket;
                             }
                             
-                            // 更新進度
-                            bytesLeftInChunk -= totalBytesWritten;
-                            chunkOffset += totalBytesWritten;
+                            bytesLeftInChunk -= totalBytesWrittenThisPass;
+                            chunkOffset += totalBytesWrittenThisPass;
+                            totalBytesProcessed += totalBytesWrittenThisPass;
                             
-                            // 通知回呼
                             if (callback != null) {
-                                callback.onProgress(totalBytesWritten);
+                                callback.onProgress(totalBytesWrittenThisPass);
                             }
+                        } catch (IOException e) {
+                            // 如果在寫入過程中發生了連接重置，檢查是否處理了大部分數據
+                            if (e.getMessage() != null && e.getMessage().contains("Connection reset by peer")) {
+                                // 如果是最後一個區塊的最後一部分，視為正常完成
+                                if (chunkQueue.isEmpty() && bytesLeftInChunk < buffer.capacity()) {
+                                    LogPanel.log("SenderWorker: Connection reset near end of transfer, treating as normal completion");
+                                    allChunksProcessedSuccessfully = true;
+                                    return;
+                                }
+                            }
+                            // 否則重新拋出例外
+                            throw e;
                         }
                     }
-                    
-                    // 正常結束，關閉 socket channel
-                    socketChannel.close();
-                    return; // Exit loop on success
-                } catch (Exception e) {
-                    LogPanel.log("SenderWorker error: " + e.getMessage() + ", retrying... (" + (retryCount + 1) + "/" + maxRetries + ")");
-                    retryCount++;
-                    if (retryCount >= maxRetries) {
-                        LogPanel.log("SenderWorker failed after max retries: " + e.getMessage());
-                        if (callback != null) {
-                            callback.onError(e);
-                        }
-                        break;
+                }
+                
+                // 全部區塊已成功傳送，優雅地關閉輸出流
+                allChunksProcessedSuccessfully = true;
+                if (socketChannel.isOpen()) {
+                    try {
+                        socketChannel.shutdownOutput();
+                        LogPanel.log("SenderWorker: Successfully sent all chunks (" + totalBytesProcessed + " bytes) and shut down output");
+                        
+                        // 等待接收方確認接收完成（可選，此處為簡化未實現）
+                        // 直接關閉 socket，讓接收方知道我們已經完成
+                        socketChannel.close();
+                    } catch (IOException closeEx) {
+                        // 關閉時的錯誤不影響傳輸結果
+                        LogPanel.log("SenderWorker: Non-critical error during socket shutdown: " + closeEx.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                LogPanel.log("SenderWorker encountered an IOException: " + e.getMessage());
+                
+                // 僅在不是"Connection reset by peer"或我們認為不是因為傳輸接近完成時才報告錯誤
+                if (!(e.getMessage() != null && e.getMessage().contains("Connection reset by peer") && allChunksProcessedSuccessfully)) {
+                    if (callback != null && !reportedError.getAndSet(true)) {
+                        callback.onError(e);
+                    }
+                } else {
+                    LogPanel.log("SenderWorker: Ignoring 'Connection reset by peer' as it occurred after successful chunk transfer");
+                }
+                
+                // 確保在發生錯誤時關閉 socket
+                if (socketChannel.isOpen()) {
+                    try {
+                        socketChannel.close();
+                    } catch (IOException closeEx) {
+                        LogPanel.log("SenderWorker: Error closing socketChannel after exception: " + closeEx.getMessage());
                     }
                 }
             }

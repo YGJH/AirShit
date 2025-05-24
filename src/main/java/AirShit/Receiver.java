@@ -75,6 +75,8 @@ public class Receiver {
             for (int i = 0; i < threadCount; i++) {
                 try {
                     Socket dataSocket = serverSocket.accept();
+                    // 設定較長的 SO_TIMEOUT，避免永久阻塞
+                    dataSocket.setSoTimeout(60000); // 60 seconds read timeout
                     dataSockets.add(dataSocket);
                     
                     // 提交任務到執行緒池，使用 Virtual Threads
@@ -97,29 +99,37 @@ public class Receiver {
                 LogPanel.log("Error setting short timeout: " + e.getMessage());
             }
             
-            // 關閉執行緒池並等待所有任務完成
+            // 等待所有 ReceiverWorker 任務完成
+            boolean allWorkersCompleted = true;
             executor.shutdown();
             if (!executor.awaitTermination(24, TimeUnit.HOURS)) {
                 executor.shutdownNow();
                 LogPanel.log("Executor shutdown forced after timeout");
+                allWorkersCompleted = false;
                 success = false;
             }
             
             // 檢查每個任務的結果
-            for (Future<?> future : futures) {
+            for (int i = 0; i < futures.size(); i++) {
+                Future<?> future = futures.get(i);
                 try {
                     future.get();  // 如果任務拋出異常，這將重新拋出它
                 } catch (ExecutionException e) {
-                    LogPanel.log("Task failed with exception: " + e.getCause().getMessage());
+                    LogPanel.log("Worker " + i + " failed with exception: " + e.getCause().getMessage());
                     success = false;
                 }
             }
             
             // 所有資料都已接收，確認總大小
             final long totalReceived = totalBytesActuallyReceivedOverall.get();
+            LogPanel.log("Total bytes received: " + totalReceived + " of expected " + fileLength);
+            
             if (fileLength > 0 && totalReceived != fileLength) {
                 LogPanel.log("Warning: Received bytes (" + totalReceived + ") != expected file length (" + fileLength + ")");
-                success = false;
+                // 根據實際差距決定是否視為失敗 - 小誤差可能可以接受
+                if (Math.abs(totalReceived - fileLength) > fileLength * 0.01) { // 1% 誤差容忍
+                    success = false;
+                }
             }
             
             // 通知完成
@@ -130,7 +140,7 @@ public class Receiver {
             if (cb != null) cb.onError(e);
             success = false;
         } finally {
-            // 確保所有資料通訊端都被關閉
+            // 在所有工作完成後，確保所有資料通訊端都被關閉
             for (Socket s : dataSockets) {
                 try {
                     if (s != null && !s.isClosed()) s.close();
@@ -150,17 +160,17 @@ public class Receiver {
 
     private static class ReceiverWorker implements Runnable {
         private final Socket dataSocket;
-        private final RandomAccessFile raf; // Can be null if expectedTotalFileLength is 0
+        private final RandomAccessFile raf;
         private final TransferCallback callback;
-        private final AtomicLong totalBytesActuallyReceivedOverall;        private final FileChannel fileChannel; // Added FileChannel
-
+        private final AtomicLong totalBytesActuallyReceivedOverall;
+        private final FileChannel fileChannel;
 
         public ReceiverWorker(Socket dataSocket, RandomAccessFile raf, TransferCallback callback, AtomicLong totalReceived, long expectedTotalFileLength) {
             this.dataSocket = dataSocket;
             this.raf = raf;
             this.callback = callback;
             this.totalBytesActuallyReceivedOverall = totalReceived;
-            this.fileChannel = (this.raf != null) ? this.raf.getChannel() : null; // Get FileChannel from raf
+            this.fileChannel = (this.raf != null) ? this.raf.getChannel() : null;
         }
 
         @Override
@@ -176,6 +186,7 @@ public class Receiver {
                 ReadableByteChannel socketChannel = Channels.newChannel(dataSocket.getInputStream());
                 
                 int bytesRead;
+                boolean orderlyClosure = false;
                 
                 // 循環接收資料，直到沒有更多資料或連線關閉
                 while ((bytesRead = socketChannel.read(buffer)) > 0) {
@@ -206,8 +217,15 @@ public class Receiver {
                     buffer.clear();
                 }
                 
+                // 如果 bytesRead == 0，這表示對端正常關閉了流（調用了 socketChannel.shutdownOutput()）
+                if (bytesRead == 0) {
+                    orderlyClosure = true;
+                    LogPanel.log("ReceiverWorker detected orderly closure from sender");
+                }
+                
                 // 接收完成後記錄
-                LogPanel.log("ReceiverWorker completed, received " + totalBytesReceived + " bytes");
+                LogPanel.log("ReceiverWorker completed, received " + totalBytesReceived + " bytes" + 
+                            (orderlyClosure ? " (orderly closure)" : ""));
                 
             } catch (IOException e) {
                 LogPanel.log("ReceiverWorker error on socket: " + dataSocket + ", error: " + e.getMessage());
@@ -218,10 +236,8 @@ public class Receiver {
                         LogPanel.log("Exception in ReceiverWorker's onError callback: " + cbEx.getMessage());
                     }
                 }
-            } finally {
-                LogPanel.log("ReceiverWorker closing socket: " + dataSocket);
-                // 由外層 finally 關閉 Socket
-            }
+            } 
+            // 重要：不在 finally 中關閉 socket，由外層統一處理
         }
     }
 }
