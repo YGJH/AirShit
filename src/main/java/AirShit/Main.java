@@ -292,7 +292,7 @@ public class Main { // 定義 Main 類別
                                 System.out.println("Listener: Added new client from HELLO: " + tempClient.getUserName() + " @ " + tempClient.getIPAddr());
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
-                                responseNewClient(packet.getAddress(), packet.getPort());
+                                responseNewClient(packet.getAddress(), DISCOVERY_PORT);
                             } else {
                                 // Client already known, maybe update timestamp or ignore
                                 System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
