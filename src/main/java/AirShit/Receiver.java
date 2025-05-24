@@ -215,18 +215,11 @@ public class Receiver {
                     try {
                         callback.onError(e);
                     } catch (Exception cbEx) {
-                        LogPanel.log("Exception in ReceiverWorker\'s onError callback: " + cbEx.getMessage());
+                        LogPanel.log("Exception in ReceiverWorker's onError callback: " + cbEx.getMessage());
                     }
                 }
             } finally {
-                // 確保關閉 socket
-                try {
-                    if (!dataSocket.isClosed()) {
-                        dataSocket.close();
-                    }
-                } catch (IOException e) {
-                    LogPanel.log("Error closing data socket: " + e.getMessage());
-                }
+                // 由外層 finally 關閉 Socket
             }
         }
     }

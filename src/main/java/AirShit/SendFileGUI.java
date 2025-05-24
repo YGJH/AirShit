@@ -303,7 +303,8 @@ public class SendFileGUI extends JFrame {
             public void onError(Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     recvPanel.getLabel().setVisible(false);
-                    recvPanel.getProgressBar().setVisible(false);
+                    // recvPanel.getProgressBar().setVisible(false);
+                    // recvPanel.getProgressBar().setVisible(false);
                     sendPanel.getSendButton().setEnabled(true);
 
                 });

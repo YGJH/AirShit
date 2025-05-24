@@ -276,6 +276,12 @@ public class SendFile {
                 
             } catch (Exception e) {
                 LogPanel.log("SenderWorker 遇到錯誤: " + e.getMessage());
+                
+                // 如果是 "Connection reset by peer"，接收端已關閉連接，視為正常結束
+                if (e instanceof IOException && e.getMessage().contains("Connection reset by peer")) {
+                    return;
+                }
+                
                 try {
                     if (socketChannel.isOpen()) {
                         socketChannel.close();

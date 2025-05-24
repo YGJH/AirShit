@@ -464,9 +464,9 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Error: " + e.getMessage());
                     GUI.sendPanel.getSendButton().setEnabled(true);
-                    GUI.recvPanel.getProgressBar().setVisible(false);
+                    // GUI.recvPanel.getProgressBar().setVisible(false);
                     GUI.recvPanel.getProgressBar().setValue(0);
-                    GUI.recvPanel.getLabel().setVisible(false);
+                    // GUI.recvPanel.getLabel().setVisible(false);
                 });
 
             }
