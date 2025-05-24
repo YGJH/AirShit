@@ -354,7 +354,7 @@ public class Main { // 定義 Main 類別
     }
 
     private static ServerSocket lockSocket; // 用於鎖定應用程式實例
-    private static final int SINGLE_INSTANCE_LOCK_PORT = 61808; // 選擇一個不太可能被其他應用程式使用的埠號
+    private static final int SINGLE_INSTANCE_LOCK_PORT = DISCOVERY_PORT; // 選擇一個不太可能被其他應用程式使用的埠號
 
     public static void main(String[] args) { // 主方法，程式入口點
         // 1) Force JVM encoding to UTF‑8
