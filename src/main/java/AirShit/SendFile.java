@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executors; // Import Virtual Threads executor
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -125,85 +125,50 @@ public class SendFile {
         poolSize = Math.max(1, poolSize); // 確保執行緒池中至少有一個執行緒。
 
         // LogPanel.log("SendFile: Sender workers 的有效執行緒池大小: " + poolSize);
-        ExecutorService pool = Executors.newFixedThreadPool(poolSize); // 創建固定大小的執行緒池
-        // AtomicInteger workersToStart = new AtomicInteger(poolSize); // 這個變數似乎未使用
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor(); // 使用 Virtual Threads 執行緒池
 
-        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) { // 開啟檔案通道以讀取檔案內容
-            for (int i = 0; i < poolSize; i++) { // 根據執行緒池大小，嘗試建立連接並提交 SenderWorker
+        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
+            for (int i = 0; i < poolSize; i++) {
                 SocketChannel socketChannel = null;
                 try {
-                    socketChannel = SocketChannel.open(); // 開啟 SocketChannel
+                    socketChannel = SocketChannel.open();
                     socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-                    socketChannel.configureBlocking(true); // 這裡為簡化使用阻塞模式
-                    // LogPanel.log("SendFile: Worker " + i + " 嘗試連接到 " + host + ":" + port);
-                    socketChannel.connect(new InetSocketAddress(host, port)); // 連接到接收端
-                    channels.add(socketChannel); // 將成功的 channel 加入列表
-                    // LogPanel.log("SendFile: Worker " + i + " 已連接到 " + host + ":" + port + " (本地: " + socketChannel.getLocalAddress() + ")");
-                    pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, workerCallback /*, workersToStart*/)); // 提交 SenderWorker 任務
+                    socketChannel.configureBlocking(true);
+                    socketChannel.connect(new InetSocketAddress(host, port));
+                    channels.add(socketChannel);
+
+                    // 提交 Virtual Thread 任務
+                    pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, workerCallback));
                 } catch (IOException e) {
-                    // LogPanel.log("SendFile: Worker " + i + " 連接或啟動失敗: " + e.getMessage());
                     if (socketChannel != null && socketChannel.isOpen()) {
-                        try { 
+                        try {
                             socketChannel.close();
-                        } catch (IOException sce) { 
+                        } catch (IOException sce) {
                             LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());
                         }
                     }
-                    // workersToStart.decrementAndGet();
                     if (workerCallback != null) workerCallback.onError(new IOException("Worker " + i + " 連接失敗: " + e.getMessage(), e));
-                    // 如果 worker 連接失敗，errorReportedByWorker 會被設定。
                 }
             }
-            // LogPanel.log("SendFile: 成功初始化的 sender workers 數量: " + channels.size() + " (預期啟動: " + poolSize + ")");
 
-            if (channels.isEmpty() && (fileLength > 0 || poolSize > 0)) { // 如果沒有任何 worker 成功連接
-                // LogPanel.log("SendFile: 沒有 sender workers 可以連接。中止操作。");
-                // workerCallback.onError 會為每個失敗的連接呼叫
-                pool.shutdownNow(); // 確保執行緒池被關閉
-                // errorReportedByWorker 應該為 true，所以下面的邏輯不會呼叫 onComplete。
-                return;
-            }
-
-            pool.shutdown(); // 關閉執行緒池，不再接受新任務，但會完成已提交的任務
-            // LogPanel.log("SendFile: 執行緒池關閉已啟動。等待終止...");
-            if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // 等待所有任務完成，設定了超長超時時間
-                // LogPanel.log("SendFile: 執行緒池終止超時。強制關閉。");
-                pool.shutdownNow(); // 強制關閉
-                // 如果超時，並且之前沒有 worker 報告錯誤，則將此超時報告為錯誤。
+            pool.shutdown();
+            if (!pool.awaitTermination(24, TimeUnit.HOURS)) {
+                pool.shutdownNow();
                 if (workerCallback != null && !errorReportedByWorker.get()) {
                     workerCallback.onError(new IOException("SendFile 任務超時。"));
                 }
-            } else {
-                // LogPanel.log("SendFile: 所有 sender worker 任務已完成執行 (執行緒池已終止)。");
-                // 檢查是否所有區塊都已處理且沒有 worker 報告錯誤
-                if (!chunkQueue.isEmpty() && !errorReportedByWorker.get()) {
-                    // LogPanel.log("警告: SendFile workers 完成，但區塊佇列不為空。大小: " + chunkQueue.size());
-                    if (workerCallback != null) {
-                         workerCallback.onError(new IOException("傳輸未完成：workers 完成後仍有剩餘區塊。"));
-                    }
-                } else if (!errorReportedByWorker.get()) { // 如果佇列為空且沒有 worker 報告錯誤
-                    // LogPanel.log("SendFile: 所有資料已發送，無 worker 報告錯誤且佇列為空。呼叫 onComplete。");
-                    // if (originalCallback != null) originalCallback.onComplete(); // 呼叫原始的 onComplete
-                } else { // 如果有錯誤或佇列不為空
-                    // LogPanel.log("SendFile: 執行緒池已終止，但一個或多個 workers 報告錯誤或仍有剩餘區塊。SendFile 不會呼叫 onComplete。");
-                }
             }
-
         } finally {
-            // 清理資源：關閉所有 SocketChannel
             for (SocketChannel sc : channels) {
                 if (sc.isOpen()) {
                     try {
                         sc.close();
                     } catch (IOException e) {
-                        // LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
+                        LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
                     }
                 }
             }
-            // LogPanel.log("SendFile: 所有 sender socket channels 已嘗試關閉。");
-            // 確保執行緒池最終被關閉
             if (!pool.isTerminated()) {
-                // LogPanel.log("SendFile: 在 final finally 區塊中強制關閉執行緒池。");
                 pool.shutdownNow();
             }
         }

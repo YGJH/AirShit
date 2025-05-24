@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executors; // Import Virtual Threads executor
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -61,7 +61,8 @@ public class Receiver {
 
         LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
 
-        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+        // 使用 Virtual Threads 執行緒池
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<?>> futures = new ArrayList<>();
         List<Socket> dataSockets = new ArrayList<>(); // Keep track of sockets to close them
 
@@ -85,6 +86,7 @@ public class Receiver {
                     // dataSock.setSoTimeout(5 * 60 * 1000); // Original 5-minute timeout
                     dataSock.setSoTimeout(30 * 60 * 1000); // Increase to 30 minutes for socket operations
 
+                    // 提交 Virtual Thread 任務
                     futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceivedOverall, fileLength)));
                 } catch (IOException e) {
                     LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
