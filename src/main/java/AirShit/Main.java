@@ -55,35 +55,35 @@ public class Main { // 定義 Main 類別
 
     public static String getNonLoopbackIP() {
         try {
-            System.out.println("getNonLoopbackIP: Searching for suitable non-loopback IP...");
+            // System.out.println("getNonLoopbackIP: Searching for suitable non-loopback IP...");
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                System.out.println("getNonLoopbackIP: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
-                                   ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
-                                   ", Virtual: " + ni.isVirtual() + ")");
+                // System.out.println("getNonLoopbackIP: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
+                //                    ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
+                //                    ", Virtual: " + ni.isVirtual() + ")");
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
+                    // System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
                     continue;
                 }
                 String name = ni.getDisplayName().toLowerCase();
                 // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vpn")
                         || name.contains("vmware")) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore.");
+                    // System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore.");
                     continue;
                 }
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
-                        System.out.println("getNonLoopbackIP: Picked IP on '" + ni.getDisplayName() + "': "
-                                + addr.getHostAddress());
+                        // System.out.println("getNonLoopbackIP: Picked IP on '" + ni.getDisplayName() + "': "
+                        //         + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
                 }
             }
-            System.err.println("getNonLoopbackIP: No suitable non-loopback IPv4 address found. Falling back.");
+            // System.err.println("getNonLoopbackIP: No suitable non-loopback IPv4 address found. Falling back.");
         } catch (Exception e) {
-            System.err.println("getNonLoopbackIP: Exception while finding IP: " + e.getMessage());
+            // System.err.println("getNonLoopbackIP: Exception while finding IP: " + e.getMessage());
             e.printStackTrace();
         }
         // fallback
@@ -92,7 +92,8 @@ public class Main { // 定義 Main 類別
 
     public static InetAddress getMulticastAddress() {
         try {
-            return InetAddress.getByName("all-routers.mcast.net"); // Valid multicast address
+            // return InetAddress.getByName("all-routers.mcast.net"); // Valid multicast address
+            return InetAddress.getByName("224.0.0.33"); // Valid multicast address
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
@@ -108,11 +109,11 @@ public class Main { // 定義 Main 類別
                 //                    ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
 
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
+                    // System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
                     continue;
                 }
                 if (!ni.supportsMulticast()) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Does not support multicast.");
+                    // System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Does not support multicast.");
                     continue;
                 }
 
@@ -161,7 +162,7 @@ public class Main { // 定義 Main 類別
                     socket.setNetworkInterface(nif);
                     // System.out.println("Sender: Successfully set network interface to '" + nif.getDisplayName() + "'.");
                 } catch (SocketException e) {
-                    System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
+                    // System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
                     // Fall through, OS will pick.
                 }
                 // Joining the group on the sender can be important for some OSes to correctly source the packet
@@ -187,7 +188,7 @@ public class Main { // 定義 Main 類別
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
-            System.out.println("Sender: HELLO message sent.");
+            // System.out.println("Sender: HELLO message sent.");
 
             // socket.close() will handle leaving the group.
         } catch (Exception e) {
@@ -212,11 +213,11 @@ public class Main { // 定義 Main 類別
                 NetworkInterface iface = findCorrectNetworkInterface();
                 boolean joinedGroup = false;
                 if (iface != null) {
-                    System.out.println("Listener: Attempting to join multicast group on interface: '" + iface.getDisplayName() + "'.");
+                    // System.out.println("Listener: Attempting to join multicast group on interface: '" + iface.getDisplayName() + "'.");
                     try {
                         socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
-                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
-                                           " on interface '" + iface.getDisplayName() + "'.");
+                        // System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
+                        //                    " on interface '" + iface.getDisplayName() + "'.");
                         joinedGroup = true;
                     } catch (IOException e) {
                         System.err.println("Listener: FAILED to join multicast group on specific interface '" +
@@ -230,8 +231,8 @@ public class Main { // 定義 Main 類別
                 if (!joinedGroup) { // If specific interface wasn't found or failed to join on it
                     try {
                         socket.joinGroup(group); // Join on all interfaces that support multicast for the given address family
-                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
-                                           " on default interfaces (either as primary choice or fallback).");
+                        // System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
+                        //                    " on default interfaces (either as primary choice or fallback).");
                         joinedGroup = true;
                     } catch (IOException e) {
                         System.err.println("Listener: FAILED to join multicast group on default interfaces: " + e.getMessage());

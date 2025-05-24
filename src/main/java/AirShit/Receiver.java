@@ -30,190 +30,129 @@ public class Receiver {
                          long fileLength, // Expected total file length from handshake
                          int threadCount,  // Negotiated thread count
                          TransferCallback cb) throws InterruptedException {
-
+        LogPanel.log("Receiver starting with " + threadCount + " threads (Virtual Threads) for " + outputFile + " (" + fileLength + " bytes)");
+        
+        // 建立輸出檔案
         File out = new File(outputFile);
-        if (out.getParentFile() != null && !out.getParentFile().exists()) {
-            if (!out.getParentFile().mkdirs()) {
-                LogPanel.log("Receiver: Failed to create parent directories for " + outputFile);
-                if (cb != null) cb.onError(new IOException("Failed to create parent directories for " + outputFile));
-                return false;
-            }
-        }
         if (out.exists()) {
+            LogPanel.log("File exists, deleting before receive: " + out.getAbsolutePath());
             if (!out.delete()) {
-                LogPanel.log("Receiver: Failed to delete existing file " + outputFile);
-                 if (cb != null) cb.onError(new IOException("Failed to delete existing file " + outputFile));
-                return false;
+                LogPanel.log("Failed to delete existing file, will try to overwrite");
             }
         }
         
-        // Handle zero-byte file creation explicitly
-        if (fileLength == 0) {
-            LogPanel.log("Receiver: Expecting a zero-byte file: " + outputFile);
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                // Empty file created, no further action needed from workers for data.
-            } catch (IOException e) {
-                LogPanel.log("Receiver: Failed to create zero-byte file " + outputFile + ": " + e.getMessage());
-                if (cb != null) cb.onError(e);
-                return false;
-            }
+        final List<Socket> dataSockets = new ArrayList<>(threadCount);
+        final AtomicLong totalBytesActuallyReceivedOverall = new AtomicLong(0);
+        boolean success = true;  // Track success for return value
+        
+        // 設定 timeout 以防止無限等待
+        try {
+            serverSocket.setSoTimeout(30000);  // 30 seconds timeout
+        } catch (IOException e) {
+            LogPanel.log("Unable to set timeout on server socket: " + e.getMessage());
+            return false;
         }
-
-        LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
-
+        
         // 使用 Virtual Threads 執行緒池
-        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-        List<Future<?>> futures = new ArrayList<>();
-        List<Socket> dataSockets = new ArrayList<>(); // Keep track of sockets to close them
-
-        AtomicLong totalBytesActuallyReceivedOverall = new AtomicLong(0);
-
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<?>> futures = new ArrayList<>(threadCount);
+        
         try (RandomAccessFile raf = (fileLength > 0) ? new RandomAccessFile(out, "rw") : null) {
-            // For zero-byte files, raf is null, workers will handle the (0,0) chunk and return.
-            // For non-zero files, RandomAccessFile is used.
-            // Optional: Pre-allocate space. Can be slow. Not doing it by default.
-            // if (raf != null && fileLength > 0) {
-            //    raf.setLength(fileLength); // This can be problematic if transfer fails midway
-            // }
-
-            for (int i = 0; i < threadCount; i++) {
-                Socket dataSock = null;
+            // 如果有指定檔案大小，先預設檔案大小以便隨機寫入
+            if (raf != null && fileLength > 0) {
                 try {
-                    // LogPanel.log("Receiver: Worker " + i + " waiting to accept connection on " + serverSocket.getLocalSocketAddress() + "...");
-                    dataSock = serverSocket.accept(); // Accept a connection for this worker
-                    dataSockets.add(dataSock); // Add to list for later cleanup
-                    // LogPanel.log("Receiver: Worker " + i + " accepted connection from " + dataSock.getRemoteSocketAddress());
-                    // dataSock.setSoTimeout(5 * 60 * 1000); // Original 5-minute timeout
-                    dataSock.setSoTimeout(30 * 60 * 1000); // Increase to 30 minutes for socket operations
-
-                    // 提交 Virtual Thread 任務
-                    futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceivedOverall, fileLength)));
+                    raf.setLength(fileLength);
+                    LogPanel.log("Pre-allocated file size: " + fileLength + " bytes");
                 } catch (IOException e) {
-                    LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
-                    if (dataSock != null && !dataSock.isClosed()) {
-                        try { dataSock.close(); } catch (IOException ex) { LogPanel.log("Error closing dataSock on accept error: " + ex.getMessage()); }
-                    }
-                    // if (cb != null) cb.onError(e);
-                    // If a worker fails to even accept a connection, the transfer is likely doomed.
-                    // Consider a strategy to signal all other workers to stop or fail the transfer immediately.
-                    // For now, we let other workers proceed, but the transfer will likely fail overall.
+                    LogPanel.log("Failed to set file length: " + e.getMessage());
                 }
             }
-            // LogPanel.log("Receiver: All connection accept loops finished. Number of futures submitted: " + futures.size());
-
-            if (futures.isEmpty() && threadCount > 0) {
-                // LogPanel.log("Receiver: No worker tasks were submitted, though threads were expected. Aborting.");
-                if (cb != null) cb.onError(new IOException("No receiver worker tasks started."));
-                pool.shutdownNow();
-                return false;
+            
+            // 如果提供了回呼，通知開始
+            if (cb != null) cb.onStart(fileLength);
+            
+            // 接受所有的資料連接
+            for (int i = 0; i < threadCount; i++) {
+                try {
+                    Socket dataSocket = serverSocket.accept();
+                    dataSockets.add(dataSocket);
+                    
+                    // 提交任務到執行緒池，使用 Virtual Threads
+                    futures.add(executor.submit(new ReceiverWorker(dataSocket, raf, cb, totalBytesActuallyReceivedOverall, fileLength)));
+                } catch (SocketTimeoutException e) {
+                    LogPanel.log("Socket accept timed out after: " + i + " connections");
+                    success = false;
+                    break;
+                } catch (IOException e) {
+                    LogPanel.log("Error accepting connection: " + e.getMessage());
+                    success = false;
+                    break;
+                }
             }
-
-
-            pool.shutdown(); // Signal that no new tasks will be submitted
-            // LogPanel.log("Receiver: Pool shutdown initiated. Waiting for termination...");
-            if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Wait for tasks to complete
-                LogPanel.log("Receiver: Pool termination timeout. Forcing shutdown.");
-                pool.shutdownNow(); // Forcefully stop tasks
-                if (cb != null) cb.onError(new IOException("Receiver tasks timed out."));
-                return false; // Transfer failed due to timeout
+            
+            // 關閉新連接的接受
+            try {
+                serverSocket.setSoTimeout(1);  // 幾乎馬上超時
+            } catch (IOException e) {
+                LogPanel.log("Error setting short timeout: " + e.getMessage());
             }
-            LogPanel.log("Receiver: Pool terminated.");
-
-            boolean allTasksOk = true;
+            
+            // 關閉執行緒池並等待所有任務完成
+            executor.shutdown();
+            if (!executor.awaitTermination(24, TimeUnit.HOURS)) {
+                executor.shutdownNow();
+                LogPanel.log("Executor shutdown forced after timeout");
+                success = false;
+            }
+            
+            // 檢查每個任務的結果
             for (Future<?> future : futures) {
                 try {
-                    future.get(); // Check for exceptions from worker tasks
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); // Preserve interrupt status
-                    LogPanel.log("Receiver main thread interrupted while waiting for a worker: " + e.getMessage());
-                    allTasksOk = false;
-                    if (cb != null) cb.onError(e);
+                    future.get();  // 如果任務拋出異常，這將重新拋出它
                 } catch (ExecutionException e) {
-                    Throwable cause = e.getCause();
-                    LogPanel.log("A receiver task failed with ExecutionException. Cause: " + (cause != null ? cause.getClass().getSimpleName() + " - " + cause.getMessage() : "Unknown cause"));
-                    // cause.printStackTrace(); // For detailed debugging
-                    allTasksOk = false;
-                    // The worker's onError should have been called already if 'cause' is an Exception
-                    // If cb.onError wasn't called by worker, call it here.
-                    if (cb != null) {
-                        if (cause instanceof Exception) {
-                            // cb.onError((Exception) cause); // Worker should have called this.
-                        } else {
-                            // cb.onError(new Exception("Receiver worker failed with non-Exception cause", cause));
-                        }
-                    }
+                    LogPanel.log("Task failed with exception: " + e.getCause().getMessage());
+                    success = false;
                 }
             }
-
-            if (allTasksOk) {
-                // For zero-byte files, out.length() should be 0.
-                // totalBytesActuallyReceivedOverall should also be 0.
-                if (fileLength == 0) {
-                    if (out.exists() && out.length() == 0 && totalBytesActuallyReceivedOverall.get() == 0) {
-                        // LogPanel.log("Zero-byte file received successfully: " + outputFile);
-                        // if (cb != null) cb.onComplete(out.getName());
-                        return true;
-                    } else {
-                        LogPanel.log("Zero-byte file discrepancy. Expected size: 0, Actual disk size: " + (out.exists() ? out.length() : "N/A") + ", Reported by workers: " + totalBytesActuallyReceivedOverall.get());
-                        if (cb != null) cb.onError(new IOException("Zero-byte file reception failed validation."));
-                        return false;
-                    }
-                }
-
-                // For non-zero byte files
-                long finalFileSizeOnDisk = out.length();
-                LogPanel.log("Receiver: All tasks completed. Expected size: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ", Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
-                if (finalFileSizeOnDisk == fileLength) {
-                    // Additional check: ensure total bytes processed by workers also matches
-                    if (totalBytesActuallyReceivedOverall.get() == fileLength) {
-                        LogPanel.log("File received successfully: " + outputFile + ", Final Size: " + finalFileSizeOnDisk);
-                        // if (cb != null) cb.onComplete();
-                        return true;
-                    } else {
-                        LogPanel.log("File size on disk matches expected, but total bytes processed by workers (" + totalBytesActuallyReceivedOverall.get() + ") does not match fileLength (" + fileLength + ").");
-                        if (cb != null) cb.onError(new IOException("Internal inconsistency: Worker byte count mismatch. Expected " + fileLength + ", workers processed " + totalBytesActuallyReceivedOverall.get()));
-                        return false;
-                    }
-                } else {
-                    LogPanel.log("File size mismatch. Expected: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ". Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
-                    if (cb != null) cb.onError(new IOException("File size mismatch after transfer. Expected " + fileLength + ", got " + finalFileSizeOnDisk));
-                    return false;
-                }
-            } else {
-                LogPanel.log("One or more receiver tasks failed. File transfer incomplete or corrupted.");
-                // cb.onError should have been called by the failing task or by the ExecutionException handler.
-                return false;
+            
+            // 所有資料都已接收，確認總大小
+            final long totalReceived = totalBytesActuallyReceivedOverall.get();
+            if (fileLength > 0 && totalReceived != fileLength) {
+                LogPanel.log("Warning: Received bytes (" + totalReceived + ") != expected file length (" + fileLength + ")");
+                success = false;
             }
-
-        } catch (IOException e) { // Catches IOException from new RandomAccessFile
-            LogPanel.log("Receiver: IOException during RandomAccessFile setup or outer scope: " + e.getMessage());
+            
+            // 通知完成
+            if (success && cb != null) cb.onComplete();
+            
+        } catch (IOException e) {
+            LogPanel.log("Error during receive: " + e.getMessage());
             if (cb != null) cb.onError(e);
-            return false;
+            success = false;
         } finally {
-            for (Socket s : dataSockets) { // Close all sockets that were accepted
-                if (s != null && !s.isClosed()) {
-                    try {
-                        s.close();
-                    } catch (IOException e) {
-                        LogPanel.log("Receiver: Error closing a data socket in finally: " + e.getMessage());
-                    }
+            // 確保所有資料通訊端都被關閉
+            for (Socket s : dataSockets) {
+                try {
+                    if (s != null && !s.isClosed()) s.close();
+                } catch (IOException e) {
+                    LogPanel.log("Error closing data socket: " + e.getMessage());
                 }
             }
-            LogPanel.log("Receiver: All accepted data sockets attempted to close.");
-            if (!pool.isTerminated()) { // Ensure pool is fully stopped
-                LogPanel.log("Receiver: Forcing pool shutdown in final finally block.");
-                pool.shutdownNow();
+            
+            // 確保執行緒池已關閉
+            if (!executor.isShutdown()) {
+                executor.shutdownNow();
             }
         }
+        
+        return success;
     }
 
     private static class ReceiverWorker implements Runnable {
         private final Socket dataSocket;
         private final RandomAccessFile raf; // Can be null if expectedTotalFileLength is 0
         private final TransferCallback callback;
-        private final AtomicLong totalBytesActuallyReceivedOverall;
-        private final long expectedTotalFileLength;
-        private final FileChannel fileChannel; // Added FileChannel
+        private final AtomicLong totalBytesActuallyReceivedOverall;        private final FileChannel fileChannel; // Added FileChannel
 
 
         public ReceiverWorker(Socket dataSocket, RandomAccessFile raf, TransferCallback callback, AtomicLong totalReceived, long expectedTotalFileLength) {
@@ -221,153 +160,69 @@ public class Receiver {
             this.raf = raf;
             this.callback = callback;
             this.totalBytesActuallyReceivedOverall = totalReceived;
-            this.expectedTotalFileLength = expectedTotalFileLength;
             this.fileChannel = (this.raf != null) ? this.raf.getChannel() : null; // Get FileChannel from raf
         }
 
         @Override
         public void run() {
-            String workerName = Thread.currentThread().getName();
-            LogPanel.log("ReceiverWorker ("+ workerName +"): Started.");
-            try (InputStream socketInputStream = dataSocket.getInputStream();
-                 ReadableByteChannel rbc = Channels.newChannel(socketInputStream)) {
-
-                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Long.BYTES); // offset + length
-                byte[] dataArray = new byte[64 * 1024]; // Buffer for reading data from socket
-                ByteBuffer dataWriteBuffer = ByteBuffer.wrap(dataArray); // ByteBuffer for writing to FileChannel
-
-                while (true) { // Loop to read multiple chunks if sender sends them on this connection
-                    LogPanel.log("ReceiverWorker ("+ workerName +"): Top of chunk read loop. Waiting for header.");
-                    headerBuffer.clear();
-                    int headerBytesReadCount = 0;
-                    try {
-                        while (headerBuffer.hasRemaining()) {
-                            int bytesReadThisCall = rbc.read(headerBuffer);
-                            if (bytesReadThisCall == -1) { // EOF
-                                if (headerBytesReadCount == 0) { // Clean EOF before any header byte for this chunk
-                                    LogPanel.log("ReceiverWorker ("+ workerName +"): Clean EOF detected on header read (0 bytes). Worker finishing as sender likely closed connection after sending all its chunks for this worker.");
-                                    return; // Normal termination for this worker
-                                }
-                                // EOF in the middle of a header
-                                throw new EOFException("Socket closed prematurely while reading chunk header. Expected " + headerBuffer.capacity() + " header bytes, read " + headerBytesReadCount);
-                            }
-                            headerBytesReadCount += bytesReadThisCall;
-                        }
-                    } catch (EOFException e) { // Catch EOF specifically from the header read loop
-                        if (headerBytesReadCount == 0 && !headerBuffer.hasRemaining()) { // This case should be caught by bytesReadThisCall == -1 above
-                             LogPanel.log("ReceiverWorker ("+ workerName +"): EOF on header read (no bytes read), worker finishing. Message: " + e.getMessage());
-                             return; // Normal if sender closes after sending all its data.
-                        }
-                        // If EOF occurs after some header bytes, it's an error.
-                        LogPanel.log("ReceiverWorker ("+ workerName +"): EOFException after reading " + headerBytesReadCount + " header bytes: " + e.getMessage());
-                        throw e; // Propagate as it's an incomplete header
-                    }
-
-                    headerBuffer.flip();
-                    long offset = headerBuffer.getLong();
-                    long length = headerBuffer.getLong();
-
-                    LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d. Expected total file length: %d", workerName, offset, length, expectedTotalFileLength));
-
-                    // --- Start of validation logic ---
-                    if (length < 0) {
-                        throw new IOException(String.format("ReceiverWorker (%s): Received invalid chunk: negative length %d for offset %d", workerName, length, offset));
-                    }
-
-                    if (expectedTotalFileLength == 0) { // Special case for zero-byte files
-                        if (offset == 0 && length == 0) {
-                            LogPanel.log(String.format("ReceiverWorker (%s): Received and validated (0,0) chunk for zero-byte file. Worker finishing.", workerName));
-                            // No data to read, no raf/fileChannel to use. This worker's job is done.
-                            return;
-                        } else {
-                            throw new IOException(String.format(
-                                "ReceiverWorker (%s): Invalid chunk (offset=%d, length=%d) for expected zero-byte file. Expected (0,0).",
-                                workerName, offset, length
-                            ));
+            LogPanel.log("ReceiverWorker started");
+            long totalBytesReceived = 0;
+            
+            try {
+                // 使用 NIO 來加速檔案接收與寫入
+                ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024); // 使用 64KB 的直接緩衝區
+                
+                // 從 Socket 得到輸入流，並轉換為 NIO 通道
+                ReadableByteChannel socketChannel = Channels.newChannel(dataSocket.getInputStream());
+                
+                int bytesRead;
+                
+                // 循環接收資料，直到沒有更多資料或連線關閉
+                while ((bytesRead = socketChannel.read(buffer)) > 0) {
+                    buffer.flip(); // 準備讀取緩衝區中的資料
+                    
+                    // 取得要寫入的位置（基於當前總接收大小）
+                    long writePosition = totalBytesActuallyReceivedOverall.getAndAdd(bytesRead);
+                    
+                    // 使用 FileChannel 寫入檔案，如果 fileChannel 不為 null
+                    if (fileChannel != null) {
+                        // 循環直到所有資料都寫入，應對大型緩衝區可能需要多次寫入的情況
+                        int bytesToWrite = bytesRead;
+                        while (bytesToWrite > 0) {
+                            int bytesWritten = fileChannel.write(buffer, writePosition + (bytesRead - bytesToWrite));
+                            bytesToWrite -= bytesWritten;
                         }
                     }
-
-                    // Validations for non-empty files (expectedTotalFileLength > 0)
-                    if (offset < 0) {
-                         throw new IOException(String.format(
-                            "ReceiverWorker (%s): Invalid chunk offset %d. Cannot be negative.",
-                            workerName, offset
-                        ));
+                    
+                    // 更新總接收大小
+                    totalBytesReceived += bytesRead;
+                    
+                    // 回報進度
+                    if (callback != null) {
+                        callback.onProgress(bytesRead);
                     }
-                    if (offset >= expectedTotalFileLength && length > 0) {
-                         throw new IOException(String.format(
-                            "ReceiverWorker (%s): Invalid chunk offset %d for non-empty chunk (length %d). Offset must be less than expected file length %d.",
-                            workerName, offset, length, expectedTotalFileLength
-                        ));
-                    }
-                    if (offset + length > expectedTotalFileLength) {
-                        throw new IOException(String.format(
-                            "ReceiverWorker (%s): Chunk (offset=%d, length=%d) would exceed expected file length %d. Sum is %d.",
-                            workerName, offset, length, expectedTotalFileLength, (offset + length)
-                        ));
-                    }
-                    // --- End of validation logic ---
-
-                    if (length == 0) {
-                        LogPanel.log(String.format("ReceiverWorker (%s): Received zero-length chunk (offset=%d) for non-empty file. Skipping data read for this chunk.", workerName, offset));
-                        continue; // Go to read next header
-                    }
-
-                    if (this.fileChannel == null) { // Should only be null if expectedTotalFileLength is 0
-                        throw new IOException(String.format("ReceiverWorker (%s): FileChannel is null but received chunk with data (offset=%d, length=%d) for expected file length %d.",
-                                workerName, offset, length, expectedTotalFileLength));
-                    }
-
-                    long bytesReadForThisChunk = 0;
-                    while (bytesReadForThisChunk < length) {
-                        int toRead = (int) Math.min(dataArray.length, length - bytesReadForThisChunk);
-                        int n = socketInputStream.read(dataArray, 0, toRead); // Read from socket
-                        if (n == -1) { // EOF while reading chunk data
-                            throw new EOFException(String.format(
-                                    "ReceiverWorker (%s): Socket closed prematurely while reading data for chunk. Expected %d bytes for chunk (offset %d, length %d), but received only %d before EOF.",
-                                    workerName, length, offset, bytesReadForThisChunk
-                            ));
-                        }
-                        
-                        dataWriteBuffer.clear();
-                        dataWriteBuffer.put(dataArray, 0, n);
-                        dataWriteBuffer.flip();
-                        
-                        long currentFilePosition = offset + bytesReadForThisChunk;
-                        while(dataWriteBuffer.hasRemaining()) {
-                            // Use FileChannel.write(ByteBuffer, long position)
-                            // This method is thread-safe for writing to different positions
-                            int written = fileChannel.write(dataWriteBuffer, currentFilePosition);
-                            // Note: fileChannel.write might not write all bytes in one go,
-                            // but for blocking channels, it usually does or throws an error.
-                            // The loop ensures all data from dataWriteBuffer is attempted.
-                            // However, for simplicity here, we assume it writes all or errors.
-                            // A more robust loop would be:
-                            // currentFilePosition += written;
-                            // if (written == 0 && dataWriteBuffer.hasRemaining()) { /* handle potential non-progress */ }
-                        }
-                        
-                        bytesReadForThisChunk += n;
-                        totalBytesActuallyReceivedOverall.addAndGet(n); // Update global counter
-                        if (callback != null) {
-                            callback.onProgress(n); // Report progress
-                        }
-                    }
-                    LogPanel.log(String.format("ReceiverWorker (%s): Finished receiving and writing chunk: offset=%d, length=%d. Total for this chunk: %d", workerName, offset, length, bytesReadForThisChunk));
-                } // End of while(true) loop for reading chunks
-
-            } catch (SocketTimeoutException e) {
-                LogPanel.log("Error in ReceiverWorker ("+ workerName +"): Socket timeout - " + e.getMessage());
-                if (callback != null) callback.onError(e);
-                throw new RuntimeException("Socket timeout in ReceiverWorker for " + workerName, e);
-            } catch (IOException e) { 
-                LogPanel.log("Error in ReceiverWorker ("+ workerName +"): " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    
+                    // 清空緩衝區以準備下一次讀取
+                    buffer.clear();
+                }
+                
+                // 接收完成後記錄
+                LogPanel.log("ReceiverWorker completed, received " + totalBytesReceived + " bytes");
+                
+            } catch (IOException e) {
+                LogPanel.log("ReceiverWorker error: " + e.getMessage());
                 if (callback != null) {
                     callback.onError(e);
                 }
-                throw new RuntimeException("IOException in ReceiverWorker for " + workerName, e);
             } finally {
-                LogPanel.log("ReceiverWorker ("+ workerName +") finishing run method.");
+                // 確保關閉 socket
+                try {
+                    if (!dataSocket.isClosed()) {
+                        dataSocket.close();
+                    }
+                } catch (IOException e) {
+                    LogPanel.log("Error closing data socket: " + e.getMessage());
+                }
             }
         }
     }
