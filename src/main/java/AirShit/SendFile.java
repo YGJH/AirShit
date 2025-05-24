@@ -75,6 +75,10 @@ public class SendFile {
             public void onComplete() {
                 if (originalCallback != null) originalCallback.onComplete();
             }
+            @Override
+            public void onComplete(String name) {
+                if (originalCallback != null) originalCallback.onComplete(name);
+            }
 
             @Override
             public void onError(Exception e) {

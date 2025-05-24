@@ -104,8 +104,19 @@ public class FileSender {
                 File archiveFile = new File(tempArchiveFilePath); // 創建代表壓縮檔的 File 物件
                 // 如果壓縮檔存在且有內容，也將其加入待處理列表
                 if (archiveFile.exists() && archiveFile.length() > 0) {
-                    filesToProcess.add(archiveFile);
-                    totalSizeOverall += archiveFile.length();
+                    // 確認壓縮檔未被加入過
+                    boolean alreadyAdded = false;
+                    for (File f : filesToProcess) {
+                        if (f.getAbsolutePath().equals(archiveFile.getAbsolutePath())) {
+                            alreadyAdded = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!alreadyAdded) {
+                        filesToProcess.add(archiveFile);
+                        totalSizeOverall += archiveFile.length();
+                    }
                 } else if (largeFileCount == 0) { // 如果沒有大檔案，且壓縮檔不存在或為空
                     LogPanel.log("FileSender: 目錄 '" + inputFile.getName() + "' 為空或沒有產生任何要傳送的檔案。");
                     if (archiveFile.exists())

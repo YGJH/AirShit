@@ -47,29 +47,10 @@ public class LZ4FileCompressor {
             // addFolderToTarRecursive 會返回加入到 filesArray 中的大型檔案數量 (即下一個可用的索引)
             countOfItemsInFilesArray = addFolderToTarRecursive(sourceFolder.getAbsolutePath(), sourceFolder, taros, filesArray, 0);
             
-            // 將 .tar.lz4 壓縮檔案本身也加入到 filesArray 中
-            // (即使 .tar.lz4 是空的，如果來源資料夾只包含大型檔案或本身為空，也應該將其視為一個處理結果)
-            File archiveFile = new File(outputTarLz4FilePath);
-            // 檢查 archiveFile 是否真的被創建 (例如，如果 taros 從未寫入任何 entry，檔案可能為0字節或不存在)
-            // 但即使是0字節的tar.lz4，如果LZ4FileCompressor的邏輯是創建它，就應該將其加入列表
-            if (countOfItemsInFilesArray < filesArray.length) {
-                filesArray[countOfItemsInFilesArray++] = filesArray[0] ;
-                filesArray[0] = archiveFile;
-            } else {
-                System.err.println("錯誤：filesArray 陣列空間不足以加入壓縮檔案本身 (" + outputTarLz4FilePath + ")。");
-                // 根據需求，這裡可以拋出異常或採取其他錯誤處理
-            }
-            
-            // System.out.println("資料夾成功壓縮至：" + outputTarLz4FilePath);
-            // System.out.println("files (大型檔案 + 壓縮檔): ");
-            // for (int i = 0; i < countOfItemsInFilesArray; i++) {
-            //     if (filesArray[i] != null) { // 防禦性檢查
-            //         System.out.println(filesArray[i].getName());
-            //     }
-            // }
+            // 注意：不再將 .tar.lz4 檔案本身加入到 filesArray 中
+            // FileSender 會單獨處理 .tar.lz4 檔案
 
             return countOfItemsInFilesArray; // 返回 filesArray 中實際填充的項目數量
-
         } catch (IOException e) {
             System.err.println("壓縮資料夾 " + sourceFolderPath + " 時發生錯誤：" + e.getMessage());
             e.printStackTrace();
@@ -139,7 +120,6 @@ public class LZ4FileCompressor {
         return currentIndex; // 返回更新後的索引，供上一層呼叫使用
     }
 
-// ... (deleteDirectory 和 main 方法等其他程式碼) ...
     /**
      * 輔助方法：遞迴刪除資料夾及其內容。
      */
