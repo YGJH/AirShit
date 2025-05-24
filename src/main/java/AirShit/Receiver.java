@@ -165,7 +165,7 @@ public class Receiver {
 
         @Override
         public void run() {
-            LogPanel.log("ReceiverWorker started");
+            LogPanel.log("ReceiverWorker started for socket: " + dataSocket);
             long totalBytesReceived = 0;
             
             try {
@@ -210,7 +210,7 @@ public class Receiver {
                 LogPanel.log("ReceiverWorker completed, received " + totalBytesReceived + " bytes");
                 
             } catch (IOException e) {
-                LogPanel.log("ReceiverWorker error: " + e.getMessage());
+                LogPanel.log("ReceiverWorker error on socket: " + dataSocket + ", error: " + e.getMessage());
                 if (callback != null) {
                     try {
                         callback.onError(e);
@@ -219,6 +219,7 @@ public class Receiver {
                     }
                 }
             } finally {
+                LogPanel.log("ReceiverWorker closing socket: " + dataSocket);
                 // 由外層 finally 關閉 Socket
             }
         }

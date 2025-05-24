@@ -482,7 +482,7 @@ public class Main { // 定義 Main 類別
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(5000); // 每 50 millisecond 秒檢查一次
+                    Thread.sleep(5000 + random.nextInt(5000)); // 每 5 到 10 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
                     e.printStackTrace(); // 列印例外資訊
