@@ -14,10 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors; // Import Virtual Threads executor
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * SendFile 類別負責將單一檔案透過多執行緒（如果適用）傳送給接收端。
@@ -30,6 +30,12 @@ public class SendFile {
     private final TransferCallback originalCallback; // 原始的回呼介面，用於報告進度和錯誤
     private int threadCount;   // 用於傳輸的執行緒數量
     private final AtomicBoolean errorReportedByWorker = new AtomicBoolean(false); // 標記是否有任何 worker 報告錯誤
+    private final AtomicInteger successfulConnections = new AtomicInteger(0); // 追蹤成功建立的連接數
+
+    // 用於連接建立的重試參數
+    private static final int CONNECTION_RETRY_ATTEMPTS = 3;
+    private static final int CONNECTION_RETRY_DELAY_MS = 500;
+    private static final int CONNECTION_SETUP_TIMEOUT_MS = 5000;
 
     /**
      * SendFile 的建構函式。
@@ -44,9 +50,7 @@ public class SendFile {
         this.host = host;
         this.port = port;
         this.file = file;
-        // LogPanel.log("SendFile 建構函式: 收到 threadCount=" + threadCount);
         this.threadCount = Math.max(1, threadCount); // 確保至少有一個執行緒
-        // LogPanel.log("SendFile 建構函式: 設定 SendFile.this.threadCount=" + this.threadCount);
     }
 
     /**
@@ -63,74 +67,142 @@ public class SendFile {
             }
 
             @Override
-            public void onProgress(long bytes) {
-                if (originalCallback != null) originalCallback.onProgress(bytes);
+            public void onProgress(long bytesSent) {
+                if (originalCallback != null) originalCallback.onProgress(bytesSent);
             }
-            @Override
-            public void onComplete(String name) {
-                // 此方法在此包裝中不直接使用，由 SendFile 主邏輯呼叫原始回呼的 onComplete()
-            }
+
             @Override
             public void onComplete() {
-                // 此方法由 SendFile 主邏輯在所有 worker 完成且無錯誤時呼叫。
+                if (originalCallback != null) originalCallback.onComplete();
             }
 
             @Override
             public void onError(Exception e) {
-                // 如果任何 worker 呼叫 onError，我們標記它。
-                // SendFile 主邏輯將決定是否呼叫原始回呼的 onComplete。
                 errorReportedByWorker.set(true);
                 if (originalCallback != null) originalCallback.onError(e);
             }
         };
-    }    /**
+    }
+
+    /**
      * 開始檔案傳輸過程。
      * 此方法會設定執行緒池，準備檔案區塊，並啟動 SenderWorker 執行緒來傳送資料。
      * @throws IOException 如果發生 I/O 錯誤，例如無法開啟檔案或網路錯誤。
      * @throws InterruptedException 如果執行緒在等待時被中斷。
      */
     public void start() throws IOException, InterruptedException {
-        final long fileLength = file.length();
-        LogPanel.log("開始傳送檔案: " + file.getName() + ", 大小: " + fileLength + " 位元組, 使用 " + threadCount + " 個執行緒 (Virtual Threads)");
+        if (!file.exists() || !file.isFile() || !file.canRead()) {
+            throw new IOException("檔案不存在，不是一個檔案，或無法讀取: " + file.getAbsolutePath());
+        }
+
+        // 檢查檔案大小
+        long fileLength = file.length();
+        if (fileLength <= 0) {
+            throw new IOException("檔案大小為 0 或無法確定: " + file.getAbsolutePath());
+        }
+
+        // 使用者請求的執行緒數
+        // 如果檔案太小，降低執行緒數
+        int poolSize = Math.min(threadCount, (int)(fileLength / (64 * 1024)) + 1);
+        poolSize = Math.max(1, poolSize); // 至少使用 1 個執行緒
         
-        // 取得包裝後的回呼
-        final TransferCallback workerCallback = getWrappedCallback();
-        
-        // 通知開始傳輸
-        if (workerCallback != null) workerCallback.onStart(fileLength);
-        
-        // 建立區塊佇列
-        final ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
-        
-        // 填充佇列
+        LogPanel.log("開始傳送檔案: " + file.getName() + ", 大小: " + fileLength + " 位元組, 使用 " + poolSize + " 個執行緒 (Virtual Threads)");
+
+        // 準備傳送給 Worker 的回呼
+        TransferCallback workerCallback = getWrappedCallback();
+
+        // 創建區塊佇列並填充
+        ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
         populateChunkQueue(fileLength, chunkQueue);
+
+        // 追蹤所有 channels 以便在出錯時可以關閉它們
+        List<SocketChannel> channels = new ArrayList<>(poolSize);
+
+        // 使用 Virtual Threads 執行緒池
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+
+        // 發送準備就緒訊號並等待確認
+        // 這是新增的：向接收方發送一個訊號，告知將要建立的連接數量，並等待確認
+        try (SocketChannel setupChannel = SocketChannel.open()) {
+            setupChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+            setupChannel.configureBlocking(true);
+            setupChannel.connect(new InetSocketAddress(host, port));
+            
+            // 傳送設定訊息：SETUP|<threadCount>|<fileId>
+            String setupMessage = "SETUP|" + poolSize + "|" + file.getName().hashCode();
+            ByteBuffer setupBuffer = ByteBuffer.wrap(setupMessage.getBytes());
+            while (setupBuffer.hasRemaining()) {
+                setupChannel.write(setupBuffer);
+            }
+            
+            // 等待接收方確認
+            ByteBuffer responseBuffer = ByteBuffer.allocate(64);
+            setupChannel.socket().setSoTimeout(CONNECTION_SETUP_TIMEOUT_MS);
+            int bytesRead = setupChannel.read(responseBuffer);
+            if (bytesRead > 0) {
+                responseBuffer.flip();
+                byte[] responseBytes = new byte[responseBuffer.remaining()];
+                responseBuffer.get(responseBytes);
+                String response = new String(responseBytes);
+                
+                if (!"READY".equals(response.trim())) {
+                    throw new IOException("接收方回應不是 READY: " + response);
+                }
+                LogPanel.log("接收方已準備好接收 " + poolSize + " 個連接");
+            } else {
+                throw new IOException("讀取接收方確認時發生錯誤");
+            }
+        } catch (IOException e) {
+            LogPanel.log("設定連接時發生錯誤: " + e.getMessage());
+            if (workerCallback != null) workerCallback.onError(new IOException("無法建立設定連接: " + e.getMessage(), e));
+            return;
+        }
+
+        // 提供一個短暫的延遲，確保接收方已完全準備好
+        Thread.sleep(200);
         
-        // 追蹤已建立的 SocketChannels，以便在結束時關閉
-        final List<SocketChannel> channels = new ArrayList<>(threadCount);
-        
-        // 使用 Virtual Threads 執行緒池，為每個任務創建一個虛擬執行緒
-        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            // 開啟檔案通道
-            try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
-                // 建立 workers
-                for (int i = 0; i < threadCount; i++) {
-                    SocketChannel socketChannel = null;
+        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
+            // 建立並啟動所有工作執行緒
+            for (int i = 0; i < poolSize; i++) {
+                final int workerIndex = i;
+                SocketChannel socketChannel = null;
+                
+                // 嘗試建立連接，帶有重試機制
+                for (int attempt = 0; attempt < CONNECTION_RETRY_ATTEMPTS; attempt++) {
                     try {
-                        // 建立連接
                         socketChannel = SocketChannel.open();
                         socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                         socketChannel.configureBlocking(true);
                         socketChannel.connect(new InetSocketAddress(host, port));
-                        channels.add(socketChannel);
-
-                        // 提交任務到執行緒池
-                        final SocketChannel finalSocketChannel = socketChannel;
-                        pool.submit(() -> {
-                            new SenderWorker(finalSocketChannel, fileChannel, chunkQueue, workerCallback).run();
-                            return null;
-                        });
+                        
+                        // 傳送工作執行緒識別訊息：WORKER|<index>|<fileId>
+                        String workerIdMessage = "WORKER|" + workerIndex + "|" + file.getName().hashCode();
+                        ByteBuffer idBuffer = ByteBuffer.wrap(workerIdMessage.getBytes());
+                        while (idBuffer.hasRemaining()) {
+                            socketChannel.write(idBuffer);
+                        }
+                        
+                        // 等待確認
+                        ByteBuffer ackBuffer = ByteBuffer.allocate(16);
+                        socketChannel.socket().setSoTimeout(2000);
+                        int bytesRead = socketChannel.read(ackBuffer);
+                        if (bytesRead > 0) {
+                            ackBuffer.flip();
+                            byte[] ackBytes = new byte[ackBuffer.remaining()];
+                            ackBuffer.get(ackBytes);
+                            String ack = new String(ackBytes);
+                            
+                            if ("ACK".equals(ack.trim())) {
+                                channels.add(socketChannel);
+                                successfulConnections.incrementAndGet();
+                                break; // 成功建立連接，跳出重試迴圈
+                            } else {
+                                throw new IOException("接收方回應不是 ACK: " + ack);
+                            }
+                        } else {
+                            throw new IOException("讀取接收方確認時發生錯誤");
+                        }
                     } catch (IOException e) {
-                        // 處理連接失敗的情況
                         if (socketChannel != null && socketChannel.isOpen()) {
                             try {
                                 socketChannel.close();
@@ -138,44 +210,54 @@ public class SendFile {
                                 LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());
                             }
                         }
-                        if (workerCallback != null) workerCallback.onError(new IOException("Worker " + i + " 連接失敗: " + e.getMessage(), e));
-                    }
-                }
-
-                // 等待所有任務完成
-                pool.shutdown();
-                if (!pool.awaitTermination(24, TimeUnit.HOURS)) {
-                    pool.shutdownNow();
-                    if (workerCallback != null && !errorReportedByWorker.get()) {
-                        workerCallback.onError(new IOException("SendFile 任務超時"));
-                    }
-                } else if (!errorReportedByWorker.get()) {
-                    // 所有工作都正常完成
-                    if (originalCallback != null) originalCallback.onComplete();
-                }
-            } finally {
-                // 確保所有 channel 都被關閉
-                for (SocketChannel sc : channels) {
-                    if (sc != null && sc.isOpen()) {
-                        try {
-                            sc.close();
-                        } catch (IOException e) {
-                            LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
+                        
+                        if (attempt == CONNECTION_RETRY_ATTEMPTS - 1) {
+                            // 最後一次嘗試也失敗
+                            LogPanel.log("Worker " + workerIndex + " 連接失敗 (嘗試 " + (attempt+1) + "/" + CONNECTION_RETRY_ATTEMPTS + "): " + e.getMessage());
+                            if (workerCallback != null) workerCallback.onError(new IOException("Worker " + workerIndex + " 連接失敗: " + e.getMessage(), e));
+                        } else {
+                            // 還有重試機會
+                            LogPanel.log("Worker " + workerIndex + " 連接嘗試 " + (attempt+1) + " 失敗，正在重試...");
+                            Thread.sleep(CONNECTION_RETRY_DELAY_MS);
                         }
                     }
                 }
-            }
-        } catch (Exception e) {
-            LogPanel.log("執行緒池處理時發生錯誤: " + e.getMessage());
-            workerCallback.onError(e);
-        } finally {
-            // 關閉所有通道
-            for (SocketChannel channel : channels) {
-                try {
-                    channel.close();
-                } catch (IOException e) {
-                    LogPanel.log("關閉通道時出錯: " + e.getMessage());
+                
+                // 如果成功建立連接，提交工作任務
+                if (socketChannel != null && socketChannel.isOpen()) {
+                    // 提交 Virtual Thread 任務
+                    pool.submit(new SenderWorker(socketChannel, fileChannel, chunkQueue, workerCallback, workerIndex));
                 }
+            }
+            
+            // 檢查連接建立情況
+            if (successfulConnections.get() == 0) {
+                throw new IOException("無法建立任何資料連接");
+            } else if (successfulConnections.get() < poolSize) {
+                LogPanel.log("警告：只建立了 " + successfulConnections.get() + "/" + poolSize + " 個連接");
+            }
+
+            // 等待所有任務完成
+            pool.shutdown();
+            if (!pool.awaitTermination(24, TimeUnit.HOURS)) {
+                pool.shutdownNow();
+                if (workerCallback != null && !errorReportedByWorker.get()) {
+                    workerCallback.onError(new IOException("SendFile 任務超時。"));
+                }
+            }
+        } finally {
+            // 清理資源
+            for (SocketChannel sc : channels) {
+                if (sc.isOpen()) {
+                    try {
+                        sc.close();
+                    } catch (IOException e) {
+                        LogPanel.log("SendFile: 關閉 sender socket channel 時出錯: " + e.getMessage());
+                    }
+                }
+            }
+            if (pool != null && !pool.isTerminated()) {
+                pool.shutdownNow();
             }
         }
     }
@@ -186,25 +268,52 @@ public class SendFile {
      * @param chunkQueue 區塊佇列。
      */
     private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
-        if (fileLength <= 0) {
-            return; // 檔案為空，不需處理
-        }
-
-        // 計算每個執行緒的基本區塊大小，至少 8KB
-        long basicChunkSize = Math.max(8 * 1024, fileLength / (threadCount * 2));
+        // 基本區塊大小計算：
+        // 假設檔案大小為 100MB，執行緒數為 4，則：
+        // - 我們希望每個執行緒處理多個區塊以平衡負載
+        // - 區塊不要太小（至少 1MB）以減少佇列操作開銷
+        // - 區塊不要太大（不超過 64MB）以確保內存使用合理
         
-        // 建立均勻分佈的區塊
+        // 首先，計算每個執行緒大約需要處理的數據量
+        long bytesPerThread = fileLength / threadCount;
+        
+        // 每個基本區塊的目標大小：每個執行緒處理 3-5 個區塊
+        long targetChunkSize = bytesPerThread / 4;
+        
+        // 確保區塊大小在合理範圍內
+        long baseChunkSize = Math.max(1024 * 1024, Math.min(targetChunkSize, 64 * 1024 * 1024));
+        
+        // 計算區塊數量
+        int numChunks = (int) Math.ceil((double) fileLength / baseChunkSize);
+        
+        // 記錄日誌
+        LogPanel.log("已將檔案分割成 " + numChunks + " 個區塊，每個基本區塊大小約為 " + baseChunkSize + " 位元組");
+        
+        // 將檔案分割成區塊並加入佇列
         long remainingBytes = fileLength;
         long currentOffset = 0;
-
-        while (remainingBytes > 0) {
-            long chunkSize = Math.min(basicChunkSize, remainingBytes);
-            chunkQueue.add(new ChunkInfo(currentOffset, chunkSize));
-            currentOffset += chunkSize;
-            remainingBytes -= chunkSize;
-        }
         
-        LogPanel.log("已將檔案分割成 " + chunkQueue.size() + " 個區塊，每個基本區塊大小約為 " + basicChunkSize + " 位元組");
+        while (remainingBytes > 0) {
+            // 最後一個區塊可能小於 baseChunkSize
+            long currentChunkSize = Math.min(baseChunkSize, remainingBytes);
+            chunkQueue.add(new ChunkInfo(currentOffset, currentChunkSize));
+            
+            currentOffset += currentChunkSize;
+            remainingBytes -= currentChunkSize;
+        }
+    }
+
+    /**
+     * ChunkInfo 類別表示檔案中的一個區塊，包含其在檔案中的偏移和長度。
+     */
+    private static class ChunkInfo {
+        public final long offset;
+        public final long length;
+
+        public ChunkInfo(long offset, long length) {
+            this.offset = offset;
+            this.length = length;
+        }
     }
 
     /**
@@ -215,22 +324,24 @@ public class SendFile {
         private final FileChannel fileChannel;
         private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
         private final TransferCallback callback;
-        private final AtomicBoolean reportedError = new AtomicBoolean(false);
+        private final int workerIndex;
+        private final AtomicBoolean hasReportedError = new AtomicBoolean(false);
 
-        public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel, ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback) {
+        public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel, 
+                           ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback, int workerIndex) {
             this.socketChannel = socketChannel;
             this.fileChannel = fileChannel;
             this.chunkQueue = chunkQueue;
             this.callback = callback;
+            this.workerIndex = workerIndex;
         }
 
         @Override
         public void run() {
-            boolean allChunksProcessedSuccessfully = false;
             try {
                 ChunkInfo chunk;
                 ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024); // 使用 64KB 的直接緩衝區
-                long totalBytesProcessed = 0;
+                long totalBytesSent = 0;
                 
                 // 從佇列中取出區塊並處理，直到佇列為空
                 while ((chunk = chunkQueue.poll()) != null) {
@@ -245,15 +356,13 @@ public class SendFile {
 
                         int bytesReadFromFile = fileChannel.read(buffer, chunkOffset);
                         if (bytesReadFromFile <= 0) {
-                            LogPanel.log("SenderWorker: fileChannel.read returned " + bytesReadFromFile + 
-                                        " for chunk at offset " + chunkOffset + ". Ending worker for this channel.");
-                            if (socketChannel.isOpen()) {
-                                socketChannel.close();
+                            LogPanel.log("SenderWorker " + workerIndex + ": fileChannel.read 返回 " + bytesReadFromFile + 
+                                        " (讀取位置: " + chunkOffset + ")。終止此 worker。");
+                            
+                            if (callback != null && !hasReportedError.getAndSet(true)) {
+                                callback.onError(new IOException("Worker " + workerIndex + " 無法從檔案讀取資料 (偏移: " + chunkOffset + ")"));
                             }
-                            if (callback != null && !reportedError.getAndSet(true)) {
-                                callback.onError(new IOException("Failed to read chunk data from file at offset " + chunkOffset));
-                            }
-                            return; 
+                            return;
                         }
 
                         buffer.flip();
@@ -263,67 +372,90 @@ public class SendFile {
                             while (buffer.hasRemaining()) {
                                 int bytesWrittenToSocket = socketChannel.write(buffer);
                                 if (bytesWrittenToSocket <= 0) {
-                                    throw new IOException("Unable to write to socket channel, write returned " + bytesWrittenToSocket);
+                                    throw new IOException("無法寫入 socket channel，write 返回 " + bytesWrittenToSocket);
                                 }
                                 totalBytesWrittenThisPass += bytesWrittenToSocket;
                             }
                             
                             bytesLeftInChunk -= totalBytesWrittenThisPass;
                             chunkOffset += totalBytesWrittenThisPass;
-                            totalBytesProcessed += totalBytesWrittenThisPass;
+                            totalBytesSent += totalBytesWrittenThisPass;
                             
                             if (callback != null) {
                                 callback.onProgress(totalBytesWrittenThisPass);
                             }
                         } catch (IOException e) {
-                            // 如果在寫入過程中發生了連接重置，檢查是否處理了大部分數據
+                            // 檢查是否是 "Connection reset by peer" 錯誤
                             if (e.getMessage() != null && e.getMessage().contains("Connection reset by peer")) {
-                                // 如果是最後一個區塊的最後一部分，視為正常完成
-                                if (chunkQueue.isEmpty() && bytesLeftInChunk < buffer.capacity()) {
-                                    LogPanel.log("SenderWorker: Connection reset near end of transfer, treating as normal completion");
-                                    allChunksProcessedSuccessfully = true;
+                                // 如果佇列為空且已經傳送了大部分資料，則可能是正常完成
+                                if (chunkQueue.isEmpty() && totalBytesSent > 0) {
+                                    LogPanel.log("SenderWorker " + workerIndex + ": 連接重置，但似乎在傳輸接近完成時發生，視為正常完成");
                                     return;
+                                } else {
+                                    LogPanel.log("SenderWorker " + workerIndex + ": 連接被對方重置，可能是接收方關閉了連接");
                                 }
                             }
-                            // 否則重新拋出例外
-                            throw e;
+                            throw e; // 重新拋出，由外層處理
                         }
                     }
                 }
                 
-                // 全部區塊已成功傳送，優雅地關閉輸出流
-                allChunksProcessedSuccessfully = true;
-                if (socketChannel.isOpen()) {
-                    try {
-                        socketChannel.shutdownOutput();
-                        LogPanel.log("SenderWorker: Successfully sent all chunks (" + totalBytesProcessed + " bytes) and shut down output");
+                // 所有區塊處理完成，發送終止訊號
+                try {
+                    // 傳送 EOF 訊號
+                    ByteBuffer eofBuffer = ByteBuffer.wrap("EOF".getBytes());
+                    while (eofBuffer.hasRemaining()) {
+                        socketChannel.write(eofBuffer);
+                    }
+                    
+                    // 優雅地關閉輸出流
+                    socketChannel.shutdownOutput();
+                    LogPanel.log("SenderWorker " + workerIndex + ": 已成功傳送所有指派的區塊 (" + totalBytesSent + " 位元組) 並關閉輸出流");
+                    
+                    // 等待接收方確認
+                    ByteBuffer closeAckBuffer = ByteBuffer.allocate(16);
+                    socketChannel.socket().setSoTimeout(5000); // 5秒超時
+                    int bytesRead = socketChannel.read(closeAckBuffer);
+                    
+                    if (bytesRead > 0) {
+                        closeAckBuffer.flip();
+                        byte[] ackBytes = new byte[closeAckBuffer.remaining()];
+                        closeAckBuffer.get(ackBytes);
+                        String ack = new String(ackBytes);
                         
-                        // 等待接收方確認接收完成（可選，此處為簡化未實現）
-                        // 直接關閉 socket，讓接收方知道我們已經完成
-                        socketChannel.close();
-                    } catch (IOException closeEx) {
-                        // 關閉時的錯誤不影響傳輸結果
-                        LogPanel.log("SenderWorker: Non-critical error during socket shutdown: " + closeEx.getMessage());
+                        if ("CLOSE_ACK".equals(ack.trim())) {
+                            LogPanel.log("SenderWorker " + workerIndex + ": 接收到接收方的關閉確認");
+                        } else {
+                            LogPanel.log("SenderWorker " + workerIndex + ": 接收到未預期的關閉回應: " + ack);
+                        }
+                    }
+                } catch (IOException closeEx) {
+                    // 關閉時發生錯誤不視為傳輸失敗
+                    LogPanel.log("SenderWorker " + workerIndex + ": 在發送終止訊號或關閉時發生非嚴重錯誤: " + closeEx.getMessage());
+                } finally {
+                    // 關閉 socket
+                    if (socketChannel.isOpen()) {
+                        try {
+                            socketChannel.close();
+                        } catch (IOException e) {
+                            LogPanel.log("SenderWorker " + workerIndex + ": 關閉 socketChannel 時發生錯誤: " + e.getMessage());
+                        }
                     }
                 }
             } catch (IOException e) {
-                LogPanel.log("SenderWorker encountered an IOException: " + e.getMessage());
+                LogPanel.log("SenderWorker " + workerIndex + " 遇到 IOException: " + e.getMessage());
                 
-                // 僅在不是"Connection reset by peer"或我們認為不是因為傳輸接近完成時才報告錯誤
-                if (!(e.getMessage() != null && e.getMessage().contains("Connection reset by peer") && allChunksProcessedSuccessfully)) {
-                    if (callback != null && !reportedError.getAndSet(true)) {
-                        callback.onError(e);
-                    }
-                } else {
-                    LogPanel.log("SenderWorker: Ignoring 'Connection reset by peer' as it occurred after successful chunk transfer");
+                // 報告錯誤（只報告一次）
+                if (callback != null && !hasReportedError.getAndSet(true)) {
+                    callback.onError(e);
                 }
                 
-                // 確保在發生錯誤時關閉 socket
+                // 確保 socket 被關閉
                 if (socketChannel.isOpen()) {
                     try {
                         socketChannel.close();
                     } catch (IOException closeEx) {
-                        LogPanel.log("SenderWorker: Error closing socketChannel after exception: " + closeEx.getMessage());
+                        LogPanel.log("SenderWorker " + workerIndex + ": 在異常後關閉 socketChannel 時發生錯誤: " + closeEx.getMessage());
                     }
                 }
             }
