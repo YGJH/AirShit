@@ -8,6 +8,10 @@ import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -575,5 +579,34 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
             }
         }
+    }
+
+    /**
+     * Restart the application by spawning a new Java process with the same VM args and classpath.
+     */
+    public static void restart() {
+        try {
+            String javaHome = System.getProperty("java.home");
+            String javaBin = javaHome + File.separator + "bin" + File.separator + "java";
+            RuntimeMXBean rt = ManagementFactory.getRuntimeMXBean();
+            List<String> vmArgs = rt.getInputArguments();
+            String classpath = System.getProperty("java.class.path");
+
+            List<String> cmd = new ArrayList<>();
+            cmd.add(javaBin);
+            cmd.addAll(vmArgs);
+            cmd.add("-cp");
+            cmd.add(classpath);
+            cmd.add(Main.class.getName());
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.inheritIO();
+            pb.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        // 關閉單例鎖，結束當前 JVM
+        releaseSingleInstanceLock();
+        System.exit(0);
     }
 }

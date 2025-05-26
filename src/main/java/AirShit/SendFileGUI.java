@@ -1,5 +1,6 @@
 package AirShit;
 
+import AirShit.Main;
 import AirShit.ui.*;
 
 import com.formdev.flatlaf.FlatDarkLaf;
@@ -58,6 +59,7 @@ public class SendFileGUI extends JFrame {
     public ReceiveProgressPanel recvPanel;
     private LogPanel logPanel;
     private JToggleButton themeToggleButton;
+    private JButton refreshButton;
     private boolean isDarkMode = true;
 
     public SendFileGUI() {
@@ -154,6 +156,10 @@ public class SendFileGUI extends JFrame {
         themeToggleButton = new JToggleButton("Switch to Dark Mode");
         themeToggleButton.setSelected(isDarkMode);
 
+        // 新增 Refresh 按鈕
+        refreshButton = new JButton("Refresh");
+        refreshButton.setFont(FONT_PRIMARY_PLAIN);
+
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         filePanel = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
         sendPanel = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
@@ -186,6 +192,7 @@ public class SendFileGUI extends JFrame {
 
         themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
         topBar.add(themeToggleButton);
+        topBar.add(refreshButton); // 新增到工具列
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
         // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by
@@ -218,6 +225,8 @@ public class SendFileGUI extends JFrame {
         themeToggleButton.addActionListener(e -> {
             applyTheme(themeToggleButton.isSelected());
         });
+        // Refresh 按一下就重啟整個程式
+        refreshButton.addActionListener(e -> Main.restart());
 
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
         filePanel.addPropertyChangeListener("selectedFile", ev -> updateSendState()); // 監聽檔案選擇變更
