@@ -26,7 +26,7 @@ import AirShit.ui.LogPanel;
 public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
-    private SendFile senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
+    private SendFileOptimized senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
     private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 2; // 本機可用的處理器核心數，作為建議的執行緒數
     // private final int ITHREADS = 1<<30; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
@@ -303,12 +303,11 @@ public class FileSender {
                                 + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
-                        senderInstance = new SendFile(this.host, this.port, fileToActuallySend, negotiatedThreadCount,
+                        senderInstance = new SendFileOptimized(this.host, this.port, fileToActuallySend, negotiatedThreadCount,
                                 callback);
 
                         // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
                         // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
-                        final File currentFileForThread = fileToActuallySend; // Lambda 表達式中使用的變數需為 final 或 effectively
                                                                               // final
                         final String finalDisplayName = displayName; // 用於日誌
                         Thread senderOperationThread = new Thread(() -> {

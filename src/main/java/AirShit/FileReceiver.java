@@ -221,7 +221,7 @@ public class FileReceiver {
                                 // The serverSocket argument to Receiver constructor is not used by its start
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
-                                Receiver dataReceiver = new Receiver(serverSocket);
+                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocket);
                                 boolean receptionWasSuccessful = false;
                                 try {
                                     receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,
