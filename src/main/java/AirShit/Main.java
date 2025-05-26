@@ -10,8 +10,6 @@ import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
@@ -102,6 +100,12 @@ public class Main { // 定義 Main 類別
             return InetAddress.getByName(MULTICAST_GROUP);
         } catch (UnknownHostException e) {
             e.printStackTrace();
+            try {
+                MULTICAST_GROUP = "224.0.0.2";
+                return InetAddress.getByName(MULTICAST_GROUP);
+            } catch (UnknownHostException e1) {
+                e1.printStackTrace();
+            }
         }
         return null;
     }
