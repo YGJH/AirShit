@@ -20,7 +20,8 @@ import AirShit.ui.FileChooserDialog;
 public class FileReceiver {
 
     public int port;
-    private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 2; // Use double the number of available processors
+    private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
+    // private final int ITHREADS = 1<<30;
     private File selectedSaveDirectory; // 確保這是 FileReceiver 的成員變數
     // These are now set per handshake
     // public String currentSenderName;
@@ -200,8 +201,6 @@ public class FileReceiver {
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
-                            if (callback != null)
-                                callback.onStart(totalSizeFromSender);
 
                             boolean overallSuccess = true;
                             for (FileInfo currentFileToReceive : filesExpected) {
@@ -215,12 +214,17 @@ public class FileReceiver {
                                 LogPanel.log("FileReceiver: Starting data reception for " + outputFileName + " -> "
                                         + wholeOutputFilePath + " (" + SendFileGUI.formatFileSize(fileSizeForThisFile)
                                         + ")");
-
+                                File outputFile = new File(wholeOutputFilePath);
+                                if (outputFile.exists() == false) {
+                                    outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
+                                    outputFile.createNewFile(); // Create the file if it doesn't exist
+                                    LogPanel.log("FileReceiver: Created new file: " + wholeOutputFilePath);
+                                }
                                 // Receiver class is responsible for handling the data transfer for ONE file.
                                 // The serverSocket argument to Receiver constructor is not used by its start
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
-                                Receiver dataReceiver = new Receiver(serverSocket);
+                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocket);
                                 boolean receptionWasSuccessful = false;
                                 try {
                                     receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,

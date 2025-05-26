@@ -327,6 +327,21 @@ public class SendFileGUI extends JFrame {
                 LogPanel.log("Total size: " + totalBytes + " bytes");
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
             }
+            @Override
+            public void onStart(long totalBytes, String name) {
+                this.totalBytes = totalBytes;
+                sentSoFar.set(0);
+                SwingUtilities.invokeLater(() -> {
+                    recvPanel.getLabel().setText("Sending " + name);
+                    sendPanel.getSendButton().setEnabled(false);
+                    recvPanel.getLabel().setVisible(true);
+                    recvPanel.getProgressBar().setVisible(true);
+                    recvPanel.getProgressBar().setMaximum(100);
+                    recvPanel.getProgressBar().setValue(0);
+                });
+                LogPanel.log("Total size: " + totalBytes + " bytes");
+                Main.sendStatus.set(Main.SEND_STATUS.SEND_WAITING);
+            }
 
             @Override
             public void onComplete(String name) {
