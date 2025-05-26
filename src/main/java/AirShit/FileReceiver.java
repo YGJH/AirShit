@@ -132,7 +132,7 @@ public class FileReceiver {
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
                             }
-                            if (fileInfoParts[0].endsWith(".tar.lz4")) {
+                            if (fileInfoParts[0].endsWith(".tar")) {
                                 hasLz4 = true;
                             }
                             filesExpected.add(new FileInfo(fileInfoParts[0], Long.parseLong(fileInfoParts[1])));
@@ -228,8 +228,8 @@ public class FileReceiver {
                                     if (receptionWasSuccessful) {
                                         LogPanel.log(
                                                 "FileReceiver: Data reception successful for: " + wholeOutputFilePath);
-                                        if (outputFileName.endsWith(".tar.lz4")) {
-                                            // Decompress into the same directory where the .tar.lz4 was saved
+                                        if (outputFileName.endsWith(".tar")) {
+                                            // Decompress into the same directory where the .tar was saved
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
                                             LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath
                                                     + " into folder " + decompressedTargetFolder);
@@ -238,7 +238,7 @@ public class FileReceiver {
                                                         new File(decompressedTargetFolder));
                                                 LogPanel.log("FileReceiver: Decompression complete into "
                                                         + decompressedTargetFolder);
-                                                // Delete the .tar.lz4 file after successful decompression
+                                                // Delete the .tar file after successful decompression
                                                 try {
                                                     Files.deleteIfExists(Paths.get(wholeOutputFilePath));
                                                     LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath

@@ -174,14 +174,20 @@ public class FileSender {
                         if (tempArchiveFilePath != null
                                 && filePath.equals(Paths.get(tempArchiveFilePath).normalize())) {
                             // 這是壓縮檔
-                            nameToSend = inputFile.getName() + ".tar"; // 例如 "competitiveShit.tar"
+                            nameToSend = inputFile.getName() + ".tar";
                         } else {
                             // 這是大檔案
                             if (parentOfSelectedPath != null) {
                                 // 相對於父目錄計算，結果會包含 selectedPath 的名稱
                                 // e.g., parent="D:\folder", filePath="D:\folder\competitiveShit\.git\pack.idx"
                                 // relativePath = "competitiveShit\.git\pack.idx"
-                                Path relativePath = parentOfSelectedPath.relativize(filePath);
+                                Path relativePath;
+                                try {
+                                    relativePath = parentOfSelectedPath.relativize(filePath);
+                                } catch (IllegalArgumentException e) {
+                                    // root 不同時退回到檔案名稱
+                                    relativePath = filePath.getFileName();
+                                }
                                 nameToSend = relativePath.toString();
                             } else {
                                 // 如果選擇的是根目錄下的資料夾 (e.g., "C:\competitiveShit")
@@ -189,18 +195,20 @@ public class FileSender {
                                 // 如果選擇的是根目錄本身 (e.g., "C:\"), parentOfSelectedPath 是 null
                                 // 這種情況下，我們希望路徑直接從 selectedPath 的名稱開始
                                 // filePath 相對於 selectedPath (inputFile.toPath())
-                                Path relativeToSelected = selectedPath.relativize(filePath);
-                                if (relativeToSelected.toString().isEmpty() && filePath.getFileName().toString()
-                                        .equals(selectedPath.getFileName().toString())) {
-                                    // 如果檔案就是選擇的目錄本身（理論上大檔案不會是這樣）
-                                    nameToSend = selectedPath.getFileName().toString();
-                                } else {
-                                    nameToSend = selectedPath.getFileName().toString() + File.separator
-                                            + relativeToSelected.toString();
-                                }
-                                // 確保不會出現 "competitiveShit\" + "" 的情況
-                                if (nameToSend.endsWith(File.separator) && relativeToSelected.toString().isEmpty()) {
-                                    nameToSend = selectedPath.getFileName().toString();
+                                try {
+                                    Path relativeToSelected = selectedPath.relativize(filePath);
+                                    if (relativeToSelected.toString().isEmpty()
+                                            && filePath.getFileName().toString()
+                                                    .equals(selectedPath.getFileName().toString())) {
+                                        nameToSend = selectedPath.getFileName().toString();
+                                    } else {
+                                        nameToSend = selectedPath.getFileName().toString()
+                                                + File.separator
+                                                + relativeToSelected.toString();
+                                    }
+                                } catch (IllegalArgumentException e) {
+                                    // root 不同時退回到檔案名稱
+                                    nameToSend = filePath.getFileName().toString();
                                 }
                             }
                         }
@@ -279,7 +287,13 @@ public class FileSender {
                             if (tempArchiveFilePath != null && filePath.equals(Paths.get(tempArchiveFilePath))) {
                                 displayName = fileToActuallySend.getName(); // 壓縮檔
                             } else {
-                                displayName = baseDirectoryPath.relativize(filePath).toString();
+                                try {
+                                    Path relativePath = baseDirectoryPath.relativize(filePath);
+                                    displayName = relativePath.toString();
+                                } catch (IllegalArgumentException e) {
+                                    // root 不同時退回到檔案名稱
+                                    displayName = filePath.getFileName().toString();
+                                }
                             }
                         } else {
                             displayName = fileToActuallySend.getName();
