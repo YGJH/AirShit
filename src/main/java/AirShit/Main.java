@@ -417,6 +417,20 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getProgressBar().setValue(0);
                 });
             }
+            public void onStart(long totalBytes , String name) {
+                totalBar = totalBytes;
+                totalReceived.set(0);
+                GUI.log("Receiving " + SendFileGUI.formatFileSize(totalBytes));
+                sendStatus.set(SEND_STATUS.SEND_WAITING);
+                SwingUtilities.invokeLater(() -> {
+                    GUI.recvPanel.getLabel().setText("Receiving " + name);
+                    GUI.sendPanel.getSendButton().setEnabled(false);
+                    GUI.recvPanel.getLabel().setVisible(true);
+                    GUI.recvPanel.getProgressBar().setVisible(true);
+                    GUI.recvPanel.getProgressBar().setMaximum(100);
+                    GUI.recvPanel.getProgressBar().setValue(0);
+                });
+            }
 
             @Override
             public void onProgress(long bytesTransferred) {

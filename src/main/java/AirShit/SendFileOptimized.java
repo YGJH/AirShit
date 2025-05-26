@@ -48,10 +48,15 @@ public class SendFileOptimized {
                 if (originalCallback != null) originalCallback.onStart(totalSize);
             }
 
+            public void onStart(long totalSize , String name) {
+                if (originalCallback != null) originalCallback.onStart(totalSize);
+            }
+
             @Override
             public void onProgress(long bytes) {
                 if (originalCallback != null) originalCallback.onProgress(bytes);
             }
+
 
             @Override
             public void onComplete(String name) {
@@ -76,7 +81,7 @@ public class SendFileOptimized {
         
         if (fileLength == 0) {
             if (originalCallback != null) {
-                originalCallback.onStart(0);
+                originalCallback.onStart(0 , file.getName());
                 originalCallback.onComplete();
             }
             return;
@@ -94,7 +99,7 @@ public class SendFileOptimized {
              FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
             
             if (originalCallback != null) {
-                originalCallback.onStart(fileLength);
+                originalCallback.onStart(fileLength , file.getName());
             }
 
             List<Future<?>> futures = new ArrayList<>();

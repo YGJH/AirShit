@@ -36,7 +36,7 @@ public class Receiver {
         // 如果檔案大小為 0，直接完成
         if (fileLength == 0) {
             if (cb != null) {
-                cb.onStart(0);
+                cb.onStart(0 , outputFile);
                 cb.onComplete();
             }
             return true;
@@ -49,7 +49,7 @@ public class Receiver {
             raf.setLength(fileLength);
             
             if (cb != null) {
-                cb.onStart(fileLength);
+                cb.onStart(fileLength , outputFile);
             }
             
             // 使用 Virtual Thread Executor
