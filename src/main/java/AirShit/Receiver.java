@@ -19,6 +19,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
+import java.lang.Thread;
+
 public class Receiver {
     private final ServerSocket serverSocket; // This is the ServerSocket passed from FileReceiver
 
@@ -61,7 +64,8 @@ public class Receiver {
 
         LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
 
-        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+        // 使用虚拟线程池替换固定线程池
+        ExecutorService pool = newThreadPerTaskExecutor(Thread.ofVirtual().factory());
         List<Future<?>> futures = new ArrayList<>();
         List<Socket> dataSockets = new ArrayList<>(); // Keep track of sockets to close them
 

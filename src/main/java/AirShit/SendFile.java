@@ -16,8 +16,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
+import java.lang.Thread;
 
 /**
  * SendFile 類別負責將單一檔案透過多執行緒（如果適用）傳送給接收端。
@@ -125,7 +129,7 @@ public class SendFile {
         poolSize = Math.max(1, poolSize); // 確保執行緒池中至少有一個執行緒。
 
         // LogPanel.log("SendFile: Sender workers 的有效執行緒池大小: " + poolSize);
-        ExecutorService pool = Executors.newFixedThreadPool(poolSize); // 創建固定大小的執行緒池
+        ExecutorService pool = newThreadPerTaskExecutor(Thread.ofVirtual().factory()); // 創建固定大小的執行緒池
         // AtomicInteger workersToStart = new AtomicInteger(poolSize); // 這個變數似乎未使用
 
         try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) { // 開啟檔案通道以讀取檔案內容
@@ -234,7 +238,7 @@ public class SendFile {
         final long MIN_ABSOLUTE_SUB_CHUNK_SIZE = 64 * 1024L;   // 子區塊的絕對最小大小 (例如 64KB)
 
         long currentOverallOffset = 0; // 追蹤在整個檔案中的當前偏移量
-        int totalChunksGenerated = 0;
+        // int totalChunksGenerated = 0;
 
         while (currentOverallOffset < fileLength) {
             long remainingFileLengthForSuperChunk = fileLength - currentOverallOffset;
@@ -247,7 +251,7 @@ public class SendFile {
                 // 如果只有一個執行緒，或者當前超級區塊本身小於或等於最小子區塊大小，
                 // 則將整個超級區塊作為一個子區塊。
                 chunkQueue.offer(new ChunkInfo(currentOverallOffset, currentSuperChunkLength));
-                totalChunksGenerated++;
+                // totalChunksGenerated++;
                 // LogPanel.log("SendFile.populateChunkQueue: 超級區塊作為單一子區塊加入: offset=" + currentOverallOffset + ", length=" + currentSuperChunkLength);
             } else {
                 // 多執行緒劃分當前超級區塊
@@ -261,7 +265,7 @@ public class SendFile {
                 // 導致 actualSubChunkSize 變大。如果 actualSubChunkSize 最終大於等於 super chunk 本身，則 super chunk 作為一個整體。
                 if (actualSubChunkSize >= currentSuperChunkLength) {
                     chunkQueue.offer(new ChunkInfo(currentOverallOffset, currentSuperChunkLength));
-                    totalChunksGenerated++;
+                    // totalChunksGenerated++;
                     // LogPanel.log("SendFile.populateChunkQueue: 計算後的 actualSubChunkSize >= 超級區塊長度。超級區塊作為單一子區塊加入: offset=" + currentOverallOffset + ", length=" + currentSuperChunkLength);
                 } else {
                     long offsetWithinSuperChunk = 0;
@@ -269,7 +273,7 @@ public class SendFile {
                         long lengthForThisSubChunk = Math.min(actualSubChunkSize, currentSuperChunkLength - offsetWithinSuperChunk);
                         if (lengthForThisSubChunk > 0) {
                             chunkQueue.offer(new ChunkInfo(currentOverallOffset + offsetWithinSuperChunk, lengthForThisSubChunk));
-                            totalChunksGenerated++;
+                            // totalChunksGenerated++;
                             // LogPanel.log("SendFile.populateChunkQueue: 加入子區塊: offset=" + (currentOverallOffset + offsetWithinSuperChunk) + ", length=" + lengthForThisSubChunk);
                         } else if (offsetWithinSuperChunk < currentSuperChunkLength) {
                             // LogPanel.log("SendFile.populateChunkQueue: 警告 - 在超級區塊內偏移量 " + offsetWithinSuperChunk + " 處計算出零長度子區塊。");
