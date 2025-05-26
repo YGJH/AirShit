@@ -251,6 +251,7 @@ public class SendFileGUI extends JFrame {
         portField.addActionListener(e -> {
             try {
                 int p = Integer.parseInt(portField.getText().trim());
+                // 接受范围 1–65536
                 if (p < 1 || p > 65535) throw new NumberFormatException();
                 Main.setDiscoveryPort(p);
             } catch (NumberFormatException ex) {
