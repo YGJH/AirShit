@@ -17,10 +17,10 @@ import AirShit.ui.LogPanel;
 /**
  * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
  * 這包括：
- * 1. 準備要傳送的檔案列表（對於資料夾，可能包括壓縮小檔案到一個 .tar.lz4 存檔）。
+ * 1. 準備要傳送的檔案列表（對於資料夾，可能包括壓縮小檔案到一個 .tar 存檔）。
  * 2. 與接收端進行多階段握手，交換元數據（檔案總數、總大小、執行緒請求、是否為目錄、原始資料夾名稱）和每個檔案的資訊。
  * 3. 等待接收端的接受或拒絕決定。
- * 4. 如果接受，則為每個要傳送的檔案（可能是原始大檔案或 .tar.lz4 存檔）啟動一個 SendFile 實例進行傳輸。
+ * 4. 如果接受，則為每個要傳送的檔案（可能是原始大檔案或 .tar 存檔）啟動一個 SendFile 實例進行傳輸。
  * 5. 清理臨時檔案。
  */
 public class FileSender {
@@ -71,7 +71,7 @@ public class FileSender {
         }
 
         List<File> filesToProcess = new ArrayList<>(); // 實際需要傳送的檔案列表 (大檔案 + 壓縮檔)
-        String tempArchiveFilePath = null; // 如果創建了臨時 .tar.lz4 存檔，其路徑
+        String tempArchiveFilePath = null; // 如果創建了臨時 .tar 存檔，其路徑
         boolean isDirectoryTransfer = inputFile.isDirectory(); // 判斷輸入是否為目錄
         long totalSizeOverall = 0; // 所有待傳送檔案的總大小
         Path tempDirForArchive = null; // 儲存存檔的臨時目錄的路徑
@@ -84,20 +84,18 @@ public class FileSender {
                 baseDirectoryPath = inputFile.toPath(); // 儲存基礎資料夾路徑
                 String baseName = inputFile.getName(); // 資料夾的基本名稱
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
-                String compressedFileName = baseName + ".tar.lz4"; // 壓縮檔案的名稱
+                String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
                 tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString(); // 壓縮檔案的完整路徑
 
                 // LZ4FileCompressor 會將小於 3MB 的檔案壓縮到 tempArchiveFilePath，
                 // 並將大於等於 3MB 的檔案填充到 largeFilesArray。
-                File[] largeFilesArray = new File[1000000]; // 假設最多有這麼多大檔案，可根據需要調整
-                int largeFileCount = LZ4FileCompressor.compressFolderToTarLz4(inputFile.getAbsolutePath(),
-                        tempArchiveFilePath, largeFilesArray);
-
+                TarCompressor.start(inputFile,
+                        filesToProcess);
+                int largeFileCount = filesToProcess.size(); // 大檔案的數量
                 // 將所有大檔案加入到待處理列表
-                for (int i = 0; i < largeFileCount; i++) {
-                    if (largeFilesArray[i] != null && largeFilesArray[i].exists()) {
-                        filesToProcess.add(largeFilesArray[i]);
-                        totalSizeOverall += largeFilesArray[i].length();
+                for (File file : filesToProcess) {
+                    if (file != null && file.exists() && file.length() > 0) {
+                        totalSizeOverall += file.length();
                     }
                 }
 
@@ -176,7 +174,7 @@ public class FileSender {
                         if (tempArchiveFilePath != null
                                 && filePath.equals(Paths.get(tempArchiveFilePath).normalize())) {
                             // 這是壓縮檔
-                            nameToSend = inputFile.getName() + ".tar.lz4"; // 例如 "competitiveShit.tar.lz4"
+                            nameToSend = inputFile.getName() + ".tar"; // 例如 "competitiveShit.tar"
                         } else {
                             // 這是大檔案
                             if (parentOfSelectedPath != null) {

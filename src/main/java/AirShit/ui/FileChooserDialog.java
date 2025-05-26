@@ -45,6 +45,7 @@ public class FileChooserDialog {
     // private static Image folderIcon; // Will use system icons
     // private static Image fileIcon; // Will use system icons
     private static Image upIcon;
+    private static Image slashIcon; // <--- 新增斜線圖示變數
     private static FileSystemView fileSystemView = FileSystemView.getFileSystemView();
     private static Map<String, Image> iconCache = new ConcurrentHashMap<>();
 
@@ -62,8 +63,15 @@ public class FileChooserDialog {
             } else {
                 System.err.println("Could not find up arrow icon: /icons/up-arrow.png");
             }
+
+            java.net.URL slashIconUrl = FileChooserDialog.class.getResource("/icons/slash.png"); // <--- 載入斜線圖示
+            if (slashIconUrl != null) {
+                slashIcon = new Image(slashIconUrl.toExternalForm());
+            } else {
+                System.err.println("Could not find slash icon: /icons/slash.png");
+            }
         } catch (Exception e) {
-            System.err.println("Error loading up icon: " + e.getMessage());
+            System.err.println("Error loading icons: " + e.getMessage());
         }
     }
 
@@ -224,15 +232,6 @@ public class FileChooserDialog {
             favoriteDirs.add(videosDir);
         // Add more common directories if needed
 
-        // Add system roots (Drives) to Quick Access as well, if desired
-        // File[] roots = File.listRoots();
-        // if (roots != null) {
-        // for (File root : roots) {
-        // if (root.exists() && root.isDirectory()) {
-        // favoriteDirs.add(root);
-        // }
-        // }
-        // }
 
         for (File dir : favoriteDirs) {
             Label favLabel = new Label(dir.getName().isEmpty() ? dir.getAbsolutePath() : dir.getName());
@@ -533,9 +532,19 @@ public class FileChooserDialog {
                     selectPathInTree(conceptualRootNode, part, treeView, true);
                 });
                 breadcrumbGuiContainer.getChildren().add(link);
-                Label separator = new Label(">"); // 使用 ">" 作為分隔符號
-                separator.getStyleClass().add("breadcrumb-separator");
-                breadcrumbGuiContainer.getChildren().add(separator);
+
+                if (slashIcon != null) { // <--- 使用圖片作為分隔符號
+                    ImageView separatorImageView = new ImageView(slashIcon);
+                    separatorImageView.setFitHeight(16); // 根據需要調整大小
+                    separatorImageView.setFitWidth(16);  // 根據需要調整大小
+                    separatorImageView.getStyleClass().add("breadcrumb-separator-icon"); // 可以添加 CSS class
+                    HBox.setMargin(separatorImageView, new Insets(5, 0, 0, 0)); // <--- 新增：往下調整 2px (您可以調整這個值)
+                    breadcrumbGuiContainer.getChildren().add(separatorImageView);
+                } else {
+                    Label separator = new Label("/"); // Fallback to text if icon not loaded
+                    separator.getStyleClass().add("breadcrumb-separator");
+                    breadcrumbGuiContainer.getChildren().add(separator);
+                }
             }
         }
         currentSelectedDirWrapper[0] = currentPath; // 確保當前目錄已更新

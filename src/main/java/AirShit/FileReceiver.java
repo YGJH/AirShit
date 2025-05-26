@@ -234,8 +234,8 @@ public class FileReceiver {
                                             LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath
                                                     + " into folder " + decompressedTargetFolder);
                                             try {
-                                                LZ4FileDecompressor.decompressTarLz4Folder(wholeOutputFilePath,
-                                                        decompressedTargetFolder);
+                                                TarExtractor.start(new File(wholeOutputFilePath),
+                                                        new File(decompressedTargetFolder));
                                                 LogPanel.log("FileReceiver: Decompression complete into "
                                                         + decompressedTargetFolder);
                                                 // Delete the .tar.lz4 file after successful decompression
