@@ -11,6 +11,8 @@ import java.awt.*;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.nio.file.NoSuchFileException;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -61,6 +63,8 @@ public class SendFileGUI extends JFrame {
     private JToggleButton themeToggleButton;
     private JButton refreshButton;
     private boolean isDarkMode = true;
+    private JTextField portField;
+    private JTextField groupField;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
@@ -167,6 +171,13 @@ public class SendFileGUI extends JFrame {
         // Pass the specific LOG_AREA_BACKGROUND to LogPanel constructor
         logPanel = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
 
+        // DISCOVERY_PORT 输入框
+        portField = new JTextField(String.valueOf(Main.DISCOVERY_PORT), 6);
+        portField.setFont(FONT_PRIMARY_PLAIN);
+        // Multicast IP 输入框
+        groupField = new JTextField(Main.MULTICAST_GROUP, 15);
+        groupField.setFont(FONT_PRIMARY_PLAIN);
+
         receiveProgressBar = recvPanel.getProgressBar();
         sendPanel.getSendButton().setEnabled(false);
         sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
@@ -193,6 +204,10 @@ public class SendFileGUI extends JFrame {
         themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
         topBar.add(themeToggleButton);
         topBar.add(refreshButton); // 新增到工具列
+        topBar.add(new JLabel("DISCOVERY_PORT:"));
+        topBar.add(portField);
+        topBar.add(new JLabel("Multicast IP:"));
+        topBar.add(groupField);
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
         // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by
@@ -231,6 +246,45 @@ public class SendFileGUI extends JFrame {
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
         filePanel.addPropertyChangeListener("selectedFile", ev -> updateSendState()); // 監聽檔案選擇變更
         sendPanel.getSendButton().addActionListener(e -> doSend());
+
+        // 端口输入校验 & 更新
+        portField.addActionListener(e -> {
+            try {
+                int p = Integer.parseInt(portField.getText().trim());
+                if (p < 1 || p > 65535) throw new NumberFormatException();
+                Main.setDiscoveryPort(p);
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "请输入 1–65535 之间的有效端口号",
+                        "端口错误", JOptionPane.ERROR_MESSAGE);
+                portField.setText(String.valueOf(Main.DISCOVERY_PORT));
+            }
+        });
+
+        // Multicast IP 校验 & 更新
+        groupField.addActionListener(e -> {
+            String s = groupField.getText().trim();
+            boolean ok = false;
+            if ("all-routers.mcast.net".equalsIgnoreCase(s)) {
+                ok = true;
+            } else {
+                try {
+                    InetAddress addr = InetAddress.getByName(s);
+                    if (addr instanceof Inet4Address) {
+                        int a = addr.getAddress()[0] & 0xFF;
+                        if (a >= 224 && a <= 239) ok = true;
+                    }
+                } catch (Exception ex) { /* invalid */ }
+            }
+            if (ok) {
+                Main.setMulticastGroup(s);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "仅允许输入 IPv4 多播范围 224.0.0.0–239.255.255.255 或 all-routers.mcast.net",
+                        "Multicast IP 错误", JOptionPane.ERROR_MESSAGE);
+                groupField.setText(Main.MULTICAST_GROUP);
+            }
+        });
     }
 
     private void updateSendState() {

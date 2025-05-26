@@ -31,7 +31,10 @@ public class Main { // 定義 Main 類別
         clientList.clear(); // 清空客戶端哈希表
     }
 
-    public static final int DISCOVERY_PORT = 23333; // Or any other unused port
+    // 把 final 改成普通 static 以便运行时修改
+    public static int DISCOVERY_PORT = 23333;
+    // 新增 multicast group 可变字段
+    public static String MULTICAST_GROUP = "all-routers.mcast.net";
 
     static {
         String userName;
@@ -96,11 +99,19 @@ public class Main { // 定義 Main 類別
 
     public static InetAddress getMulticastAddress() {
         try {
-            return InetAddress.getByName("all-routers.mcast.net"); // Valid multicast address
+            return InetAddress.getByName(MULTICAST_GROUP);
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
         return null;
+    }
+
+    // 新增 setter
+    public static void setDiscoveryPort(int port) {
+        DISCOVERY_PORT = port;
+    }
+    public static void setMulticastGroup(String group) {
+        MULTICAST_GROUP = group;
     }
 
     private static NetworkInterface findCorrectNetworkInterface() {
@@ -361,27 +372,7 @@ public class Main { // 定義 Main 類別
     private static final int SINGLE_INSTANCE_LOCK_PORT = 61808; // 選擇一個不太可能被其他應用程式使用的埠號
 
     public static void main(String[] args) { // 主方法，程式入口點
-        // 1) Force JVM encoding to UTF‑8
-        if (!acquireSingleInstanceLock()) {
-            JOptionPane.showMessageDialog(null,
-                "AirShit is already running.\nOnly one instance is allowed.",
-                "Application Already Running",
-                JOptionPane.WARNING_MESSAGE);
-            System.exit(0);
-        }
-
         System.setProperty("file.encoding", "UTF-8");
-        // ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "chcp", "65001")
-        //         .redirectErrorStream(true)
-        //         .inheritIO();
-        // try {
-        //     pb.start().waitFor();
-        //     System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
-        //     System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
-        // } catch (IOException | InterruptedException e) {
-        //     e.printStackTrace();
-        // }
-
         // 2) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft
         // YaHei, or Noto)
         Font uiFont = new Font("Microsoft YaHei UI", Font.PLAIN, 12);
@@ -492,8 +483,6 @@ public class Main { // 定義 Main 類別
                 }
             }
         }).start(); // 啟動檢查存活狀態的執行緒
-        // 註冊一個關閉鉤子，在應用程式退出時釋放鎖
-        Runtime.getRuntime().addShutdownHook(new Thread(Main::releaseSingleInstanceLock));
 
     }
 
