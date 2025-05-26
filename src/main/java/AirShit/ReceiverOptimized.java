@@ -66,7 +66,7 @@ public class ReceiverOptimized {
                         try {
                             // 等待連接
                             Socket socket = serverSocket.accept();
-                            LogPanel.log("ReceiverOptimized Worker: 接受連接 " + socket.getRemoteSocketAddress());
+                            // LogPanel.log("ReceiverOptimized Worker: 接受連接 " + socket.getRemoteSocketAddress());
                             
                             ReceiverWorker worker = new ReceiverWorker(socket, raf, cb, totalBytesReceived, fileLength);
                             worker.run();
@@ -154,8 +154,8 @@ public class ReceiverOptimized {
                         long chunkOffset = metaBuffer.getLong();
                         long chunkLength = metaBuffer.getLong();
                         
-                        LogPanel.log("ReceiverOptimized Worker: 接收 chunk offset=" + chunkOffset + 
-                                   ", length=" + chunkLength);
+                        // LogPanel.log("ReceiverOptimized Worker: 接收 chunk offset=" + chunkOffset + 
+                        //            ", length=" + chunkLength);
                         
                         // 接收 chunk 資料
                         long bytesRead = receiveChunkData(socketChannel, chunkOffset, chunkLength);
@@ -183,7 +183,7 @@ public class ReceiverOptimized {
                     }
                 }
                 
-                LogPanel.log("ReceiverOptimized Worker 完成，接收了 " + totalBytesRead + " bytes");
+                // LogPanel.log("ReceiverOptimized Worker 完成，接收了 " + totalBytesRead + " bytes");
                 
             } catch (Exception e) {
                 LogPanel.log("ReceiverOptimized Worker: 錯誤: " + e.getMessage());
