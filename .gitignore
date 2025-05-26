@@ -7,3 +7,12 @@ GeneratedTestFiles/**
 target/**
 *.lz4
 *.DS_Store
+*.tar
+*.zip
+*.dmg.
+*.rar
+*.7z
+*.gz
+*.log
+*.swp
+*.exe
