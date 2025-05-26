@@ -201,8 +201,6 @@ public class FileReceiver {
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
-                            if (callback != null)
-                                callback.onStart(totalSizeFromSender);
 
                             boolean overallSuccess = true;
                             for (FileInfo currentFileToReceive : filesExpected) {
@@ -216,7 +214,12 @@ public class FileReceiver {
                                 LogPanel.log("FileReceiver: Starting data reception for " + outputFileName + " -> "
                                         + wholeOutputFilePath + " (" + SendFileGUI.formatFileSize(fileSizeForThisFile)
                                         + ")");
-
+                                File outputFile = new File(wholeOutputFilePath);
+                                if (outputFile.exists() == false) {
+                                    outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
+                                    outputFile.createNewFile(); // Create the file if it doesn't exist
+                                    LogPanel.log("FileReceiver: Created new file: " + wholeOutputFilePath);
+                                }
                                 // Receiver class is responsible for handling the data transfer for ONE file.
                                 // The serverSocket argument to Receiver constructor is not used by its start
                                 // method if it connects out.

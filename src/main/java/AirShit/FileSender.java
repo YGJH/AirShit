@@ -27,7 +27,7 @@ public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
     private SendFileOptimized senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
-    private final int ITHREADS = (Runtime.getRuntime().availableProcessors() - 3) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
+    private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
     // private final int ITHREADS = 1<<30; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 
@@ -277,8 +277,6 @@ public class FileSender {
 
                 // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
-                    if (callback != null)
-                        callback.onStart(totalSizeOverall); // 通知 UI 傳輸開始，並傳遞總大小
 
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
