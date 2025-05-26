@@ -27,7 +27,7 @@ public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
     private SendFileOptimized senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
-    private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 2; // 本機可用的處理器核心數，作為建議的執行緒數
+    private final int ITHREADS = (Runtime.getRuntime().availableProcessors() - 3) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
     // private final int ITHREADS = 1<<30; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 

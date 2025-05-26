@@ -20,7 +20,7 @@ import AirShit.ui.FileChooserDialog;
 public class FileReceiver {
 
     public int port;
-    private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 2;
+    private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
     // private final int ITHREADS = 1<<30;
     private File selectedSaveDirectory; // 確保這是 FileReceiver 的成員變數
     // These are now set per handshake

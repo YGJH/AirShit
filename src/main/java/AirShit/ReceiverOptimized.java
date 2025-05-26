@@ -32,7 +32,7 @@ public class ReceiverOptimized {
                          TransferCallback cb) throws InterruptedException {
         
         // 限制執行緒數量，避免過多併發
-        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
+        int maxThreads = Math.max(1, threadCount);
         threadCount = Math.min(Math.max(1, threadCount), maxThreads);
         
         LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
@@ -40,7 +40,7 @@ public class ReceiverOptimized {
 
         if (fileLength == 0) {
             if (cb != null) {
-                cb.onStart(0);
+                cb.onStart(0, outputFile);
                 cb.onComplete();
             }
             return true;

@@ -36,7 +36,7 @@ public class SendFileOptimized {
         this.port = port;
         this.file = file;
         // 限制最高併發數：以 CPU 核心數 * 4 為上限
-        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
+        int maxThreads = Math.max(1, threadCount);
         this.threadCount = Math.min(Math.max(1, threadCount), maxThreads);
         LogPanel.log("SendFileOptimized: 限制 threadCount=" + this.threadCount + " (原始=" + threadCount + ")");
     }
