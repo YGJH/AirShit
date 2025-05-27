@@ -6,4 +6,13 @@ public interface TransferCallback {
     void onComplete();
     void onComplete(String name);
     void onError(Exception e);
+    
+    // Default methods for file count tracking with backward compatibility
+    default void onFileStart(int currentFile, int totalFiles, String fileName) {
+        // Default implementation does nothing for backward compatibility
+    }
+    
+    default void onFileComplete(int currentFile, int totalFiles, String fileName) {
+        // Default implementation does nothing for backward compatibility
+    }
 }

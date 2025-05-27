@@ -8,13 +8,13 @@ import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
-import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
+import AirShit.ui.LogPanel;
+// import net.kuujo.vertigo.io.FileReceiver;
 
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
     public static SendFileGUI GUI;
-
+    static FileReceiver fileReceiver;
     static void println(String s) {
         System.out.println(s);
     }
@@ -392,11 +392,8 @@ public class Main { // 定義 Main 類別
                 + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
 
-        FileReceiver fileReceiver = new FileReceiver(client.getTCPPort());
+        fileReceiver = new FileReceiver(client.getTCPPort()); // Temporarily commented out
 
-        SwingUtilities.invokeLater(() -> {
-            GUI = new SendFileGUI();
-        });
 
         TransferCallback cb = new TransferCallback() {
             AtomicLong totalReceived = new AtomicLong(0);
@@ -443,9 +440,7 @@ public class Main { // 定義 Main 類別
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
-            }
-
-            @Override
+            }            @Override
             public void onComplete() {
                 sendStatus.set(SEND_STATUS.SEND_OK);
                 
@@ -455,6 +450,7 @@ public class Main { // 定義 Main 類別
                     GUI.log("Transfer complete");
                     GUI.recvPanel.getProgressBar().setVisible(false);
                     GUI.recvPanel.getLabel().setVisible(false);
+                    GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
             }
             public void onComplete(String name) {
@@ -467,6 +463,7 @@ public class Main { // 定義 Main 類別
                     GUI.log("Transfer complete");
                     GUI.recvPanel.getProgressBar().setVisible(false);
                     GUI.recvPanel.getLabel().setVisible(false);
+                    GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
             }
 
@@ -479,17 +476,36 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getProgressBar().setVisible(false);
                     GUI.recvPanel.getProgressBar().setValue(0);
                     GUI.recvPanel.getLabel().setVisible(false);
+                    GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
-
             }
-        };
+            
+            @Override
+            public void onFileStart(int currentFile, int totalFiles, String fileName) {
+                SwingUtilities.invokeLater(() -> {
+                    String fileCountText = "File " + currentFile + " of " + totalFiles;
+                    GUI.recvPanel.getFileCountLabel().setText(fileCountText);
+                    GUI.log("Starting file " + currentFile + "/" + totalFiles + ": " + fileName);
+                });
+            }
+            
+            @Override
+            public void onFileComplete(int currentFile, int totalFiles, String fileName) {
+                SwingUtilities.invokeLater(() -> {
+                    GUI.log("Completed file " + currentFile + "/" + totalFiles + ": " + fileName);
+                });
+            }
+        };        
         new Thread(() -> {
             try {
-                fileReceiver.start(cb);
+                fileReceiver.start(cb); // Temporarily commented out due to Maven compilation issue
             } catch (IOException e) {
-                e.printStackTrace();
+                e.printStackTrace(); // 列印例外資訊
+                GUI.log("FileReceiver failed to start: " + e.getMessage()); // 在 GUI 中顯示錯誤訊息
             }
         }, "file-receiver-thread").start();
+
+
         multicastHello(); // Then announce yourself
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
@@ -501,7 +517,9 @@ public class Main { // 定義 Main 類別
                 }
             }
         }).start(); // 啟動檢查存活狀態的執行緒
-
+        SwingUtilities.invokeLater(() -> {
+            GUI = new SendFileGUI();
+        });
     }
 
     private static boolean acquireSingleInstanceLock() {
@@ -586,34 +604,79 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
             }
         }
-    }
-
-    /**
-     * Restart the application by spawning a new Java process with the same VM args and classpath.
+    }    /**
+     * Restart the application by shutting down all threads except the main thread.
      */
     public static void restart() {
         try {
-            String javaHome = System.getProperty("java.home");
-            String javaBin = javaHome + File.separator + "bin" + File.separator + "java";
-            RuntimeMXBean rt = ManagementFactory.getRuntimeMXBean();
-            List<String> vmArgs = rt.getInputArguments();
-            String classpath = System.getProperty("java.class.path");
-
-            List<String> cmd = new ArrayList<>();
-            cmd.add(javaBin);
-            cmd.addAll(vmArgs);
-            cmd.add("-cp");
-            cmd.add(classpath);
-            cmd.add(Main.class.getName());
-
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.inheritIO();
-            pb.start();
+            LogPanel.log("Main: Starting restart procedure - shutting down all threads except main...");
+            
+            // Get all threads except main thread
+            ThreadGroup rootGroup = Thread.currentThread().getThreadGroup();
+            ThreadGroup parentGroup;
+            while ((parentGroup = rootGroup.getParent()) != null) {
+                rootGroup = parentGroup;
+            }
+            
+            // Get all threads in the system
+            Thread[] threads = new Thread[rootGroup.activeCount() * 2]; // Buffer to ensure we get all threads
+            int count = rootGroup.enumerate(threads, true);
+            
+            // Interrupt all threads except main thread
+            for (int i = 0; i < count; i++) {
+                Thread thread = threads[i];
+                if (thread != null && thread != Thread.currentThread() && !thread.isDaemon()) {
+                    String threadName = thread.getName();
+                    LogPanel.log("Main: Interrupting thread: " + threadName);
+                    
+                    // For certain threads, try to close resources gracefully first
+                    if (threadName.contains("MulticastListener") || 
+                        threadName.contains("file-receiver") ||
+                        threadName.contains("FileSender-Op") ||
+                        threadName.contains("send-thread")) {
+                        
+                        // Give threads a chance to cleanup by interrupting them
+                        thread.interrupt();
+                        
+                        // Wait a short time for graceful shutdown
+                        try {
+                            thread.join(1000); // Wait up to 1 second
+                        } catch (InterruptedException ie) {
+                            // Current thread was interrupted while waiting
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                          // If thread is still alive, we've done what we can
+                        if (thread.isAlive()) {
+                            LogPanel.log("Main: Thread " + threadName + " is still running after interrupt and timeout");
+                        }
+                    } else {
+                        // For other threads, just interrupt them
+                        thread.interrupt();
+                    }
+                }
+            }
+            
+            // Close any open server sockets
+            if (lockSocket != null && !lockSocket.isClosed()) {
+                try {
+                    lockSocket.close();
+                    LogPanel.log("Main: Closed single instance lock socket");
+                } catch (IOException e) {
+                    LogPanel.log("Main: Error closing lock socket: " + e.getMessage());
+                }
+            }
+            
+            // Reset application state
+            sendStatus.set(SEND_STATUS.SEND_OK);
+            clientList.clear();
+            
+            LogPanel.log("Main: Restart procedure completed. Application should now be in clean state.");
+            LogPanel.log("Main: Note - GUI windows may need to be manually closed/recreated.");
+            
         } catch (Exception e) {
+            LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
             e.printStackTrace();
         }
-        // 關閉單例鎖，結束當前 JVM
-        releaseSingleInstanceLock();
-        System.exit(0);
     }
 }

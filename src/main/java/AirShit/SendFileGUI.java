@@ -86,12 +86,12 @@ public class SendFileGUI extends JFrame {
         setSize(750, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-
+        applyTheme(isDarkMode); // Apply initial theme
         initComponents();
+
         layoutComponents();
         bindEvents();
-        applyTheme(isDarkMode); // Apply initial theme
-
+        
         log("Welcome to AirShit File Transfer");
         SwingUtilities.invokeLater(() -> setVisible(true));
     }

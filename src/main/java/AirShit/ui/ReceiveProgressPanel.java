@@ -7,6 +7,7 @@ import java.awt.*;
 
 public class ReceiveProgressPanel extends JPanel {
     private JLabel label; // Store to update color
+    private JLabel fileCountLabel; // New label for file count display
     private JProgressBar progressBar; // Store to update color (FlatLaf handles most styling)
 
     // Store current colors
@@ -17,11 +18,17 @@ public class ReceiveProgressPanel extends JPanel {
     public ReceiveProgressPanel(Color panelBg, Color textPrimary, Color borderColor) {
         this.currentPanelBg = panelBg;
         this.currentTextPrimary = textPrimary;
-        this.currentBorderColor = borderColor;
-
-        // Initialize components here if not already
+        if(textPrimary == null) {
+            currentTextPrimary = SendFileGUI.TEXT_PRIMARY; // Fallback to default if null
+        } else {
+            currentTextPrimary = currentTextPrimary.darker(); // Darken for better contrast
+        }
+        this.currentBorderColor = borderColor;        // Initialize components here if not already
         if (label == null) {
             label = new JLabel("Waiting for transfer...");
+        }
+        if (fileCountLabel == null) {
+            fileCountLabel = new JLabel(""); // Initially empty
         }
         if (progressBar == null) {
             progressBar = new JProgressBar();
@@ -36,10 +43,12 @@ public class ReceiveProgressPanel extends JPanel {
             BorderFactory.createLineBorder(currentBorderColor),
             "Transfer Progress", TitledBorder.LEFT, TitledBorder.TOP,
             SendFileGUI.FONT_TITLE, currentTextPrimary
-        ));
-
-        label.setFont(SendFileGUI.FONT_PRIMARY_PLAIN);
+        ));        label.setFont(SendFileGUI.FONT_PRIMARY_PLAIN);
         label.setForeground(currentTextPrimary);
+        
+        fileCountLabel.setFont(SendFileGUI.FONT_SECONDARY_PLAIN);
+        fileCountLabel.setForeground(currentTextPrimary.darker());
+        fileCountLabel.setHorizontalAlignment(SwingConstants.CENTER);
         // Add an icon to the label (optional, could be dynamic based on state)
         // Example: label.setIcon(new ImageIcon(getClass().getResource("/asset/info.png")));
 
@@ -55,9 +64,16 @@ public class ReceiveProgressPanel extends JPanel {
             getBorder(), // Keep the TitledBorder
             BorderFactory.createEmptyBorder(5,5,5,5)
         ));
+          removeAll(); // Good practice
         
-        removeAll(); // Good practice
-        add(label, BorderLayout.NORTH);
+        // Create a panel to stack the labels vertically
+        JPanel labelPanel = new JPanel();
+        labelPanel.setLayout(new BoxLayout(labelPanel, BoxLayout.Y_AXIS));
+        labelPanel.setBackground(currentPanelBg);
+        labelPanel.add(label);
+        labelPanel.add(fileCountLabel);
+        
+        add(labelPanel, BorderLayout.NORTH);
         add(progressBar, BorderLayout.CENTER);
         revalidate();
         repaint();
@@ -66,15 +82,23 @@ public class ReceiveProgressPanel extends JPanel {
     public void updateThemeColors(Color panelBg, Color textPrimary, Color borderColor) {
         this.currentPanelBg = panelBg;
         this.currentTextPrimary = textPrimary;
+        if(currentTextPrimary == null) {
+            currentTextPrimary = SendFileGUI.TEXT_PRIMARY; // Fallback to default if null
+        } else {
+            currentTextPrimary = currentTextPrimary.darker(); // Darken for better contrast
+        }
+
         this.currentBorderColor = borderColor;
         styleComponents();
     }
 
     public JLabel getLabel() {
         return label;
-    }
-
-    public JProgressBar getProgressBar() {
+    }    public JProgressBar getProgressBar() {
         return progressBar;
+    }
+    
+    public JLabel getFileCountLabel() {
+        return fileCountLabel;
     }
 }

@@ -58,6 +58,12 @@
             <version>9.0.10</version>
         </dependency>
         <!-- 其他依賴項可以加在這裡 -->
+    
+      <dependency>
+        <groupId>net.kuujo</groupId>
+        <artifactId>vertigo-util</artifactId>
+        <version>0.7.0-RC3</version>
+      </dependency>
     </dependencies>
 
     <!-- 您可能還需要 build plugins，例如 maven-jar-plugin 來設定 Main Class -->
