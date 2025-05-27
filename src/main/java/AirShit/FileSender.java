@@ -274,7 +274,6 @@ public class FileSender {
                 if (transferAcceptedByReceiver) {
                     final int totalFiles = filesToProcess.size();
                     int fileIndex = 0;
-
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         fileIndex++;

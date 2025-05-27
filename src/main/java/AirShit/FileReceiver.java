@@ -1,8 +1,6 @@
 package AirShit;
 
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.*;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -15,7 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
-import AirShit.ui.FileChooserDialog;
 
 public class FileReceiver {
 
@@ -123,7 +120,6 @@ public class FileReceiver {
                             // e.printStackTrace(); // For more detailed debugging if needed
                             throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
-                        boolean hasLz4 = false;
                         // Phase 2: Read File Info Loop
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
@@ -132,9 +128,6 @@ public class FileReceiver {
                             String[] fileInfoParts = fileInfoString.split("@");
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
-                            }
-                            if (fileInfoParts[0].endsWith(".tar")) {
-                                hasLz4 = true;
                             }
                             filesExpected.add(new FileInfo(fileInfoParts[0], Long.parseLong(fileInfoParts[1])));
                             dos.writeUTF("ACK_FILE_INFO");
@@ -204,7 +197,7 @@ public class FileReceiver {
                         // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;
-                            int currentFileIndex = 0;
+                            int currentFileIndex = 1;
                             for (FileInfo currentFileToReceive : filesExpected) {
                                 String outputFileName = currentFileToReceive.name;
                                 long fileSizeForThisFile = currentFileToReceive.size;

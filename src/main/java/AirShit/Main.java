@@ -449,7 +449,7 @@ public class Main { // 定義 Main 類別
                     GUI.sendPanel.getSendButton().setEnabled(true);
                     GUI.log("Transfer complete");
                     GUI.recvPanel.getProgressBar().setVisible(false);
-                    GUI.recvPanel.getLabel().setVisible(false);
+                    // GUI.recvPanel.getLabel().setVisible(false);
                     GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
             }

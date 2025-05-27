@@ -392,6 +392,20 @@ public class SendFileGUI extends JFrame {
                 LogPanel.log(sw.toString());
                 Main.sendStatus.set(Main.SEND_STATUS.SEND_OK);
             }
+            @Override
+            public void onFileStart(int currentFile, int totalFiles, String fileName) {
+                SwingUtilities.invokeLater(() -> {
+                    String fileCountText = "File " + currentFile + " of " + totalFiles;
+                    recvPanel.getFileCountLabel().setText(fileCountText);
+                    log("Sending file " + currentFile + "/" + totalFiles + ": " + fileName);
+                });
+            }
+            @Override
+            public void onFileComplete(int currentFile, int totalFiles, String fileName) {
+                SwingUtilities.invokeLater(() -> {
+                    log("Completed file " + currentFile + "/" + totalFiles + ": " + fileName);
+                });
+            }
         };
         new Thread(() -> {
             try {
