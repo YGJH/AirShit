@@ -355,7 +355,10 @@ public class Main { // 定義 Main 類別
                 try {
                     Thread.sleep(10);
                 } catch (InterruptedException ie) {
+                    // Thread was interrupted - restore interrupt status and exit
+                    System.out.println("responseNewClient: Interrupted during sleep - stopping response");
                     Thread.currentThread().interrupt();
+                    break;
                 }
             }
         } catch (Exception e) {
@@ -509,16 +512,22 @@ public class Main { // 定義 Main 類別
 
 
         multicastHello(); // Then announce yourself
-        new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
-            while (true) { // 無限迴圈檢查存活狀態
+        Thread checkAliveThread = new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
+            while (!Thread.currentThread().isInterrupted()) { // Check for interruption instead of infinite loop
                 try { // 嘗試檢查存活狀態
-                    Thread.sleep(5000); // 每 50 millisecond 秒檢查一次
+                    Thread.sleep(5000); // 每 5 秒檢查一次
                     checkAlive(); // 檢查客戶端存活狀態
                 } catch (InterruptedException e) { // 捕捉中斷例外
-                    e.printStackTrace(); // 列印例外資訊
+                    // Thread was interrupted during sleep - this is expected during shutdown
+                    System.out.println("CheckAliveThread: Interrupted during sleep - shutting down gracefully");
+                    Thread.currentThread().interrupt(); // Restore interrupt status
+                    break; // Exit the loop
                 }
             }
-        }).start(); // 啟動檢查存活狀態的執行緒
+            System.out.println("CheckAliveThread: Thread finished");
+        });
+        checkAliveThread.start(); // 啟動檢查存活狀態的執行緒
+        checkAliveThread.setName("AirShit-CheckAliveThread"); // 設定執行緒名稱
         SwingUtilities.invokeLater(() -> {
             GUI = new SendFileGUI();
         });
@@ -635,7 +644,8 @@ public class Main { // 定義 Main 類別
                     if (threadName.contains("MulticastListener") || 
                         threadName.contains("file-receiver") ||
                         threadName.contains("FileSender-Op") ||
-                        threadName.contains("send-thread")) {
+                        threadName.contains("send-thread")||
+                        threadName.contains("CheckAliveThread")) {
                         
                         // Give threads a chance to cleanup by interrupting them
                         thread.interrupt();
