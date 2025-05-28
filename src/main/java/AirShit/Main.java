@@ -312,11 +312,11 @@ public class Main { // 定義 Main 類別
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 Thread.sleep(100); // Slight delay to avoid flooding
-                                responseNewClient(packet.getAddress(), packet.getPort());
+                                responseNewClient(packet.getAddress());
                             } else {
                                 // Client already known, maybe update timestamp or ignore
                                 System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
-                                responseNewClient(packet.getAddress(), packet.getPort());
+                                responseNewClient(packet.getAddress());
                             }
                         }
                     }
@@ -341,19 +341,19 @@ public class Main { // 定義 Main 類別
         MultiCast.start(); // 啟動多播監聽執行緒
     }
 
-    public static void responseNewClient(InetAddress targetAddr, int targetPort) {
+    public static void responseNewClient(InetAddress targetAddr) {
         try (
-                DatagramSocket socket = new DatagramSocket();) {
+                DatagramSocket socket = new DatagramSocket()) {
 
-            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
+            System.out.println("回應新客戶端: " + targetAddr + ":" + DISCOVERY_PORT);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
             for (int i = 0; i < 3; i++) {
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, targetPort);
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddr, DISCOVERY_PORT);
                 socket.send(sendPacket);
                 try {
-                    Thread.sleep(10);
+                    Thread.sleep(100);
                 } catch (InterruptedException ie) {
                     // Thread was interrupted - restore interrupt status and exit
                     System.out.println("responseNewClient: Interrupted during sleep - stopping response");
