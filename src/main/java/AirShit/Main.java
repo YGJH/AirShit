@@ -316,7 +316,6 @@ public class Main { // 定義 Main 類別
                             } else {
                                 // Client already known, maybe update timestamp or ignore
                                 System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
-                                multicastHello();
                             }
                         }
                     }
