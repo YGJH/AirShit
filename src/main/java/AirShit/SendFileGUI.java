@@ -59,12 +59,12 @@ public class SendFileGUI extends JFrame {
     private FileSelectionPanel filePanel;
     public SendControlPanel sendPanel;
     public ReceiveProgressPanel recvPanel;
-    private LogPanel logPanel;
-    private JToggleButton themeToggleButton;
+    private LogPanel logPanel;    private JToggleButton themeToggleButton;
     private JButton refreshButton;
     private boolean isDarkMode = true;
     private JTextField portField;
     private JTextField groupField;
+    private JComboBox<String> comparisonModeCombo;
 
     public SendFileGUI() {
         super("AirShit File Transfer");
@@ -87,12 +87,11 @@ public class SendFileGUI extends JFrame {
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         applyTheme(isDarkMode); // Apply initial theme
-        initComponents();
-
-        layoutComponents();
+        initComponents();        layoutComponents();
         bindEvents();
         
         log("Welcome to AirShit File Transfer");
+        log("當前比對模式: " + getModeDescription(ReceiverOptimized.getCurrentMode()));
         SwingUtilities.invokeLater(() -> setVisible(true));
     }
 
@@ -173,10 +172,17 @@ public class SendFileGUI extends JFrame {
 
         // DISCOVERY_PORT 输入框
         portField = new JTextField(String.valueOf(Main.DISCOVERY_PORT), 6);
-        portField.setFont(FONT_PRIMARY_PLAIN);
-        // Multicast IP 输入框
+        portField.setFont(FONT_PRIMARY_PLAIN);        // Multicast IP 输入框
         groupField = new JTextField(Main.MULTICAST_GROUP, 15);
-        groupField.setFont(FONT_PRIMARY_PLAIN);
+        groupField.setFont(FONT_PRIMARY_PLAIN);        // 比對模式選擇器
+        String[] modeOptions = {"效能優先", "智能比對", "激進去重"};
+        comparisonModeCombo = new JComboBox<>(modeOptions);
+        comparisonModeCombo.setSelectedIndex(0); // 默認選擇效能優先模式
+        comparisonModeCombo.setFont(FONT_PRIMARY_PLAIN);
+        comparisonModeCombo.setToolTipText("<html><b>檔案接收比對模式：</b><br/>" +
+                "• <b>效能優先</b>：跳過重複比對，直接寫入 (速度最快)<br/>" +
+                "• <b>智能比對</b>：只比對大區塊，平衡性能與去重<br/>" +
+                "• <b>激進去重</b>：比對所有區塊，最大程度去重 (速度較慢)</html>");
 
         receiveProgressBar = recvPanel.getProgressBar();
         sendPanel.getSendButton().setEnabled(false);
@@ -199,11 +205,11 @@ public class SendFileGUI extends JFrame {
 
     private void layoutComponents() {
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        // topBar.setBackground(APP_BACKGROUND); // This will be set by applyTheme now
-
-        themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
+        // topBar.setBackground(APP_BACKGROUND); // This will be set by applyTheme now        themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
         topBar.add(themeToggleButton);
         topBar.add(refreshButton); // 新增到工具列
+        topBar.add(new JLabel("比對模式:"));
+        topBar.add(comparisonModeCombo);
         topBar.add(new JLabel("DISCOVERY_PORT:"));
         topBar.add(portField);
         topBar.add(new JLabel("Multicast IP:"));
@@ -239,9 +245,28 @@ public class SendFileGUI extends JFrame {
     private void bindEvents() {
         themeToggleButton.addActionListener(e -> {
             applyTheme(themeToggleButton.isSelected());
-        });
-        // Refresh 按一下就重啟整個程式
+        });        // Refresh 按一下就重啟整個程式
         refreshButton.addActionListener(e -> Main.restart());
+
+        // 比對模式選擇事件處理
+        comparisonModeCombo.addActionListener(e -> {
+            int selectedIndex = comparisonModeCombo.getSelectedIndex();
+            ReceiverOptimized.ComparisonMode mode;
+            switch (selectedIndex) {
+                case 0:
+                    mode = ReceiverOptimized.ComparisonMode.PERFORMANCE_FIRST;
+                    break;
+                case 1:
+                    mode = ReceiverOptimized.ComparisonMode.SMART_COMPARISON;
+                    break;
+                case 2:
+                    mode = ReceiverOptimized.ComparisonMode.AGGRESSIVE_DEDUP;
+                    break;
+                default:
+                    mode = ReceiverOptimized.ComparisonMode.PERFORMANCE_FIRST;
+            }
+            ReceiverOptimized.setComparisonMode(mode);
+        });
 
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
         filePanel.addPropertyChangeListener("selectedFile", ev -> updateSendState()); // 監聽檔案選擇變更
@@ -439,6 +464,18 @@ public class SendFileGUI extends JFrame {
             idx++;
         }
         return String.format("%.2f %s", val, units[idx]);
+    }
+
+    /**
+     * 取得比對模式的中文描述
+     */
+    private static String getModeDescription(ReceiverOptimized.ComparisonMode mode) {
+        switch (mode) {
+            case PERFORMANCE_FIRST: return "效能優先";
+            case SMART_COMPARISON: return "智能比對";
+            case AGGRESSIVE_DEDUP: return "激進去重";
+            default: return "未知模式";
+        }
     }
 
     public ClientPanel getClientPanel() { // Add this getter

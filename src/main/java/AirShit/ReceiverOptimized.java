@@ -22,9 +22,48 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ReceiverOptimized {
     private final ServerSocket serverSocket;
     
-    // 區塊比對設定
-    private static final int COMPARISON_BLOCK_SIZE = 64 * 1024; // 64KB 比對區塊大小
-    private static final int FAST_COMPARE_SIZE = 8; // 使用 long (8 bytes) 進行快速比較
+    // 智能比對設定 - 參考 Google CDC 理念優化
+    private static final int BATCH_WRITE_THRESHOLD = 256 * 1024; // 256KB 批次寫入閾值
+    
+    // 智能模式切換
+    public enum ComparisonMode {
+        PERFORMANCE_FIRST,  // 優先性能，跳過比對
+        SMART_COMPARISON,   // 智能比對，平衡性能與去重
+        AGGRESSIVE_DEDUP    // 激進去重，犧牲性能換取最大去重效益
+    }
+    
+    private static final ComparisonMode DEFAULT_MODE = ComparisonMode.PERFORMANCE_FIRST;
+    
+    // 可以在運行時切換的模式
+    private static ComparisonMode currentMode = DEFAULT_MODE;
+    
+    /**
+     * 設定接收器的比對模式
+     * @param mode 比對模式
+     */
+    public static void setComparisonMode(ComparisonMode mode) {
+        currentMode = mode;
+        LogPanel.log("ReceiverOptimized: 切換到 " + getModeDescription(mode) + " 模式");
+    }
+    
+    /**
+     * 取得當前比對模式
+     */
+    public static ComparisonMode getCurrentMode() {
+        return currentMode;
+    }
+    
+    /**
+     * 取得模式描述
+     */
+    private static String getModeDescription(ComparisonMode mode) {
+        switch (mode) {
+            case PERFORMANCE_FIRST: return "效能優先";
+            case SMART_COMPARISON: return "智能比對";
+            case AGGRESSIVE_DEDUP: return "激進去重";
+            default: return "未知模式";
+        }
+    }
 
     public ReceiverOptimized(ServerSocket ss) {
         this.serverSocket = ss;
@@ -38,9 +77,9 @@ public class ReceiverOptimized {
         // 限制執行緒數量，避免過多併發
         int maxThreads = Math.max(1, threadCount);
         threadCount = Math.min(Math.max(1, threadCount), maxThreads);
-        
-        LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
-                    " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
+          LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
+                    " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + 
+                    ", 比對模式: " + getModeDescription(currentMode) + ")");
 
         if (fileLength == 0) {
             if (cb != null) {
@@ -120,9 +159,7 @@ public class ReceiverOptimized {
             }
             return false;
         }
-    }
-
-    private static class ReceiverWorker implements Runnable {
+    }    private static class ReceiverWorker implements Runnable {
         private final Socket dataSocket;
         private final RandomAccessFile raf;
         private final TransferCallback callback;
@@ -131,7 +168,6 @@ public class ReceiverOptimized {
         @SuppressWarnings("unused")
         private final long expectedFileLength;
         private final FileChannel fileChannel;
-        private final String outputFilePath;
 
         public ReceiverWorker(Socket dataSocket, RandomAccessFile raf, TransferCallback callback, 
                             AtomicLong totalReceived, AtomicLong totalSkipped, 
@@ -143,7 +179,7 @@ public class ReceiverOptimized {
             this.totalBytesSkipped = totalSkipped;
             this.expectedFileLength = expectedFileLength;
             this.fileChannel = (this.raf != null) ? this.raf.getChannel() : null;
-            this.outputFilePath = outputFilePath;
+            // outputFilePath 移除，因為不再使用
         }
 
         @Override
@@ -228,10 +264,8 @@ public class ReceiverOptimized {
                 }
             }
             return true;
-        }
-
-        /**
-         * 智能區塊比對和寫入
+        }        /**
+         * 高效能智能區塊比對和寫入 - 基於模式切換的優化
          */
         private ComparisonResult receiveAndCompareChunkData(ReadableByteChannel socketChannel, 
                                                           long chunkOffset, long chunkLength) throws IOException {
@@ -258,115 +292,137 @@ public class ReceiverOptimized {
             }
             
             newDataBuffer.flip(); // 準備讀取
+              // 根據當前動態模式決定處理策略
+            ComparisonMode mode = currentMode;
             
-            // 檢查檔案是否已存在相同位置的資料
-            ComparisonResult result = new ComparisonResult();
-            
-            try {
-                // 讀取現有檔案資料進行比對
-                ByteBuffer existingDataBuffer = ByteBuffer.allocateDirect((int) chunkLength);
-                
-                if (fileChannel != null) {
-                    fileChannel.position(chunkOffset);
+            switch (mode) {
+                case PERFORMANCE_FIRST:
+                    // 優先性能：直接寫入，不進行比對
+                    return writeAllNewData(newDataBuffer, chunkOffset);
                     
-                    // 檢查檔案是否已有足夠長度
-                    long fileSize = fileChannel.size();
-                    if (chunkOffset + chunkLength <= fileSize) {
-                        // 檔案已有足夠長度，讀取現有資料
-                        while (existingDataBuffer.hasRemaining()) {
-                            int bytesRead = fileChannel.read(existingDataBuffer);
-                            if (bytesRead == -1) break;
+                case SMART_COMPARISON:
+                    // 智能比對：僅對大 chunk 進行比對
+                    if (chunkLength >= BATCH_WRITE_THRESHOLD && fileChannel != null) {
+                        try {
+                            long fileSize = fileChannel.size();
+                            if (chunkOffset + chunkLength <= fileSize) {
+                                return optimizedBatchCompareAndWrite(newDataBuffer, chunkOffset, chunkLength);
+                            }
+                        } catch (IOException e) {
+                            LogPanel.log("ReceiverOptimized: 智能比對失敗，回退到直接寫入: " + e.getMessage());
                         }
-                        existingDataBuffer.flip();
-                        
-                        // 進行快速區塊比對
-                        result = compareAndWriteBlocks(newDataBuffer, existingDataBuffer, chunkOffset);
-                    } else {
-                        // 檔案長度不足，直接寫入所有新資料
-                        result = writeAllNewData(newDataBuffer, chunkOffset);
                     }
-                } else {
-                    // 沒有 fileChannel，直接寫入
-                    result = writeAllNewData(newDataBuffer, chunkOffset);
-                }
-                
-            } catch (IOException e) {
-                // 比對失敗，直接寫入新資料
-                LogPanel.log("ReceiverOptimized: 比對失敗，直接寫入: " + e.getMessage());
-                newDataBuffer.rewind();
-                result = writeAllNewData(newDataBuffer, chunkOffset);
+                    return writeAllNewData(newDataBuffer, chunkOffset);
+                    
+                case AGGRESSIVE_DEDUP:
+                    // 激進去重：總是嘗試比對（原始行為）
+                    if (fileChannel != null) {
+                        try {
+                            long fileSize = fileChannel.size();
+                            if (chunkOffset + chunkLength <= fileSize) {
+                                return optimizedBatchCompareAndWrite(newDataBuffer, chunkOffset, chunkLength);
+                            }
+                        } catch (IOException e) {
+                            LogPanel.log("ReceiverOptimized: 激進比對失敗，回退到直接寫入: " + e.getMessage());
+                        }
+                    }
+                    return writeAllNewData(newDataBuffer, chunkOffset);
+                    
+                default:
+                    return writeAllNewData(newDataBuffer, chunkOffset);
             }
-            
-            return result;
-        }
-
-        /**
-         * 快速區塊比對並寫入不同的部分
+        }/**
+         * 優化的批次比對和寫入 - 減少 I/O 操作次數
          */
-        private ComparisonResult compareAndWriteBlocks(ByteBuffer newData, ByteBuffer existingData, 
-                                                     long chunkOffset) throws IOException {
+        private ComparisonResult optimizedBatchCompareAndWrite(ByteBuffer newData, 
+                                                            long chunkOffset, long chunkLength) throws IOException {
             ComparisonResult result = new ComparisonResult();
+            
+            // 使用較大的比對區塊 (512KB) 來減少 I/O 次數
+            int batchSize = Math.min((int) chunkLength, 512 * 1024);
+            ByteBuffer existingBatch = ByteBuffer.allocateDirect(batchSize);
             
             newData.rewind();
-            existingData.rewind();
-            
-            int blockSize = COMPARISON_BLOCK_SIZE;
             long currentOffset = chunkOffset;
             
-            while (newData.hasRemaining() && existingData.hasRemaining()) {
-                int remainingBytes = Math.min(newData.remaining(), existingData.remaining());
-                int currentBlockSize = Math.min(blockSize, remainingBytes);
+            while (newData.hasRemaining()) {
+                int currentBatchSize = Math.min(batchSize, newData.remaining());
                 
-                // 建立當前區塊的 buffer
-                ByteBuffer newBlock = newData.slice();
-                newBlock.limit(currentBlockSize);
+                // 讀取一批現有資料
+                existingBatch.clear();
+                existingBatch.limit(currentBatchSize);
                 
-                ByteBuffer existingBlock = existingData.slice();
-                existingBlock.limit(currentBlockSize);
+                fileChannel.position(currentOffset);
+                while (existingBatch.hasRemaining()) {
+                    int bytesRead = fileChannel.read(existingBatch);
+                    if (bytesRead == -1) break;
+                }
+                existingBatch.flip();
                 
-                // 快速比對區塊
-                if (fastBlockCompare(newBlock, existingBlock)) {
-                    // 區塊相同，跳過
-                    result.bytesSkipped += currentBlockSize;
+                // 準備新資料批次
+                ByteBuffer newBatch = newData.slice();
+                newBatch.limit(currentBatchSize);
+                
+                // 快速比對整個批次
+                boolean batchesIdentical = fastBatchCompare(newBatch, existingBatch);
+                
+                if (batchesIdentical) {
+                    // 整個批次相同，跳過
+                    result.bytesSkipped += currentBatchSize;
                 } else {
-                    // 區塊不同，寫入新資料
-                    if (fileChannel != null) {
-                        fileChannel.position(currentOffset);
-                        newBlock.rewind();
-                        while (newBlock.hasRemaining()) {
-                            fileChannel.write(newBlock);
-                        }
-                        fileChannel.force(false); // 強制寫入
+                    // 批次不同，寫入新資料
+                    fileChannel.position(currentOffset);
+                    newBatch.rewind();
+                    while (newBatch.hasRemaining()) {
+                        fileChannel.write(newBatch);
                     }
-                    result.bytesWritten += currentBlockSize;
+                    result.bytesWritten += currentBatchSize;
                 }
                 
-                // 移動 buffer 位置
-                newData.position(newData.position() + currentBlockSize);
-                existingData.position(existingData.position() + currentBlockSize);
-                currentOffset += currentBlockSize;
-                result.totalProcessed += currentBlockSize;
+                // 移動到下個批次
+                newData.position(newData.position() + currentBatchSize);
+                currentOffset += currentBatchSize;
+                result.totalProcessed += currentBatchSize;
             }
             
-            // 處理剩餘的新資料（如果有的話）
-            if (newData.hasRemaining()) {
-                int remainingBytes = newData.remaining();
-                if (fileChannel != null) {
-                    fileChannel.position(currentOffset);
-                    while (newData.hasRemaining()) {
-                        fileChannel.write(newData);
-                    }
-                    fileChannel.force(false);
-                }
-                result.bytesWritten += remainingBytes;
-                result.totalProcessed += remainingBytes;
+            // 最後才強制刷新，減少磁碟操作
+            if (result.bytesWritten > 0 && fileChannel != null) {
+                fileChannel.force(false);
             }
             
             return result;
         }
 
         /**
-         * 寫入所有新資料（當無法比對時）
+         * 快速批次比對 - 使用 long 進行 8-byte 比對
+         */
+        private boolean fastBatchCompare(ByteBuffer buffer1, ByteBuffer buffer2) {
+            if (buffer1.remaining() != buffer2.remaining()) {
+                return false;
+            }
+            
+            buffer1.rewind();
+            buffer2.rewind();
+            
+            // 先用 long 進行快速比較
+            while (buffer1.remaining() >= 8 && buffer2.remaining() >= 8) {
+                long long1 = buffer1.getLong();
+                long long2 = buffer2.getLong();
+                if (long1 != long2) {
+                    return false;
+                }
+            }
+            
+            // 比較剩餘 bytes
+            while (buffer1.hasRemaining() && buffer2.hasRemaining()) {
+                if (buffer1.get() != buffer2.get()) {
+                    return false;
+                }
+            }
+            
+            return !buffer1.hasRemaining() && !buffer2.hasRemaining();
+        }        /**
+         * 寫入所有新資料（當無法比對或不需要比對時）
          */
         private ComparisonResult writeAllNewData(ByteBuffer newData, long chunkOffset) throws IOException {
             ComparisonResult result = new ComparisonResult();
@@ -384,36 +440,6 @@ public class ReceiverOptimized {
             result.totalProcessed = newData.capacity();
             
             return result;
-        }
-
-        /**
-         * 使用 long (8 bytes) 進行快速區塊比對
-         */
-        private boolean fastBlockCompare(ByteBuffer buffer1, ByteBuffer buffer2) {
-            if (buffer1.remaining() != buffer2.remaining()) {
-                return false;
-            }
-            
-            buffer1.rewind();
-            buffer2.rewind();
-            
-            // 使用 long 進行快速比較
-            while (buffer1.remaining() >= 8 && buffer2.remaining() >= 8) {
-                long long1 = buffer1.getLong();
-                long long2 = buffer2.getLong();
-                if (long1 != long2) {
-                    return false;
-                }
-            }
-            
-            // 比較剩餘的 bytes
-            while (buffer1.hasRemaining() && buffer2.hasRemaining()) {
-                if (buffer1.get() != buffer2.get()) {
-                    return false;
-                }
-            }
-            
-            return !buffer1.hasRemaining() && !buffer2.hasRemaining();
         }
     }
 
