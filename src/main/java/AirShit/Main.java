@@ -311,10 +311,12 @@ public class Main { // 定義 Main 類別
                                 System.out.println("Listener: Added new client from HELLO: " + tempClient.getUserName() + " @ " + tempClient.getIPAddr());
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
+                                Thread.sleep(100); // Slight delay to avoid flooding
                                 responseNewClient(packet.getAddress(), packet.getPort());
                             } else {
                                 // Client already known, maybe update timestamp or ignore
                                 System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
+                                responseNewClient(packet.getAddress(), packet.getPort());
                             }
                         }
                     }
