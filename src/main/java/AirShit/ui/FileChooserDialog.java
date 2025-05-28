@@ -232,6 +232,24 @@ public class FileChooserDialog {
             favoriteDirs.add(videosDir);
         // Add more common directories if needed
 
+        String oneDrivePath = System.getenv("OneDrive");
+        if (oneDrivePath != null) {
+            File oneDriveDir = new File(oneDrivePath);
+            if (oneDriveDir.exists() && oneDriveDir.isDirectory()) {
+                favoriteDirs.add(oneDriveDir);
+
+                // 你也可以加入 OneDrive 下的常用子資料夾
+                File oneDriveDocuments = new File(oneDriveDir, "文件"); // 中文Windows通常是「文件」
+                if (oneDriveDocuments.exists() && oneDriveDocuments.isDirectory())
+                    favoriteDirs.add(oneDriveDocuments);
+
+                File oneDrivePictures = new File(oneDriveDir, "圖片"); // 中文Windows通常是「圖片」
+                if (oneDrivePictures.exists() && oneDrivePictures.isDirectory())
+                    favoriteDirs.add(oneDrivePictures);
+
+                // 你可以依需求再加其他子資料夾
+            }
+        }
 
         for (File dir : favoriteDirs) {
             Label favLabel = new Label(dir.getName().isEmpty() ? dir.getAbsolutePath() : dir.getName());

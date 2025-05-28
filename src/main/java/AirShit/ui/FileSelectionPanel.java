@@ -21,6 +21,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.DosFileAttributes;
 import java.util.List;
 
 public class FileSelectionPanel extends JPanel implements DropTargetListener {
@@ -63,6 +65,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
                             try {
                                 Desktop.getDesktop().open(selected);
                             } catch (Exception ex) {
+                                ex.printStackTrace();
                                 JOptionPane.showMessageDialog(FileSelectionPanel.this,
                                         "Cannot preview file: " + ex.getMessage(),
                                         "Preview Error", JOptionPane.ERROR_MESSAGE);
@@ -282,6 +285,7 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         if (clearBtn != null)
             clearBtn.setEnabled(true);
         firePropertyChange("selectedFile", oldSelected, selected);
+        System.out.println("Selected: " + selected.getAbsolutePath() + ", exists: " + selected.exists());
         revalidate();
         repaint();
     }
@@ -431,5 +435,16 @@ public class FileSelectionPanel extends JPanel implements DropTargetListener {
         // panel.
         // The TransferHandler should call dtde.acceptDrop() or dtde.rejectDrop()
         // and dtde.dropComplete().
+    }
+
+    public static boolean isCloudOnly(File file) {
+        try {
+            Path path = file.toPath();
+            DosFileAttributes dos = Files.readAttributes(path, DosFileAttributes.class);
+            // Windows 10/11 OneDrive 雲端檔案會有「offline」屬性
+            return dos.isOther() && !file.exists();
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
