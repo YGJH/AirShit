@@ -190,10 +190,19 @@ public class FileReceiver {
                                         "FileReceiver: Sender ACKed our OK@ message. Handshake fully complete. Preparing for data sockets.");
                             }
                         }
-                        System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);
-                        // Data Reception Loop (if proceedWithTransfer is true)
+                        System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);                        // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
+                            
+                            // 添加延遲，確保發送端握手完全完成
+                            try {
+                                Thread.sleep(1500); // 1.5秒延遲
+                                LogPanel.log("FileReceiver: 準備接收數據連接...");
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                throw new IOException("初始化被中斷", e);
+                            }
+                            
                         // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;

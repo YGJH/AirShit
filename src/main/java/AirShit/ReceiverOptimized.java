@@ -65,12 +65,11 @@ public class ReceiverOptimized {
                 // 建立多個 ReceiverWorker
                 for (int i = 0; i < threadCount; i++) {
                     final int workerIndex = i;
-                    Future<?> future = executor.submit(() -> {
-                        try {
+                    Future<?> future = executor.submit(() -> {                        try {
                             LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 等待連接...");
                             
                             // 設定較長的超時時間
-                            serverSocket.setSoTimeout(30000); // 30秒超時
+                            serverSocket.setSoTimeout(45000); // 增加到45秒超時
                             
                             // 等待連接
                             Socket socket = serverSocket.accept();
@@ -79,8 +78,13 @@ public class ReceiverOptimized {
                             ReceiverWorker worker = new ReceiverWorker(socket, raf, cb, totalBytesReceived, fileLength);
                             worker.run();
                             
+                        } catch (java.net.SocketTimeoutException e) {
+                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 等待連接超時 (45秒): " + e.getMessage());
+                            if (cb != null) {
+                                cb.onError(new IOException("等待數據連接超時", e));
+                            }
                         } catch (IOException e) {
-                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 連接錯誤: " + e.getMessage());
+                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 連接錯誤: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                             if (cb != null) {
                                 cb.onError(e);
                             }
@@ -150,11 +154,11 @@ public class ReceiverOptimized {
                 
                 // 使用 NIO 進行高效資料傳輸
                 try (ReadableByteChannel socketChannel = Channels.newChannel(dataSocket.getInputStream())) {
-                    
-                    while (true) {
+                      while (true) {
                         // 讀取 chunk metadata: offset (8 bytes) + length (8 bytes)
                         ByteBuffer metaBuffer = ByteBuffer.allocate(16);
                         if (!readFully(socketChannel, metaBuffer)) {
+                            LogPanel.log("ReceiverOptimized Worker: 連接已關閉，停止接收");
                             break; // 連接關閉
                         }
                         
@@ -162,8 +166,8 @@ public class ReceiverOptimized {
                         long chunkOffset = metaBuffer.getLong();
                         long chunkLength = metaBuffer.getLong();
                         
-                        // LogPanel.log("ReceiverOptimized Worker: 接收 chunk offset=" + chunkOffset + 
-                        //            ", length=" + chunkLength);
+                        LogPanel.log("ReceiverOptimized Worker: 接收 chunk offset=" + chunkOffset + 
+                                   ", length=" + chunkLength);
                         
                         // 接收 chunk 資料
                         long bytesRead = receiveChunkData(socketChannel, chunkOffset, chunkLength);

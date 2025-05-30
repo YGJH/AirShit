@@ -274,10 +274,9 @@ public class FileSender {
                 if (transferAcceptedByReceiver) {
                     final int totalFiles = filesToProcess.size();
                     int fileIndex = 0;
-                    
-                    // 添加短暫延遲，讓接收端準備好接受連接
+                      // 添加足夠的延遲，確保接收端完全準備好接受連接
                     try {
-                        Thread.sleep(2000); // 2秒延遲
+                        Thread.sleep(3000); // 增加到3秒延遲
                         LogPanel.log("FileSender: 等待接收端準備完成...");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
