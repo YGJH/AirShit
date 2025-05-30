@@ -107,12 +107,11 @@ public class SendFileOptimized {
             
             if (originalCallback != null) {
                 originalCallback.onStart(fileLength , file.getName());
-            }
-
-            List<Future<?>> futures = new ArrayList<>();
+            }            List<Future<?>> futures = new ArrayList<>();
             TransferCallback wrappedCallback = getWrappedCallback();
 
             for (int i = 0; i < threadCount; i++) {
+                final int workerId = i; // Make effectively final for lambda
                 Future<?> future = executor.submit(() -> {
                     SocketChannel socketChannel = null;
                     int retryCount = 0;
@@ -124,11 +123,11 @@ public class SendFileOptimized {
                             try {
                                 socketChannel = SocketChannel.open();
                                 socketChannel.connect(new InetSocketAddress(host, port));
-                                LogPanel.log("SendFileOptimized Worker " + i + ": 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
+                                LogPanel.log("SendFileOptimized Worker " + workerId + ": 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
                                 break;
                             } catch (IOException e) {
                                 retryCount++;
-                                LogPanel.log("SendFileOptimized Worker " + i + ": 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
+                                LogPanel.log("SendFileOptimized Worker " + workerId + ": 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
                                 
                                 if (socketChannel != null) {
                                     try {
