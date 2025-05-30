@@ -129,20 +129,6 @@ AirShit/
                 └── slash.png           # 路徑分隔符號
 ```
 
-────────────────────────────────────────────────────────────┐
-│                   GUI Layer (圖形介面層)                    │
-│  SendFileGUI + UI Components (Swing + JavaFX)             │
-├───────────────────────────────────────────────────────────┤
-│                Network Layer (網路通訊層)                   │
-│  UDP Multicast Discovery + TCP File Transfer              │
-├───────────────────────────────────────────────────────────┤
-│              File Processing Layer (檔案處理層)             │
-│  TAR Compression + Chunking + Optimization                │
-├───────────────────────────────────────────────────────────┤
-│                Utilities Layer (工具層)                    │
-│  File Selection + Test Data Generation                    │
-└───────────────────────────────────────────────────────────┘
-
 
 (注意: 上述 .class 檔案列表是根據提供的 folder 內容推斷，實際編譯結果可能略有不同，
 例如 SendFileGUI$ClientCellRenderer.class 應該位於 ui/ 子目錄下。)

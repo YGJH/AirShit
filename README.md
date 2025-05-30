@@ -149,19 +149,7 @@ AirShit/
                 └── slash.png   
 ```
 
-──────────────────────────────────────────────────┐
-│                   GUI Layer                     │
-│  SendFileGUI + UI Components (Swing + JavaFX)   │
-├─────────────────────────────────────────────────┤
-│                Network Layer                    │
-│  UDP Multicast Discovery + TCP File Transfer    │
-├─────────────────────────────────────────────────┤
-│              File Processing Layer              │
-│  TAR Compression + Chunking + Optimization      │
-├─────────────────────────────────────────────────┤
-│                Utilities Layer                  │
-│  File Selection + Test Data Generation          │
-└─────────────────────────────────────────────────┘
+
 
 (Note: The .class file list above is inferred from the provided folder content.
 The actual compilation result might differ slightly, e.g.,
