@@ -4,13 +4,19 @@
 
 =====================================================
 
-Version: 1.0.0
+Version: 1.4.0
 
-Last Updated: 2025-05-23
+Last Updated: 2025-05-30
 
 =====================================================
 
 ## Introduction
+
+### image
+![AirShit Main Window](img/dark.png)
+![light mode](img/light.png)
+![File Transfer](img/fileexp.png)
+
 
 AirShit is a peer-to-peer (P2P) file transfer application designed specifically
 for Local Area Network (LAN) environments. It utilizes the TCP protocol for
