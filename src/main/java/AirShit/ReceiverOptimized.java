@@ -60,19 +60,27 @@ public class ReceiverOptimized {
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 List<Future<?>> futures = new ArrayList<>();
                 
+                LogPanel.log("ReceiverOptimized: 準備接受 " + threadCount + " 個並發連接...");
+                
                 // 建立多個 ReceiverWorker
                 for (int i = 0; i < threadCount; i++) {
+                    final int workerIndex = i;
                     Future<?> future = executor.submit(() -> {
                         try {
+                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 等待連接...");
+                            
+                            // 設定較長的超時時間
+                            serverSocket.setSoTimeout(30000); // 30秒超時
+                            
                             // 等待連接
                             Socket socket = serverSocket.accept();
-                            // LogPanel.log("ReceiverOptimized Worker: 接受連接 " + socket.getRemoteSocketAddress());
+                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 接受連接 " + socket.getRemoteSocketAddress());
                             
                             ReceiverWorker worker = new ReceiverWorker(socket, raf, cb, totalBytesReceived, fileLength);
                             worker.run();
                             
                         } catch (IOException e) {
-                            LogPanel.log("ReceiverOptimized Worker: 連接錯誤: " + e.getMessage());
+                            LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 連接錯誤: " + e.getMessage());
                             if (cb != null) {
                                 cb.onError(e);
                             }

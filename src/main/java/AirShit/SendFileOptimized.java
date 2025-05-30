@@ -107,9 +107,48 @@ public class SendFileOptimized {
 
             for (int i = 0; i < threadCount; i++) {
                 Future<?> future = executor.submit(() -> {
-                    try (SocketChannel socketChannel = SocketChannel.open()) {
-                        // 連接到接收端
-                        socketChannel.connect(new InetSocketAddress(host, port));
+                    SocketChannel socketChannel = null;
+                    int retryCount = 0;
+                    final int MAX_RETRIES = 5;
+                    final int RETRY_DELAY_MS = 1000;
+                    
+                    try {
+                        // Retry connection logic
+                        while (socketChannel == null && retryCount < MAX_RETRIES) {
+                            try {
+                                socketChannel = SocketChannel.open();
+                                socketChannel.connect(new InetSocketAddress(host, port));
+                                LogPanel.log("SendFileOptimized: 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
+                                break;
+                            } catch (IOException e) {
+                                retryCount++;
+                                LogPanel.log("SendFileOptimized: 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
+                                
+                                if (socketChannel != null) {
+                                    try {
+                                        socketChannel.close();
+                                    } catch (IOException closeEx) {
+                                        // Ignore close errors
+                                    }
+                                    socketChannel = null;
+                                }
+                                
+                                if (retryCount < MAX_RETRIES) {
+                                    try {
+                                        Thread.sleep(RETRY_DELAY_MS);
+                                    } catch (InterruptedException ie) {
+                                        Thread.currentThread().interrupt();
+                                        throw new IOException("連接被中斷", ie);
+                                    }
+                                } else {
+                                    throw new IOException("達到最大重試次數，連接失敗", e);
+                                }
+                            }
+                        }
+                        
+                        if (socketChannel == null) {
+                            throw new IOException("無法建立連接到 " + host + ":" + port);
+                        }
                         
                         // 設定高效能選項
                         socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
@@ -121,12 +160,20 @@ public class SendFileOptimized {
                         worker.run();
                         
                     } catch (IOException e) {
+                        LogPanel.log("SendFileOptimized: 連接錯誤: " + e.getMessage());
                         wrappedCallback.onError(e);
+                        if (socketChannel != null) {
+                            try {
+                                socketChannel.close();
+                            } catch (IOException closeEx) {
+                                LogPanel.log("SendFileOptimized: 關閉連接時出錯: " + closeEx.getMessage());
+                            }
+                        }
                     }
                 });
                 futures.add(future);
             }
-
+            
             // 等待所有 worker 完成
             for (Future<?> future : futures) {
                 try {

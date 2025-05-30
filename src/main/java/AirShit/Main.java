@@ -753,5 +753,6 @@ public class Main { // 定義 Main 類別
 
     public static boolean isUsingAutoDetection() {
         return useAutoDetection;
+
     }
 }

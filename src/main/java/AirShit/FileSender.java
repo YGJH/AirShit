@@ -274,6 +274,16 @@ public class FileSender {
                 if (transferAcceptedByReceiver) {
                     final int totalFiles = filesToProcess.size();
                     int fileIndex = 0;
+                    
+                    // 添加短暫延遲，讓接收端準備好接受連接
+                    try {
+                        Thread.sleep(2000); // 2秒延遲
+                        LogPanel.log("FileSender: 等待接收端準備完成...");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("等待被中斷", e);
+                    }
+                    
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         fileIndex++;
