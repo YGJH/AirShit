@@ -206,7 +206,6 @@ public class Main { // 定義 Main 類別
 
                 InetAddress group = getMulticastAddress();
                 if (group == null) {
-                    System.err.println("Listener: Multicast group address is null. Cannot start listener.");
                     return;
                 }
 
@@ -233,8 +232,6 @@ public class Main { // 定義 Main 類別
                 if (!joinedGroup) { // If specific interface wasn't found or failed to join on it
                     try {
                         socket.joinGroup(group); // Join on all interfaces that support multicast for the given address family
-                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
-                                           " on default interfaces (either as primary choice or fallback).");
                         joinedGroup = true;
                     } catch (IOException e) {
                         System.err.println("Listener: FAILED to join multicast group on default interfaces: " + e.getMessage());
@@ -249,7 +246,6 @@ public class Main { // 定義 Main 類別
                 }
 
                 byte[] buffer = new byte[1024];
-                System.out.println("Multicast listener started on port " + DISCOVERY_PORT + " for group " + group.getHostAddress());
                 while (true) { // Main listening loop
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
@@ -289,22 +285,17 @@ public class Main { // 定義 Main 類別
                             if (tempClient.getIPAddr().equals(client.getIPAddr())
                                     && tempClient.getUserName().equals(client.getUserName())) {
                                 // It's our own HELLO message
-                                System.out.println("Listener: Received own HELLO message. Ignoring.");
                             } else if (!clientList.containsKey(tempClient.getUserName())) {
                                 clientList.put(tempClient.getUserName(), tempClient);
-                                System.out.println("Listener: Added new client from HELLO: " + tempClient.getUserName() + " @ " + tempClient.getIPAddr());
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 Thread.sleep(100); // Slight delay to avoid flooding
-                                multicastHello();
+                                responseNewClient(packet.getAddress(), DISCOVERY_PORT);
                             } else {
-                                // Client already known, maybe update timestamp or ignore
-                                System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
                                 responseNewClient(packet.getAddress(), DISCOVERY_PORT);
                             }
                         }
                     }
-
                     if (listChanged) {
                         if (GUI != null && SendFileGUI.INSTANCE != null
                                 && SendFileGUI.INSTANCE.getClientPanel() != null) {
@@ -315,11 +306,9 @@ public class Main { // 定義 Main 類別
                     }
                 }
             } catch (Exception e) {
-                System.err.println("Listener: Exception in startMulticastListener run loop: " + e.getMessage());
                 e.printStackTrace();
             }
             // Socket is closed by try-with-resources
-            System.out.println("Listener: Multicast listener thread finished.");
         });
         MultiCast.setName("AirShit-MulticastListener");
         MultiCast.start(); // 啟動多播監聽執行緒
@@ -328,8 +317,6 @@ public class Main { // 定義 Main 類別
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
         try (
                 DatagramSocket socket = new DatagramSocket();) {
-
-            System.out.println("回應新客戶端: " + targetAddr + ":" + targetPort);
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
@@ -352,7 +339,6 @@ public class Main { // 定義 Main 類別
             OutputStream os = socket.getOutputStream(); // 取得連線的輸出串流
             os.write("ACK".getBytes("UTF-8")); // 傳送 ACK 訊息的位元組資料
             os.flush(); // 清空輸出串流
-            System.out.println("ACK 已傳送到 " + socket.getInetAddress() + ":" + socket.getPort()); // 輸出 ACK 訊息傳送資訊
         } catch (IOException e) { // 捕捉 I/O 異常
             e.printStackTrace(); // 列印異常資訊
         }
