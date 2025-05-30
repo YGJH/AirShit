@@ -163,11 +163,10 @@ public class SendFileGUI extends JFrame {
 
         // 新增 Refresh 按鈕
         refreshButton = new JButton("Refresh");
-        refreshButton.setFont(FONT_PRIMARY_PLAIN);
-
-        // 初始化網卡選擇框
+        refreshButton.setFont(FONT_PRIMARY_PLAIN);        // 初始化網卡選擇框
         networkInterfaceCombo = new JComboBox<>();
         networkInterfaceCombo.setFont(FONT_PRIMARY_PLAIN);
+        networkInterfaceCombo.setMaximumRowCount(10); // 啟用滾動功能，最多顯示10個項目
         refreshNetworkInterfaceList();
 
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);

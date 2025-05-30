@@ -109,7 +109,9 @@ public class Main { // 定義 Main 類別
     }
     public static void setMulticastGroup(String group) {
         MULTICAST_GROUP = group;
-    }    private static NetworkInterface findCorrectNetworkInterface() {
+    }
+
+    private static NetworkInterface findCorrectNetworkInterface() {
         // 如果用戶已選擇特定網卡，直接使用
         if (!useAutoDetection && selectedNetworkInterface != null) {
             try {
@@ -146,13 +148,7 @@ public class Main { // 定義 Main 類別
                     continue;
                 }
                 
-                String name = ni.getDisplayName().toLowerCase();
                 // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
-                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") || 
-                    name.contains("vbox") || name.contains("virtualbox")) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Virtualization software interface.");
-                    continue;
-                }
                 
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
@@ -540,7 +536,7 @@ public class Main { // 定義 Main 類別
 
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(1000); // Reduced timeout for faster check
+                ds.setSoTimeout(1000000); // Reduced timeout for faster check
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, c.getUDPPort())); // Ping client's discovery port
                 byte[] buf = new byte[64];
@@ -675,7 +671,6 @@ public class Main { // 定義 Main 類別
                     continue;
                 }
                 
-                String name = ni.getDisplayName().toLowerCase();
                 // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
 
                 // 允許所有 VPN 介面：OpenVPN、WireGuard、TAP、TUN 等
