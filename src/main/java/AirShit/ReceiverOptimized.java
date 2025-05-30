@@ -141,10 +141,10 @@ public class ReceiverOptimized {
                 long totalSkipped = totalBytesSkipped.get();
                 long totalProcessed = totalReceived + totalSkipped;
                 
-                LogPanel.log("ReceiverOptimized: 總共處理 " + totalProcessed + " bytes，" +
-                           "寫入 " + totalReceived + " bytes，" +
-                           "跳過 " + totalSkipped + " bytes (相同區塊)，" +
-                           "預期 " + fileLength + " bytes");
+                // LogPanel.log("ReceiverOptimized: 總共處理 " + totalProcessed + " bytes，" +
+                //            "寫入 " + totalReceived + " bytes，" +
+                //            "跳過 " + totalSkipped + " bytes (相同區塊)，" +
+                //            "預期 " + fileLength + " bytes");
                 
                 if (totalProcessed == fileLength && allCompleted && cb != null) {
                     cb.onComplete();
@@ -159,7 +159,8 @@ public class ReceiverOptimized {
             }
             return false;
         }
-    }    private static class ReceiverWorker implements Runnable {
+    }    
+    private static class ReceiverWorker implements Runnable {
         private final Socket dataSocket;
         private final RandomAccessFile raf;
         private final TransferCallback callback;
