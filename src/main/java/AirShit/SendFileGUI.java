@@ -1,6 +1,5 @@
 package AirShit;
 
-import AirShit.Main;
 import AirShit.ui.*;
 
 import com.formdev.flatlaf.FlatDarkLaf;
@@ -13,7 +12,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.nio.file.NoSuchFileException;
+import java.net.NetworkInterface;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SendFileGUI extends JFrame {
@@ -65,6 +65,7 @@ public class SendFileGUI extends JFrame {
     private boolean isDarkMode = true;
     private JTextField portField;
     private JTextField groupField;
+    private JComboBox<NetworkInterfaceItem> networkInterfaceCombo; // 新增網卡選擇框
 
     public SendFileGUI() {
         super("AirShit File Transfer");
@@ -83,7 +84,7 @@ public class SendFileGUI extends JFrame {
             System.err.println("Error loading application icon: " + e.getMessage());
         }
 
-        setSize(750, 600);
+        setSize(1350, 700);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         applyTheme(isDarkMode); // Apply initial theme
@@ -164,11 +165,15 @@ public class SendFileGUI extends JFrame {
         refreshButton = new JButton("Refresh");
         refreshButton.setFont(FONT_PRIMARY_PLAIN);
 
+        // 初始化網卡選擇框
+        networkInterfaceCombo = new JComboBox<>();
+        networkInterfaceCombo.setFont(FONT_PRIMARY_PLAIN);
+        refreshNetworkInterfaceList();
+
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         filePanel = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
         sendPanel = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
         recvPanel = new ReceiveProgressPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR);
-        // Pass the specific LOG_AREA_BACKGROUND to LogPanel constructor
         logPanel = new LogPanel(PANEL_BACKGROUND, TEXT_PRIMARY, BORDER_COLOR, LOG_AREA_BACKGROUND);
 
         // DISCOVERY_PORT 输入框
@@ -181,6 +186,55 @@ public class SendFileGUI extends JFrame {
         receiveProgressBar = recvPanel.getProgressBar();
         sendPanel.getSendButton().setEnabled(false);
         sendPanel.getSendButton().setFont(FONT_PRIMARY_BOLD);
+    }    // 添加刷新網卡列表的方法
+    private void refreshNetworkInterfaceList() {
+        networkInterfaceCombo.removeAllItems();
+        
+        // 取得可用的網卡
+        List<NetworkInterface> interfaces = Main.getAvailableNetworkInterfaces();
+        
+        // 找出當前正在使用的網卡
+        NetworkInterface currentInterface = null;
+        if (Main.isUsingAutoDetection()) {
+            // 使用當前 IP 找出對應的網卡
+            String currentIP = Main.getClient().getIPAddr();
+            for (NetworkInterface ni : interfaces) {
+                String niIP = Main.getIPFromNetworkInterface(ni);
+                if (niIP != null && niIP.equals(currentIP)) {
+                    currentInterface = ni;
+                    break;
+                }
+            }
+        } else {
+            currentInterface = Main.getSelectedNetworkInterface();
+        }
+        
+        // 添加所有可用的網卡到選擇框（不包含 auto-detection 選項）
+        for (NetworkInterface ni : interfaces) {
+            System.out.println(ni.getName());
+            networkInterfaceCombo.addItem(new NetworkInterfaceItem(ni));
+        }
+        
+        // 設置當前選中的網卡
+        if (currentInterface != null) {
+            for (int i = 0; i < networkInterfaceCombo.getItemCount(); i++) {
+                NetworkInterfaceItem item = networkInterfaceCombo.getItemAt(i);
+                if (item.getNetworkInterface().equals(currentInterface)) {
+                    networkInterfaceCombo.setSelectedIndex(i);
+                    break;
+                }
+            }
+        } else if (networkInterfaceCombo.getItemCount() > 0) {
+            // 如果沒有當前選中的網卡，選擇第一個可用的
+            networkInterfaceCombo.setSelectedIndex(0);
+        }
+        
+        // 設置 tooltip
+        networkInterfaceCombo.setToolTipText("<html>" +
+            "<b>Network Interface Selection</b><br>" +
+            "🌐 <b>Manual Selection:</b> Choose a specific network interface<br>" +
+            "<i>Changing interface will clear client list and restart discovery</i>" +
+            "</html>");
     }
 
     private void updateUIsOfChildPanels() {
@@ -199,25 +253,26 @@ public class SendFileGUI extends JFrame {
 
     private void layoutComponents() {
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        // topBar.setBackground(APP_BACKGROUND); // This will be set by applyTheme now
-
-        themeToggleButton.setFont(FONT_PRIMARY_PLAIN); // Apply font to toggle button
+        
+        themeToggleButton.setFont(FONT_PRIMARY_PLAIN);
         topBar.add(themeToggleButton);
-        topBar.add(refreshButton); // 新增到工具列
+        topBar.add(refreshButton);
+        
+        // 添加網卡選擇框
+        topBar.add(new JLabel("Network Interface:"));
+        topBar.add(networkInterfaceCombo);
+        
         topBar.add(new JLabel("DISCOVERY_PORT:"));
         topBar.add(portField);
         topBar.add(new JLabel("Multicast IP:"));
         topBar.add(groupField);
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
-        // mainContentPanel.setBackground(APP_BACKGROUND); // This will be set by
-        // applyTheme
         mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
 
         mainContentPanel.add(clientPanel, BorderLayout.WEST);
 
         JPanel right = new JPanel();
-        // right.setBackground(APP_BACKGROUND); // This will be set by applyTheme
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
         right.add(filePanel);
         right.add(Box.createVerticalStrut(15));
@@ -229,19 +284,27 @@ public class SendFileGUI extends JFrame {
         mainContentPanel.add(right, BorderLayout.CENTER);
 
         JPanel container = new JPanel(new BorderLayout());
-        // container.setBackground(APP_BACKGROUND); // This will be set by applyTheme
         container.add(topBar, BorderLayout.NORTH);
         container.add(mainContentPanel, BorderLayout.CENTER);
 
-        setContentPane(container); // 'container' is now the contentPane
+        setContentPane(container);
     }
 
     private void bindEvents() {
         themeToggleButton.addActionListener(e -> {
             applyTheme(themeToggleButton.isSelected());
+        });        // Refresh 按一下就重啟整個程式
+        refreshButton.addActionListener(e -> Main.restart());        // 網卡選擇框事件處理
+        networkInterfaceCombo.addActionListener(e -> {
+            NetworkInterfaceItem selectedItem = (NetworkInterfaceItem) networkInterfaceCombo.getSelectedItem();
+            if (selectedItem != null) {
+                NetworkInterface selectedNI = selectedItem.getNetworkInterface();
+                if (selectedNI != null) {
+                    log("Network interface manually set to: " + selectedNI.getDisplayName());
+                    Main.setSelectedNetworkInterface(selectedNI);
+                }
+            }
         });
-        // Refresh 按一下就重啟整個程式
-        refreshButton.addActionListener(e -> Main.restart());
 
         clientPanel.getList().addListSelectionListener(e -> updateSendState());
         filePanel.addPropertyChangeListener("selectedFile", ev -> updateSendState()); // 監聽檔案選擇變更
@@ -256,8 +319,8 @@ public class SendFileGUI extends JFrame {
                 Main.setDiscoveryPort(p);
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this,
-                        "请输入 1–65535 之间的有效端口号",
-                        "端口错误", JOptionPane.ERROR_MESSAGE);
+                        "請輸入 1–65535 之間的端口號",
+                        "端口錯誤", JOptionPane.ERROR_MESSAGE);
                 portField.setText(String.valueOf(Main.DISCOVERY_PORT));
             }
         });
@@ -281,8 +344,8 @@ public class SendFileGUI extends JFrame {
                 Main.setMulticastGroup(s);
             } else {
                 JOptionPane.showMessageDialog(this,
-                        "仅允许输入 IPv4 多播范围 224.0.0.0–239.255.255.255 或 all-routers.mcast.net",
-                        "Multicast IP 错误", JOptionPane.ERROR_MESSAGE);
+                        "請輸入 IPv4 多播範圍 224.0.0.0–239.255.255.255 或 all-routers.mcast.net",
+                        "Multicast IP 錯誤", JOptionPane.ERROR_MESSAGE);
                 groupField.setText(Main.MULTICAST_GROUP);
             }
         });
@@ -443,9 +506,45 @@ public class SendFileGUI extends JFrame {
 
     public ClientPanel getClientPanel() { // Add this getter
         return clientPanel;
+    }    private static class NetworkInterfaceItem {
+        private final NetworkInterface networkInterface;
+        
+        public NetworkInterfaceItem(NetworkInterface ni) {
+            this.networkInterface = ni;
+        }
+        
+        public NetworkInterface getNetworkInterface() {
+            return networkInterface;
+        }
+        
+        @Override
+        public String toString() {
+            if (networkInterface != null) {
+                String displayName = networkInterface.getDisplayName();
+                String ip = Main.getIPFromNetworkInterface(networkInterface);
+                if (ip != null) {
+                    return "🌐 " + displayName + " (" + ip + ")";
+                } else {
+                    return "🌐 " + displayName;
+                }
+            }
+            return "Unknown Interface";
+        }
+        
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null || getClass() != obj.getClass()) return false;
+            
+            NetworkInterfaceItem that = (NetworkInterfaceItem) obj;
+            
+            return networkInterface != null ? networkInterface.equals(that.networkInterface) : that.networkInterface == null;
+        }
+        
+        @Override
+        public int hashCode() {
+            return networkInterface != null ? networkInterface.hashCode() : 0;
+        }
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(SendFileGUI::new);
-    }
 }

@@ -49,9 +49,7 @@ public class Main { // 定義 Main 類別
 
     public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
-    }
-
-    enum SEND_STATUS { // 定義檔案傳送狀態列舉
+    }    enum SEND_STATUS { // 定義檔案傳送狀態列舉
         SEND_OK, // 傳送正常結束
         SEND_WAITING // 正在等待傳送
     }
@@ -61,16 +59,19 @@ public class Main { // 定義 Main 類別
     public static String getNonLoopbackIP() {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
+                if (!ni.isUp() || ni.isLoopback()) {
+                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up or loopback.");
                     continue;
                 }
+                
                 String name = ni.getDisplayName().toLowerCase();
-                // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vpn")
-                        || name.contains("vmware")) {
+                // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
+                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") || 
+                    name.contains("vbox") || name.contains("virtualbox")) {
+                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Virtualization software interface.");
                     continue;
                 }
+                
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
@@ -108,9 +109,27 @@ public class Main { // 定義 Main 類別
     }
     public static void setMulticastGroup(String group) {
         MULTICAST_GROUP = group;
-    }
-
-    private static NetworkInterface findCorrectNetworkInterface() {
+    }    private static NetworkInterface findCorrectNetworkInterface() {
+        // 如果用戶已選擇特定網卡，直接使用
+        if (!useAutoDetection && selectedNetworkInterface != null) {
+            try {
+                if (selectedNetworkInterface.isUp() && selectedNetworkInterface.supportsMulticast()) {
+                    System.out.println("findCorrectNetworkInterface: Using user-selected interface: '" + 
+                                     selectedNetworkInterface.getDisplayName() + "'");
+                    return selectedNetworkInterface;
+                } else {
+                    System.err.println("findCorrectNetworkInterface: User-selected interface '" + 
+                                     selectedNetworkInterface.getDisplayName() + "' is not available. Falling back to auto-detection.");
+                    useAutoDetection = true;
+                    selectedNetworkInterface = null;
+                }
+            } catch (SocketException e) {
+                System.err.println("findCorrectNetworkInterface: Error checking user-selected interface: " + e.getMessage());
+                useAutoDetection = true;
+                selectedNetworkInterface = null;
+            }
+        }
+          // 原有的自動檢測邏輯
         // System.out.println("findCorrectNetworkInterface: Searching for suitable interface for multicast...");
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -118,22 +137,23 @@ public class Main { // 定義 Main 類別
                 //                    ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
                 //                    ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
 
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
+                if (!ni.isUp() || ni.isLoopback()) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up or loopback.");
                     continue;
                 }
                 if (!ni.supportsMulticast()) {
                     System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Does not support multicast.");
                     continue;
                 }
-
+                
                 String name = ni.getDisplayName().toLowerCase();
-                // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
-                if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter")
-                        || name.contains("vmware") || name.contains("vpn")) {
-                    // System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore (hyper-v, virtual, filter, vmware, vpn).");
+                // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
+                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") || 
+                    name.contains("vbox") || name.contains("virtualbox")) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Virtualization software interface.");
                     continue;
                 }
+                
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
@@ -639,5 +659,97 @@ public class Main { // 定義 Main 類別
             LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    // 網路介面管理相關的靜態變數和方法
+    private static NetworkInterface selectedNetworkInterface = null;
+    private static boolean useAutoDetection = true;    
+    public static List<NetworkInterface> getAvailableNetworkInterfaces() {
+        List<NetworkInterface> availableInterfaces = new ArrayList<>();
+        try {
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) {
+                    continue;
+                }
+                if (!ni.supportsMulticast()) {
+                    continue;
+                }
+                
+                String name = ni.getDisplayName().toLowerCase();
+                // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
+
+                // 允許所有 VPN 介面：OpenVPN、WireGuard、TAP、TUN 等
+                
+                // 檢查是否有有效的 IPv4 地址
+                boolean hasValidIPv4 = false;
+                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress() && !addr.isLinkLocalAddress()) {
+                        hasValidIPv4 = true;
+                        break;
+                    }
+                }
+                
+                if (hasValidIPv4) {
+                    availableInterfaces.add(ni);
+                }
+            }
+        } catch (SocketException e) {
+            System.err.println("Error getting network interfaces: " + e.getMessage());
+        }
+        return availableInterfaces;
+    }
+
+    public static void setSelectedNetworkInterface(NetworkInterface networkInterface) {
+        selectedNetworkInterface = networkInterface;
+        useAutoDetection = (networkInterface == null);
+        
+        // 更新客戶端的 IP 地址
+        if (networkInterface != null) {
+            String newIP = getIPFromNetworkInterface(networkInterface);
+            if (newIP != null && !newIP.equals(client.getIPAddr())) {
+                // 創建新的客戶端實例
+                client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
+                                   client.getUDPPort(), client.getOS());
+                LogPanel.log("Network interface changed to: " + networkInterface.getDisplayName() + " (IP: " + newIP + ")");
+            }
+        } else {
+            // 使用自動檢測
+            String newIP = getNonLoopbackIP();
+            if (!newIP.equals(client.getIPAddr())) {
+                client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
+                                   client.getUDPPort(), client.getOS());
+                LogPanel.log("Network interface set to auto-detection (IP: " + newIP + ")");
+            }
+        }
+        
+        // 清除客戶端列表並重新發現
+        clearClientList();
+        multicastHello();
+        
+        // 更新 GUI 客戶端列表
+        if (GUI != null && SendFileGUI.INSTANCE != null && SendFileGUI.INSTANCE.getClientPanel() != null) {
+            SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
+        }
+    }
+
+    public static String getIPFromNetworkInterface(NetworkInterface ni) {
+        try {
+            for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
+                if (addr instanceof Inet4Address && !addr.isLoopbackAddress() && !addr.isLinkLocalAddress()) {
+                    return addr.getHostAddress();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting IP from network interface: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public static NetworkInterface getSelectedNetworkInterface() {
+        return selectedNetworkInterface;
+    }
+
+    public static boolean isUsingAutoDetection() {
+        return useAutoDetection;
     }
 }
