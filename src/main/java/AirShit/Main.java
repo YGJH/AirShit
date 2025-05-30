@@ -584,15 +584,22 @@ public class Main { // 定義 Main 類別
             
             // Get all threads in the system
             Thread[] threads = new Thread[rootGroup.activeCount() * 2]; // Buffer to ensure we get all threads
-            int count = rootGroup.enumerate(threads, true);
-            // Refresh GUI threads (Swing EDT)
+            int count = rootGroup.enumerate(threads, true);            // Refresh GUI threads (Swing EDT)
             try {
                 if (GUI != null) {
                     LogPanel.log("Main: Disposing main GUI window for restart.");
-                    SwingUtilities.invokeAndWait(() -> {
+                    // 檢查是否已經在 EDT 中，避免使用 invokeAndWait 造成死鎖
+                    if (SwingUtilities.isEventDispatchThread()) {
+                        // 如果已經在 EDT 中，直接執行
                         GUI.dispose();
-                    });
-                    GUI = new SendFileGUI();
+                        GUI = new SendFileGUI();
+                    } else {
+                        // 如果不在 EDT 中，使用 invokeAndWait
+                        SwingUtilities.invokeAndWait(() -> {
+                            GUI.dispose();
+                            GUI = new SendFileGUI();
+                        });
+                    }
                 }
                 // Optionally, clear static GUI instance
                 SendFileGUI.INSTANCE = null;
