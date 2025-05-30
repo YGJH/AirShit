@@ -523,30 +523,7 @@ public class Main { // 定義 Main 類別
         });
     }
 
-    private static boolean acquireSingleInstanceLock() {
-        try {
-            // 嘗試在本機回送位址上綁定到指定埠號
-            // 如果埠號已被占用 (表示另一個實例正在運行)，則會拋出 IOException
-            lockSocket = new ServerSocket(SINGLE_INSTANCE_LOCK_PORT, 1, InetAddress.getLoopbackAddress());
-            return true; // 成功獲取鎖
-        } catch (IOException e) {
-            // 無法獲取鎖，可能是埠號已被占用
-            System.err.println("Failed to acquire single instance lock on port " + SINGLE_INSTANCE_LOCK_PORT + ": " + e.getMessage());
-            lockSocket = null;
-            return false;
-        }
-    }
 
-    private static void releaseSingleInstanceLock() {
-        if (lockSocket != null && !lockSocket.isClosed()) {
-            try {
-                lockSocket.close();
-                System.out.println("relase");
-            } catch (IOException e) {
-                System.err.println("Error releasing single instance lock: " + e.getMessage());
-            }
-        }
-    }
 
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
         try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
