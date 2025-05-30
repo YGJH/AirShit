@@ -87,30 +87,81 @@ convenient for users to track the transfer process.
 
 ```
 AirShit/
-├── pom.xml                          # Maven Project Object Model file
+├── README.md                          
+├── README_zh_tw.md                    
+├── pom.xml                            
+├── img/                               
+│   ├── dark.png                       
+│   ├── light.png                      
+│   └── fileexp.png                    
+│
 └── src/
     └── main/
         ├── java/
-        │   └── AirShit/
-        │       ├── Main.java                  # Main application entry point class
-        │       ├── Client.java                # Class representing a remote client node
-        │       ├── FileReceiver.java          # Class handling file reception logic
-        │       ├── FileSender.java            # Class handling file sending logic
-        │       ├── SendFile.java              # Class handling file sending logic, includes ChunkSender
-        │       ├── FolderSelector.java        # Helper class for folder selection logic
-        │       ├── LZ4FileCompressor.java     # Class for compressing files to .tar.lz4
-        │       ├── LZ4FileDecompressor.java   # Class for decompressing .tar.lz4 files
-        │       ├── TransferCallback.java       # Interface for transfer callbacks
-        │       ├── NoFileSelectedException.java # Custom exception for no file selected
-        │       └── Receiver.java               # Class handling file reception logic, includes ChunkReceiver
+        │   └── AirShit/               
+        │       ├── Main.java          
+        │       ├── Client.java         
+        │       ├── TransferCallback.java 
+        │       │
+        │       ├── 📁 Network Layer 
+        │       ├── FileReceiver.java框)
+        │       ├── FileSender.java   
+        │       ├── ReceiverOptimized.java
+        │       ├── SendFileOptimized.java
+        │       │
+        │       ├── 📁 File Processing 
+        │       ├── TarCompressor.java 
+        │       ├── TarExtractor.java  
+        │       ├── ChunkInfo.java     
+        │       │
+        │       ├── 📁 Utilities 
+        │       ├── FolderSelector.java
+        │       ├── GenerateTestFolder.java 
+        │       ├── NoFileSelectedException.java 
+        │       │
+        │       ├── 📁 GUI Layer 
+        │       ├── SendFileGUI.java    
+        │       │
+        │       └── ui/                 
+        │           ├── LogPanel.java           
+        │           ├── ClientPanel.java        
+        │           ├── FileSelectionPanel.java 
+        │           ├── SendControlPanel.java   
+        │           ├── ReceiveProgressPanel.java 
+        │           ├── AnimationUtils.java     
+        │           ├── FileChooserDialog.java  
+        │           └── FXFileChooserAdapter.java 
         │
-        └── resources/                        # Resource files (if any)
-            └── (any resource files, e.g., images, configuration files)
-        └── test/                            # Test files (if any)
-            └── java/
-                └── AirShit/
-                    └── (test classes)
+        └── resources/                  
+            ├── asset/                  
+            │   ├── data-transfer.png   
+            │   ├── folder.png          
+            │   ├── kitty.icns          
+            │   ├── kitty.ico           
+            │   └── kitty.png           
+            │
+            ├── css/                    
+            │   ├── dark-theme.css      
+            │   └── file-chooser-dialog.css
+            │
+            └── icons/
+                ├── up-arrow.png
+                └── slash.png   
 ```
+
+────────────────────────────────────────────────────────────┐
+│                   GUI Layer                               │
+│  SendFileGUI + UI Components (Swing + JavaFX)             │
+├───────────────────────────────────────────────────────────┤
+│                Network Layer                              │
+│  UDP Multicast Discovery + TCP File Transfer              │
+├───────────────────────────────────────────────────────────┤
+│              File Processing Layer                        │
+│  TAR Compression + Chunking + Optimization                │
+├───────────────────────────────────────────────────────────┤
+│                Utilities Layer                            │
+│  File Selection + Test Data Generation                    │
+└───────────────────────────────────────────────────────────┘
 
 (Note: The .class file list above is inferred from the provided folder content.
 The actual compilation result might differ slightly, e.g.,
@@ -133,7 +184,7 @@ SendFileGUI$ClientCellRenderer.class should be under the ui/ subdirectory.)
 Use maven to compile and run
 
 ```
-mvn compile exec:java
+mvn compile javafx:java
 ```
 
 #### require

@@ -375,7 +375,6 @@ public class Main { // 定義 Main 類別
     }
 
     private static ServerSocket lockSocket; // 用於鎖定應用程式實例
-    private static final int SINGLE_INSTANCE_LOCK_PORT = 61808; // 選擇一個不太可能被其他應用程式使用的埠號
 
     public static void main(String[] args) { // 主方法，程式入口點
         System.setProperty("file.encoding", "UTF-8");
@@ -623,7 +622,20 @@ public class Main { // 定義 Main 類別
             // Get all threads in the system
             Thread[] threads = new Thread[rootGroup.activeCount() * 2]; // Buffer to ensure we get all threads
             int count = rootGroup.enumerate(threads, true);
-            
+            // Refresh GUI threads (Swing EDT)
+            try {
+                if (GUI != null) {
+                    LogPanel.log("Main: Disposing main GUI window for restart.");
+                    SwingUtilities.invokeAndWait(() -> {
+                        GUI.dispose();
+                    });
+                    GUI = new SendFileGUI();
+                }
+                // Optionally, clear static GUI instance
+                SendFileGUI.INSTANCE = null;
+            } catch (Exception guiEx) {
+                LogPanel.log("Main: Exception while disposing GUI: " + guiEx.getMessage());
+            }
             // Interrupt all threads except main thread
             for (int i = 0; i < count; i++) {
                 Thread thread = threads[i];

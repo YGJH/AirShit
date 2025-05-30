@@ -64,32 +64,85 @@ AirShit 是一套專為區域網路 (LAN) 環境設計的點對點 (P2P) 檔案�
 
 ## 專案結構
 
+
 ```
+AirShit/
+├── README.md                           # 專案說明文件
+├── README_zh_tw.md                     # 中文說明文件
+├── pom.xml                             # Maven 建置配置
+├── img/                                # 文件圖片
+│   ├── dark.png                        # 深色主題截圖
+│   ├── light.png                       # 淺色主題截圖
+│   └── fileexp.png                     # 檔案總管截圖
+│
 └── src/
     └── main/
         ├── java/
-        │   └── AirShit/
-        │       ├── Main.java                  # Main application entry point class
-        │       ├── Client.java                # Class representing a remote client node
-        │       ├── FileReceiver.java          # Class handling file reception logic
-        │       ├── FileSender.java            # Class handling file sending logic
-        │       ├── SendFile.java              # Class handling file sending logic, includes ChunkSender
-        │       ├── Receiver.java              # Class handling file reception logic, includes ChunkReceiver
-        │       ├── LZ4FileCompressor.java     # Class for compressing files to .tar.lz4
-        │       ├── LZ4FileDecompressor.java   # Class for decompressing .tar.lz4 files
-        │       ├── TransferCallback.java       # Interface for transfer callbacks
-        │       ├── NoFileSelectedException.java # Custom exception for no file selected
-        │       ├── GenerateTestFolder.java     # Class for generating test files and folders
-        │       ├── FolderSelector.java         # Helper class for folder selection logic
-        │       └── ui/
-        │           ├── LogPanel.java           # Panel for displaying logs
-        │           ├── FileSelectionPanel.java  # Panel for file selection
-        │           ├── SendFileGUI.java         # Main GUI window class, integrates all UI panels
-        │           ├── ClientPanel.java         # Panel for displaying available clients
-        │           ├── ReceiveProgressPanel.java # Panel for showing transfer progress
-        │           └── SendControlPanel.java    # Control panel for sending files
-        └── resources/                          # Directory for non-Java resources (if needed)
+        │   └── AirShit/                # 主要套件
+        │       ├── Main.java           # 應用程式入口點 & 網路控制器
+        │       ├── Client.java         # 客戶端資訊模型
+        │       ├── TransferCallback.java # 檔案傳輸回調介面
+        │       │
+        │       ├── 📁 Network Layer (網路層)
+        │       ├── FileReceiver.java   # 檔案接收器 (含接收確認對話框)
+        │       ├── FileSender.java     # 檔案發送器
+        │       ├── ReceiverOptimized.java # 優化的接收器 (支援區塊比對)
+        │       ├── SendFileOptimized.java # 優化的發送器 (多執行緒)
+        │       │
+        │       ├── 📁 File Processing (檔案處理層)
+        │       ├── TarCompressor.java  # TAR 壓縮工具
+        │       ├── TarExtractor.java   # TAR 解壓縮工具
+        │       ├── ChunkInfo.java      # 檔案區塊資訊
+        │       │
+        │       ├── 📁 Utilities (工具層)
+        │       ├── FolderSelector.java # 資料夾選擇工具
+        │       ├── GenerateTestFolder.java # 測試資料夾生成器
+        │       ├── NoFileSelectedException.java # 自定義例外
+        │       │
+        │       ├── 📁 GUI Layer (圖形介面層)
+        │       ├── SendFileGUI.java    # 主視窗 & 主題管理
+        │       │
+        │       └── ui/                 # UI 元件套件
+        │           ├── LogPanel.java           # 日誌面板
+        │           ├── ClientPanel.java        # 客戶端列表面板
+        │           ├── FileSelectionPanel.java # 檔案選擇面板
+        │           ├── SendControlPanel.java   # 發送控制面板
+        │           ├── ReceiveProgressPanel.java # 接收進度面板
+        │           ├── AnimationUtils.java     # 動畫工具類
+        │           ├── FileChooserDialog.java  # 自定義檔案選擇器
+        │           └── FXFileChooserAdapter.java # JavaFX 適配器
+        │
+        └── resources/                  # 資源檔案
+            ├── asset/                  # 圖片資源
+            │   ├── data-transfer.png   # 資料傳輸圖示
+            │   ├── folder.png          # 資料夾圖示
+            │   ├── kitty.icns          # macOS 應用程式圖示
+            │   ├── kitty.ico           # Windows 應用程式圖示
+            │   └── kitty.png           # 通用應用程式圖示
+            │
+            ├── css/                    # 樣式表
+            │   ├── dark-theme.css      # 深色主題樣式
+            │   └── file-chooser-dialog.css # 檔案選擇器樣式
+            │
+            └── icons/                  # 小圖示
+                ├── up-arrow.png        # 向上箭頭
+                └── slash.png           # 路徑分隔符號
 ```
+
+────────────────────────────────────────────────────────────┐
+│                   GUI Layer (圖形介面層)                    │
+│  SendFileGUI + UI Components (Swing + JavaFX)             │
+├───────────────────────────────────────────────────────────┤
+│                Network Layer (網路通訊層)                   │
+│  UDP Multicast Discovery + TCP File Transfer              │
+├───────────────────────────────────────────────────────────┤
+│              File Processing Layer (檔案處理層)             │
+│  TAR Compression + Chunking + Optimization                │
+├───────────────────────────────────────────────────────────┤
+│                Utilities Layer (工具層)                    │
+│  File Selection + Test Data Generation                    │
+└───────────────────────────────────────────────────────────┘
+
 
 (注意: 上述 .class 檔案列表是根據提供的 folder 內容推斷，實際編譯結果可能略有不同，
 例如 SendFileGUI$ClientCellRenderer.class 應該位於 ui/ 子目錄下。)
