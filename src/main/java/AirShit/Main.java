@@ -60,11 +60,7 @@ public class Main { // 定義 Main 類別
 
     public static String getNonLoopbackIP() {
         try {
-            System.out.println("getNonLoopbackIP: Searching for suitable non-loopback IP...");
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                System.out.println("getNonLoopbackIP: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
-                                   ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
-                                   ", Virtual: " + ni.isVirtual() + ")");
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) {
                     System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up, or loopback, or virtual.");
                     continue;
@@ -73,20 +69,16 @@ public class Main { // 定義 Main 類別
                 // skip Hyper-V, WFP filter drivers, virtual adapters, VPNs, VMware
                 if (name.contains("hyper-v") || name.contains("virtual") || name.contains("filter") || name.contains("vpn")
                         || name.contains("vmware")) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Name indicates it's a type to ignore.");
                     continue;
                 }
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
-                        System.out.println("getNonLoopbackIP: Picked IP on '" + ni.getDisplayName() + "': "
-                                + addr.getHostAddress());
                         return addr.getHostAddress();
                     }
                 }
             }
-            System.err.println("getNonLoopbackIP: No suitable non-loopback IPv4 address found. Falling back.");
         } catch (Exception e) {
             System.err.println("getNonLoopbackIP: Exception while finding IP: " + e.getMessage());
             e.printStackTrace();
@@ -175,25 +167,19 @@ public class Main { // 定義 Main 類別
             NetworkInterface nif = findCorrectNetworkInterface();
 
             if (nif != null) {
-                System.out.println("Sender: Attempting to use network interface: '" + nif.getDisplayName() + "' for sending HELLO.");
                 try {
                     socket.setNetworkInterface(nif);
-                    System.out.println("Sender: Successfully set network interface to '" + nif.getDisplayName() + "'.");
                 } catch (SocketException e) {
                     System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
-                    // Fall through, OS will pick.
                 }
                 // Joining the group on the sender can be important for some OSes to correctly source the packet
                 try {
                     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), nif);
-                    System.out.println("Sender: Successfully joined multicast group on interface: '" + nif.getDisplayName() + "'.");
                 } catch (IOException e) {
                     System.err.println("Sender: WARN - Failed to join multicast group on specific interface '" +
                                        nif.getDisplayName() + "': " + e.getMessage() + ". Sending might still work.");
                 }
             } else {
-                System.err.println("Sender: WARN - No specific network interface found. OS will choose the outgoing interface for HELLO.");
-                // Attempt to join group on default interface if no specific one found
                 try {
                     socket.joinGroup(group); 
                     System.out.println("Sender: Joined multicast group on default interfaces as fallback.");
@@ -202,11 +188,9 @@ public class Main { // 定義 Main 類別
                 }
             }
             
-            System.out.println("Sender: Sending HELLO message: " + client.getHelloMessage() + " to " + group.getHostAddress() + ":" + DISCOVERY_PORT);
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
-            System.out.println("Sender: HELLO message sent.");
 
             // socket.close() will handle leaving the group.
         } catch (Exception e) {
@@ -271,7 +255,7 @@ public class Main { // 定義 Main 類別
                     socket.receive(packet);
 
                     String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
-                    System.out.println("Received multicast ("+ packet.getAddress().getHostAddress() + ":" + packet.getPort() + "): " + message);
+                    // System.out.println("Received multicast ("+ packet.getAddress().getHostAddress() + ":" + packet.getPort() + "): " + message);
 
                     boolean listChanged = false;
 
@@ -312,11 +296,11 @@ public class Main { // 定義 Main 類別
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 Thread.sleep(100); // Slight delay to avoid flooding
-                                responseNewClient(packet.getAddress(), packet.getPort());
+                                multicastHello();
                             } else {
                                 // Client already known, maybe update timestamp or ignore
                                 System.out.println("Listener: Received HELLO from known client: " + tempClient.getUserName());
-                                responseNewClient(packet.getAddress(), packet.getPort());
+                                responseNewClient(packet.getAddress(), DISCOVERY_PORT);
                             }
                         }
                     }
