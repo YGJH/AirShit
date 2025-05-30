@@ -573,7 +573,7 @@ public class Main { // 定義 Main 類別
      */
     public static void restart() {
         try {
-            LogPanel.log("Main: Starting restart procedure - shutting down all threads except main...");
+            // LogPanel.log("Main: Starting restart procedure - shutting down all threads except main...");
             
             // Get all threads except main thread
             ThreadGroup rootGroup = Thread.currentThread().getThreadGroup();
@@ -587,7 +587,7 @@ public class Main { // 定義 Main 類別
             int count = rootGroup.enumerate(threads, true);            // Refresh GUI threads (Swing EDT)
             try {
                 if (GUI != null) {
-                    LogPanel.log("Main: Disposing main GUI window for restart.");
+                    // LogPanel.log("Main: Disposing main GUI window for restart.");
                     // 檢查是否已經在 EDT 中，避免使用 invokeAndWait 造成死鎖
                     if (SwingUtilities.isEventDispatchThread()) {
                         // 如果已經在 EDT 中，直接執行
@@ -604,14 +604,14 @@ public class Main { // 定義 Main 類別
                 // Optionally, clear static GUI instance
                 SendFileGUI.INSTANCE = null;
             } catch (Exception guiEx) {
-                LogPanel.log("Main: Exception while disposing GUI: " + guiEx.getMessage());
+                // LogPanel.log("Main: Exception while disposing GUI: " + guiEx.getMessage());
             }
             // Interrupt all threads except main thread
             for (int i = 0; i < count; i++) {
                 Thread thread = threads[i];
                 if (thread != null && thread != Thread.currentThread() && !thread.isDaemon()) {
                     String threadName = thread.getName();
-                    LogPanel.log("Main: Interrupting thread: " + threadName);
+                    // LogPanel.log("Main: Interrupting thread: " + threadName);
                     
                     // For certain threads, try to close resources gracefully first
                     if (threadName.contains("MulticastListener") || 
@@ -632,7 +632,7 @@ public class Main { // 定義 Main 類別
                         }
                           // If thread is still alive, we've done what we can
                         if (thread.isAlive()) {
-                            LogPanel.log("Main: Thread " + threadName + " is still running after interrupt and timeout");
+                            // LogPanel.log("Main: Thread " + threadName + " is still running after interrupt and timeout");
                         }
                     } else {
                         // For other threads, just interrupt them
@@ -645,9 +645,9 @@ public class Main { // 定義 Main 類別
             if (lockSocket != null && !lockSocket.isClosed()) {
                 try {
                     lockSocket.close();
-                    LogPanel.log("Main: Closed single instance lock socket");
+                    // LogPanel.log("Main: Closed single instance lock socket");
                 } catch (IOException e) {
-                    LogPanel.log("Main: Error closing lock socket: " + e.getMessage());
+                    // LogPanel.log("Main: Error closing lock socket: " + e.getMessage());
                 }
             }
             
@@ -655,11 +655,11 @@ public class Main { // 定義 Main 類別
             sendStatus.set(SEND_STATUS.SEND_OK);
             clientList.clear();
             
-            LogPanel.log("Main: Restart procedure completed. Application should now be in clean state.");
-            LogPanel.log("Main: Note - GUI windows may need to be manually closed/recreated.");
+            // LogPanel.log("Main: Restart procedure completed. Application should now be in clean state.");
+            // LogPanel.log("Main: Note - GUI windows may need to be manually closed/recreated.");
             
         } catch (Exception e) {
-            LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
+            // LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -712,7 +712,7 @@ public class Main { // 定義 Main 類別
                 // 創建新的客戶端實例
                 client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
                                    client.getUDPPort(), client.getOS());
-                LogPanel.log("Network interface changed to: " + networkInterface.getDisplayName() + " (IP: " + newIP + ")");
+                // LogPanel.log("Network interface changed to: " + networkInterface.getDisplayName() + " (IP: " + newIP + ")");
             }
         } else {
             // 使用自動檢測
@@ -720,7 +720,7 @@ public class Main { // 定義 Main 類別
             if (!newIP.equals(client.getIPAddr())) {
                 client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
                                    client.getUDPPort(), client.getOS());
-                LogPanel.log("Network interface set to auto-detection (IP: " + newIP + ")");
+                // LogPanel.log("Network interface set to auto-detection (IP: " + newIP + ")");
             }
         }
         

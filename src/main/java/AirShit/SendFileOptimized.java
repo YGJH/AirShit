@@ -78,25 +78,17 @@ public class SendFileOptimized {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-          if (fileLength == 0) {
+        
+        if (fileLength == 0) {
             if (originalCallback != null) {
                 originalCallback.onStart(0 , file.getName());
                 originalCallback.onComplete();
             }
             return;
         }
-        
-        // LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() +
-        //             " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
-        // 添加短暫延遲，確保接收端準備好接受連接
-        try {
-            Thread.sleep(500); // 0.5秒延遲
-            // LogPanel.log("SendFileOptimized: 準備建立數據連接...");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("準備被中斷", e);
-        }
+        // LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
+                    // " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         // 建立檔案區塊佇列
         ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
@@ -108,54 +100,16 @@ public class SendFileOptimized {
             
             if (originalCallback != null) {
                 originalCallback.onStart(fileLength , file.getName());
-            }            List<Future<?>> futures = new ArrayList<>();
+            }
+
+            List<Future<?>> futures = new ArrayList<>();
             TransferCallback wrappedCallback = getWrappedCallback();
 
             for (int i = 0; i < threadCount; i++) {
-                final int workerId = i; // Make effectively final for lambda
                 Future<?> future = executor.submit(() -> {
-                    SocketChannel socketChannel = null;
-                    int retryCount = 0;
-                    final int MAX_RETRIES = 5;
-                    final int RETRY_DELAY_MS = 1000;
-                    
-                    try {                        // Retry connection logic
-                        while (socketChannel == null && retryCount < MAX_RETRIES) {
-                            try {
-                                socketChannel = SocketChannel.open();
-                                socketChannel.connect(new InetSocketAddress(host, port));
-                                // LogPanel.log("SendFileOptimized Worker " + workerId + ": 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
-                                break;
-                            } catch (IOException e) {
-                                retryCount++;
-                                // LogPanel.log("SendFileOptimized Worker " + workerId + ": 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
-                                
-                                if (socketChannel != null) {
-                                    try {
-                                        socketChannel.close();
-                                    } catch (IOException closeEx) {
-                                        // Ignore close errors
-                                    }
-                                    socketChannel = null;
-                                }
-                                
-                                if (retryCount < MAX_RETRIES) {
-                                    try {
-                                        // 增加重試延遲，給接收端更多準備時間
-                                        Thread.sleep(RETRY_DELAY_MS + (retryCount * 500)); // 遞增延遲
-                                    } catch (InterruptedException ie) {
-                                        Thread.currentThread().interrupt();
-                                        throw new IOException("連接被中斷", ie);
-                                    }
-                                } else {
-                                    throw new IOException("達到最大重試次數，連接失敗", e);
-                                }
-                            }
-                        }
-                        
-                        if (socketChannel == null) {
-                            throw new IOException("無法建立連接到 " + host + ":" + port);
-                        }
+                    try (SocketChannel socketChannel = SocketChannel.open()) {
+                        // 連接到接收端
+                        socketChannel.connect(new InetSocketAddress(host, port));
                         
                         // 設定高效能選項
                         socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
@@ -167,20 +121,12 @@ public class SendFileOptimized {
                         worker.run();
                         
                     } catch (IOException e) {
-                        // LogPanel.log("SendFileOptimized: 連接錯誤: " + e.getMessage());
                         wrappedCallback.onError(e);
-                        if (socketChannel != null) {
-                            try {
-                                socketChannel.close();
-                            } catch (IOException closeEx) {
-                                // LogPanel.log("SendFileOptimized: 關閉連接時出錯: " + closeEx.getMessage());
-                            }
-                        }
                     }
                 });
                 futures.add(future);
             }
-            
+
             // 等待所有 worker 完成
             for (Future<?> future : futures) {
                 try {
@@ -234,19 +180,16 @@ public class SendFileOptimized {
             this.fileChannel = fileChannel;
             this.chunkQueue = chunkQueue;
             this.callback = callback;
-        }        @Override
+        }
+
+        @Override
         public void run() {
             long totalBytesSent = 0;
             
             try {
-                // LogPanel.log("SenderWorker: 開始處理 chunks...");
-                
                 ChunkInfo chunk;
                 while ((chunk = chunkQueue.poll()) != null) {
-                    // LogPanel.log("SenderWorker: 處理 chunk offset=" + chunk.offset + ", length=" + chunk.length);
-                    
                     if (!sendChunk(chunk)) {
-                        // LogPanel.log("SenderWorker: Chunk 發送失敗，重新排隊");
                         // 發送失敗，放回佇列重試
                         chunkQueue.offer(chunk);
                         Thread.sleep(50);
@@ -258,11 +201,10 @@ public class SendFileOptimized {
                 // LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
                 
             } catch (Exception e) {
-                // LogPanel.log("SenderWorker 錯誤: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                e.printStackTrace(); // 添加完整堆疊追蹤
-                // if (callback != null) {
-                    // callback.onError(e);
-                // }
+                // LogPanel.log("SenderWorker 錯誤: " + e.getMessage());
+                if (callback != null) {
+                    callback.onError(e);
+                }
             } finally {
                 try {
                     socketChannel.close();
@@ -270,10 +212,10 @@ public class SendFileOptimized {
                     // LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
                 }
             }
-        }        private boolean sendChunk(ChunkInfo chunk) {
+        }
+
+        private boolean sendChunk(ChunkInfo chunk) {
             try {
-                // LogPanel.log("SenderWorker: 發送 chunk metadata offset=" + chunk.offset + ", length=" + chunk.length);
-                
                 // 發送 chunk metadata (offset + length)
                 ByteBuffer metaBuffer = ByteBuffer.allocate(16);
                 metaBuffer.putLong(chunk.offset);
@@ -281,13 +223,8 @@ public class SendFileOptimized {
                 metaBuffer.flip();
                 
                 while (metaBuffer.hasRemaining()) {
-                    int written = socketChannel.write(metaBuffer);
-                    if (written == 0) {
-                        Thread.sleep(1); // 避免忙碌等待
-                    }
+                    socketChannel.write(metaBuffer);
                 }
-                
-                // LogPanel.log("SenderWorker: 已發送 metadata，開始發送數據...");
                 
                 // 使用 zero copy transferTo
                 long bytesToSend = chunk.length;
@@ -309,11 +246,10 @@ public class SendFileOptimized {
                     }
                 }
                 
-                // LogPanel.log("SenderWorker: 完成發送 chunk，總共發送 " + chunk.length + " bytes");
                 return true;
                 
             } catch (Exception e) {
-                // LogPanel.log("發送 chunk 失敗: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                // LogPanel.log("發送 chunk 失敗: " + e.getMessage());
                 return false;
             }
         }

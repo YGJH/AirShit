@@ -36,7 +36,7 @@ public class ReceiverOptimized {
         threadCount = Math.min(Math.max(1, threadCount), maxThreads);
         
         // LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
-        //             " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
+                    // " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         if (fileLength == 0) {
             if (cb != null) {
@@ -60,34 +60,22 @@ public class ReceiverOptimized {
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 List<Future<?>> futures = new ArrayList<>();
                 
-                // LogPanel.log("ReceiverOptimized: 準備接受 " + threadCount + " 個並發連接...");
-                
                 // 建立多個 ReceiverWorker
                 for (int i = 0; i < threadCount; i++) {
-                    final int workerIndex = i;
-                    Future<?> future = executor.submit(() -> {                        try {
-                            // LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 等待連接...");
-                            
-                            // 設定較長的超時時間
-                            serverSocket.setSoTimeout(45000); // 增加到45秒超時
-                            
+                    Future<?> future = executor.submit(() -> {
+                        try {
                             // 等待連接
                             Socket socket = serverSocket.accept();
-                            //LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 接受連接 " + socket.getRemoteSocketAddress());
+                            // LogPanel.log("ReceiverOptimized Worker: 接受連接 " + socket.getRemoteSocketAddress());
                             
                             ReceiverWorker worker = new ReceiverWorker(socket, raf, cb, totalBytesReceived, fileLength);
                             worker.run();
                             
-                        } catch (java.net.SocketTimeoutException e) {
-                            // LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 等待連接超時 (45秒): " + e.getMessage());
-                            // if (cb != null) {
-                                // cb.onError(new IOException("等待數據連接超時", e));
-                            // }
                         } catch (IOException e) {
-                            // LogPanel.log("ReceiverOptimized Worker " + workerIndex + ": 連接錯誤: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                            // if (cb != null) {
-                                // cb.onError(e);
-                            // }
+                            // LogPanel.log("ReceiverOptimized Worker: 連接錯誤: " + e.getMessage());
+                            if (cb != null) {
+                                cb.onError(e);
+                            }
                         }
                     });
                     futures.add(future);
@@ -116,9 +104,9 @@ public class ReceiverOptimized {
             }
         } catch (IOException e) {
             // LogPanel.log("ReceiverOptimized: 檔案操作錯誤: " + e.getMessage());
-            // if (cb != null) {
-            //     cb.onError(e);
-            // }
+            if (cb != null) {
+                cb.onError(e);
+            }
             return false;
         }
     }
@@ -154,11 +142,11 @@ public class ReceiverOptimized {
                 
                 // 使用 NIO 進行高效資料傳輸
                 try (ReadableByteChannel socketChannel = Channels.newChannel(dataSocket.getInputStream())) {
-                      while (true) {
+                    
+                    while (true) {
                         // 讀取 chunk metadata: offset (8 bytes) + length (8 bytes)
                         ByteBuffer metaBuffer = ByteBuffer.allocate(16);
                         if (!readFully(socketChannel, metaBuffer)) {
-                            // LogPanel.log("ReceiverOptimized Worker: 連接已關閉，停止接收");
                             break; // 連接關閉
                         }
                         
@@ -183,7 +171,7 @@ public class ReceiverOptimized {
                         
                         if (bytesRead < chunkLength) {
                             // LogPanel.log("ReceiverOptimized Worker: 接收不完整，預期 " + chunkLength + 
-                            //            "，實際 " + bytesRead);
+                                    //    "，實際 " + bytesRead);
                             break;
                         }
                     }
