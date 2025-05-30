@@ -78,14 +78,15 @@ public class SendFileOptimized {
 
     public void start() throws IOException, InterruptedException {
         long fileLength = file.length();
-        
-        if (fileLength == 0) {
+          if (fileLength == 0) {
             if (originalCallback != null) {
                 originalCallback.onStart(0 , file.getName());
                 originalCallback.onComplete();
             }
             return;
-        // }        LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
+        }
+        
+        // LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() +
         //             " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         // 添加短暫延遲，確保接收端準備好接受連接
