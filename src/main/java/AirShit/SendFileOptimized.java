@@ -85,13 +85,13 @@ public class SendFileOptimized {
                 originalCallback.onComplete();
             }
             return;
-        }        LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
-                    " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
+        // }        LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
+        //             " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         // 添加短暫延遲，確保接收端準備好接受連接
         try {
             Thread.sleep(500); // 0.5秒延遲
-            LogPanel.log("SendFileOptimized: 準備建立數據連接...");
+            // LogPanel.log("SendFileOptimized: 準備建立數據連接...");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("準備被中斷", e);
@@ -123,11 +123,11 @@ public class SendFileOptimized {
                             try {
                                 socketChannel = SocketChannel.open();
                                 socketChannel.connect(new InetSocketAddress(host, port));
-                                LogPanel.log("SendFileOptimized Worker " + workerId + ": 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
+                                // LogPanel.log("SendFileOptimized Worker " + workerId + ": 成功連接到 " + host + ":" + port + " (重試次數: " + retryCount + ")");
                                 break;
                             } catch (IOException e) {
                                 retryCount++;
-                                LogPanel.log("SendFileOptimized Worker " + workerId + ": 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
+                                // LogPanel.log("SendFileOptimized Worker " + workerId + ": 連接失敗 (重試 " + retryCount + "/" + MAX_RETRIES + "): " + e.getMessage());
                                 
                                 if (socketChannel != null) {
                                     try {
@@ -166,13 +166,13 @@ public class SendFileOptimized {
                         worker.run();
                         
                     } catch (IOException e) {
-                        LogPanel.log("SendFileOptimized: 連接錯誤: " + e.getMessage());
+                        // LogPanel.log("SendFileOptimized: 連接錯誤: " + e.getMessage());
                         wrappedCallback.onError(e);
                         if (socketChannel != null) {
                             try {
                                 socketChannel.close();
                             } catch (IOException closeEx) {
-                                LogPanel.log("SendFileOptimized: 關閉連接時出錯: " + closeEx.getMessage());
+                                // LogPanel.log("SendFileOptimized: 關閉連接時出錯: " + closeEx.getMessage());
                             }
                         }
                     }
@@ -185,7 +185,7 @@ public class SendFileOptimized {
                 try {
                     future.get();
                 } catch (ExecutionException e) {
-                    LogPanel.log("SendFileOptimized Worker 錯誤: " + e.getCause());
+                    // LogPanel.log("SendFileOptimized Worker 錯誤: " + e.getCause());
                 }
             }
 
@@ -218,7 +218,7 @@ public class SendFileOptimized {
             offset += length;
         }
         
-        LogPanel.log("SendFileOptimized: 創建了 " + chunkQueue.size() + " 個 chunk，大小約 " + (chunkSize / 1024) + "KB");
+        // LogPanel.log("SendFileOptimized: 創建了 " + chunkQueue.size() + " 個 chunk，大小約 " + (chunkSize / 1024) + "KB");
     }
 
     private static class SenderWorker implements Runnable {
@@ -238,14 +238,14 @@ public class SendFileOptimized {
             long totalBytesSent = 0;
             
             try {
-                LogPanel.log("SenderWorker: 開始處理 chunks...");
+                // LogPanel.log("SenderWorker: 開始處理 chunks...");
                 
                 ChunkInfo chunk;
                 while ((chunk = chunkQueue.poll()) != null) {
-                    LogPanel.log("SenderWorker: 處理 chunk offset=" + chunk.offset + ", length=" + chunk.length);
+                    // LogPanel.log("SenderWorker: 處理 chunk offset=" + chunk.offset + ", length=" + chunk.length);
                     
                     if (!sendChunk(chunk)) {
-                        LogPanel.log("SenderWorker: Chunk 發送失敗，重新排隊");
+                        // LogPanel.log("SenderWorker: Chunk 發送失敗，重新排隊");
                         // 發送失敗，放回佇列重試
                         chunkQueue.offer(chunk);
                         Thread.sleep(50);
@@ -254,24 +254,24 @@ public class SendFileOptimized {
                     totalBytesSent += chunk.length;
                 }
                 
-                LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
+                // LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
                 
             } catch (Exception e) {
-                LogPanel.log("SenderWorker 錯誤: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                // LogPanel.log("SenderWorker 錯誤: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                 e.printStackTrace(); // 添加完整堆疊追蹤
-                if (callback != null) {
-                    callback.onError(e);
-                }
+                // if (callback != null) {
+                    // callback.onError(e);
+                // }
             } finally {
                 try {
                     socketChannel.close();
                 } catch (IOException e) {
-                    LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
+                    // LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
                 }
             }
         }        private boolean sendChunk(ChunkInfo chunk) {
             try {
-                LogPanel.log("SenderWorker: 發送 chunk metadata offset=" + chunk.offset + ", length=" + chunk.length);
+                // LogPanel.log("SenderWorker: 發送 chunk metadata offset=" + chunk.offset + ", length=" + chunk.length);
                 
                 // 發送 chunk metadata (offset + length)
                 ByteBuffer metaBuffer = ByteBuffer.allocate(16);
@@ -286,7 +286,7 @@ public class SendFileOptimized {
                     }
                 }
                 
-                LogPanel.log("SenderWorker: 已發送 metadata，開始發送數據...");
+                // LogPanel.log("SenderWorker: 已發送 metadata，開始發送數據...");
                 
                 // 使用 zero copy transferTo
                 long bytesToSend = chunk.length;
@@ -308,11 +308,11 @@ public class SendFileOptimized {
                     }
                 }
                 
-                LogPanel.log("SenderWorker: 完成發送 chunk，總共發送 " + chunk.length + " bytes");
+                // LogPanel.log("SenderWorker: 完成發送 chunk，總共發送 " + chunk.length + " bytes");
                 return true;
                 
             } catch (Exception e) {
-                LogPanel.log("發送 chunk 失敗: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                // LogPanel.log("發送 chunk 失敗: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                 return false;
             }
         }
