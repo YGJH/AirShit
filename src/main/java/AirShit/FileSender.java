@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -68,7 +69,7 @@ public class FileSender {
             return;
         }
 
-        List<File> filesToProcess = new ArrayList<>(); // 實際需要傳送的檔案列表 (大檔案 + 壓縮檔)
+        HashSet<File> filesToProcess = new HashSet<>(); // 實際需要傳送的檔案列表 (大檔案 + 壓縮檔)
         String tempArchiveFilePath = null; // 如果創建了臨時 .tar 存檔，其路徑
         boolean isDirectoryTransfer = inputFile.isDirectory(); // 判斷輸入是否為目錄
         long totalSizeOverall = 0; // 所有待傳送檔案的總大小
@@ -83,49 +84,65 @@ public class FileSender {
                 String baseName = inputFile.getName(); // 資料夾的基本名稱
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
-                tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString();
+                File archiveFileForTarCompressor = new File(tempDirForArchive.resolve(compressedFileName).toString());
+                tempArchiveFilePath = archiveFileForTarCompressor.getAbsolutePath(); 
+
                 try {
-                    // Pack directory into .tar in the temp dir and collect small files into filesToProcess
-                    TarCompressor.packToTar(inputFile, new File(tempArchiveFilePath), filesToProcess);
+                    LogPanel.log("FileSender: Calling TarCompressor.packToTar. Input: " + inputFile.getAbsolutePath() + ", Output: " + tempArchiveFilePath);
+                    // TarCompressor.packToTar is responsible for adding large files AND the .tar archive to filesToProcess
+                    TarCompressor.packToTar(inputFile, archiveFileForTarCompressor, filesToProcess);
+                    LogPanel.log("FileSender: TarCompressor.packToTar finished. filesToProcess size: " + filesToProcess.size());
                 } catch (IOException e) {
                     LogPanel.log("FileSender: 壓縮資料夾失敗: " + e.getMessage());
                     if (callback != null) callback.onError(e);
                     return;
                 }
-                int largeFileCount = filesToProcess.size(); // 大檔案的數量
-                // 將所有大檔案加入到待處理列表
-                for (File file : filesToProcess) {
-                    if (file != null && file.exists() && file.length() > 0) {
-                        totalSizeOverall += file.length();
-                    }
-                }
-                File archiveFile = new File(tempArchiveFilePath); // 創建代表壓縮檔的 File 物件
-                // 如果壓縮檔存在且有內容，也將其加入待處理列表
-                if (archiveFile.exists() && archiveFile.length() > 0) {
-                    filesToProcess.add(archiveFile);
-                    totalSizeOverall += archiveFile.length();
-                } else if (largeFileCount == 0) { // 如果沒有大檔案，且壓縮檔不存在或為空
-                    LogPanel.log("FileSender: 目錄 '" + inputFile.getName() + "' 為空或沒有產生任何要傳送的檔案。");
-                    if (archiveFile.exists())
-                        Files.deleteIfExists(archiveFile.toPath()); // 清理空的壓縮檔
-                    // tempDirForArchive 會在最後的 finally 區塊中清理
-                    if (callback != null)
-                        callback.onComplete(); // 或 onError (如果這算錯誤)
-                    return; // 沒有檔案可傳送，直接返回
-                }
-                LogPanel.log("FileSender: 目錄處理完成。大檔案數量: " + largeFileCount + ". 壓縮檔: "
-                        + (archiveFile.exists() && archiveFile.length() > 0 ? archiveFile.getName() : "無"));
 
+                // Recalculate totalSizeOverall based on the final contents of filesToProcess
+                // (which should include large files and/or the .tar archive from TarCompressor)
+                totalSizeOverall = 0;
+                if (!filesToProcess.isEmpty()) {
+                    for (File file : filesToProcess) {
+                        if (file != null && file.exists() && file.length() > 0) {
+                            totalSizeOverall += file.length();
+                        } else {
+                            LogPanel.log("FileSender: Warning - file in filesToProcess is null, non-existent, or empty: " + (file != null ? file.getAbsolutePath() : "null file object"));
+                        }
+                    }
+                    LogPanel.log("FileSender: Directory processing complete. filesToProcess count: " + filesToProcess.size() + ". Calculated totalSizeOverall: " + SendFileGUI.formatFileSize(totalSizeOverall));
+                }
+
+                // If, after TarCompressor's processing, filesToProcess is still empty,
+                // then the directory truly yielded no files to send.
+                if (filesToProcess.isEmpty()) {
+                    LogPanel.log("FileSender: 目錄 '" + inputFile.getName() + "' 為空或沒有產生任何要傳送的檔案。 (filesToProcess is empty after TarCompressor)");
+                    // Attempt to clean up the tar file if it exists but wasn't added (e.g., it was empty or TarCompressor failed to add it)
+                    try {
+                        if (archiveFileForTarCompressor.exists()) {
+                             Files.deleteIfExists(archiveFileForTarCompressor.toPath());
+                             LogPanel.log("FileSender: Cleaned up (potentially empty/failed) tar file: " + tempArchiveFilePath);
+                        }
+                    } catch (IOException ex) {
+                        LogPanel.log("FileSender: Error cleaning up tar file " + tempArchiveFilePath + ": " + ex.getMessage());
+                    }
+                    if (callback != null) callback.onComplete(); // Or onError, depending on desired behavior
+                    return; // No files to send
+                }
             } else { // 如果是傳送單一檔案
-                // isCompressed = false; // 舊的標記變數
                 filesToProcess.add(inputFile);
-                totalSizeOverall += inputFile.length();
-                LogPanel.log("FileSender: 選擇了單一檔案: " + inputFile.getName());
+                if (inputFile.exists() && inputFile.isFile()) {
+                    totalSizeOverall = inputFile.length();
+                } else {
+                    LogPanel.log("FileSender: Error - Single file is invalid or does not exist: " + inputFile.getAbsolutePath());
+                    if (callback != null) callback.onError(new IOException("Selected file is invalid: " + inputFile.getName()));
+                    return;
+                }
+                LogPanel.log("FileSender: 選擇了單一檔案: " + inputFile.getName() + ", Size: " + SendFileGUI.formatFileSize(totalSizeOverall));
             }
 
-            // 再次檢查是否有檔案需要傳送
+            // 再次檢查是否有檔案需要傳送 (This is a final safeguard)
             if (filesToProcess.isEmpty()) {
-                LogPanel.log("FileSender: 準備後沒有檔案需要傳送。");
+                LogPanel.log("FileSender: 準備後沒有檔案需要傳送。 (Final check before handshake)");
                 if (callback != null)
                     callback.onComplete();
                 return;
@@ -174,7 +191,7 @@ public class FileSender {
                         if (tempArchiveFilePath != null
                                 && filePath.equals(Paths.get(tempArchiveFilePath).normalize())) {
                             // 這是壓縮檔
-                            nameToSend = inputFile.getName() + ".tar";
+                            nameToSend = inputFile.getName() + ".tar"; // Ensure this matches how receiver might expect it or how it's named
                         } else {
                             // 這是大檔案
                             if (parentOfSelectedPath != null) {

@@ -3,6 +3,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 
 import java.io.*;
+import java.util.HashSet;
 import java.util.List;
 
 public class TarCompressor {
@@ -21,7 +22,7 @@ public class TarCompressor {
     public static void packToTar(
             File inputFile,
             File outputFile,
-            List<File> resultList
+            HashSet<File> resultList
     ) throws IOException {
         // 建立 .tar 檔案輸出串流
         try (FileOutputStream fos = new FileOutputStream(outputFile);
@@ -43,7 +44,7 @@ public class TarCompressor {
             TarArchiveOutputStream tarOut,
             File file,
             String basePath,
-            List<File> resultList
+            HashSet<File> resultList
     ) throws IOException {
         String entryName = basePath + file.getName();
 
@@ -79,7 +80,7 @@ public class TarCompressor {
      * 範例 main：命令行執行方式
      * java -cp target/your.jar TarOnlyCompressor <inputPath> <output.tar>
      */
-    public static void start(File input , List<File> resultList) {
+    public static void start(File input , HashSet<File> resultList) {
         // if (args.length != 2) {
             // System.err.println("Usage: java TarOnlyCompressor <inputPath> <output.tar>");
             // System.exit(1);
