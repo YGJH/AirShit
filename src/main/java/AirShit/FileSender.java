@@ -2,16 +2,13 @@ package AirShit;
 
 import java.io.*;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
-import AirShit.ui.*;
 import AirShit.ui.LogPanel;
 
 /**
@@ -273,13 +270,14 @@ public class FileSender {
                         callback.onError(new IOException("傳輸被接收端拒絕。"));
                 } else { // 未知的決定
                     throw new IOException("FileSender: 收到來自接收端的未知決定: " + receiverDecision);
-                }
-
-                // ===== 階段 4: 資料傳輸 (如果接受) =====
+                }                // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
-
+                    final int totalFiles = filesToProcess.size();
+                    int fileIndex = 0;
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
+                        fileIndex++;
+                        final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {
                             Path filePath = fileToActuallySend.toPath();
@@ -296,21 +294,27 @@ public class FileSender {
                             }
                         } else {
                             displayName = fileToActuallySend.getName();
-                        }
-                        LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
+                        }                        LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
                                 + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
+                                
+                        // Call onFileStart callback
+                        if (callback != null) {
+                            callback.onFileStart(currentFileIndex, totalFiles, displayName);
+                        }
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
                         senderInstance = new SendFileOptimized(this.host, this.port, fileToActuallySend, negotiatedThreadCount,
-                                callback);
-
-                        // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
+                                callback);                        // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
                         // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
-                                                                              // final
                         final String finalDisplayName = displayName; // 用於日誌
-                        Thread senderOperationThread = new Thread(() -> {
+                        final int finalCurrentFileIndex = currentFileIndex;
+                        final int finalTotalFiles = totalFiles;                        Thread senderOperationThread = new Thread(() -> {
                             try {
                                 senderInstance.start(); // 此方法會阻塞直到該檔案傳送完成或出錯
+                                // Call onFileComplete callback on successful completion
+                                if (callback != null) {
+                                    callback.onFileComplete(finalCurrentFileIndex, finalTotalFiles, finalDisplayName);
+                                }
                             } catch (Exception e) {
                                 LogPanel.log("FileSender: 檔案 " + finalDisplayName + " 的 SendFile 操作發生異常: "
                                         + e.getClass().getSimpleName() + " - " + e.getMessage());
