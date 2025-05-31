@@ -491,7 +491,6 @@ public class Main { // 定義 Main 類別
         }, "file-receiver-thread").start();
 
 
-        multicastHello(); // Then announce yourself
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -505,6 +504,12 @@ public class Main { // 定義 Main 類別
         SwingUtilities.invokeLater(() -> {
             GUI = new SendFileGUI();
         });
+        try {
+            multicastHello(); // Then announce yourself
+            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+            multicastHello(); // Then announce yourself
+            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+        } catch (Exception e) {}
     }
 
 
