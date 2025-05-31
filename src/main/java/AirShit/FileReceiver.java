@@ -211,14 +211,14 @@ public class FileReceiver {
                                 String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator
                                         + outputFileName;
 
-                                LogPanel.log("FileReceiver: Starting data reception for " + outputFileName + " -> "
-                                        + wholeOutputFilePath + " (" + SendFileGUI.formatFileSize(fileSizeForThisFile)
-                                        + ")");
                                 File outputFile = new File(wholeOutputFilePath);
                                 if (outputFile.exists() == false) {
                                     outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
                                     outputFile.createNewFile(); // Create the file if it doesn't exist
-                                    LogPanel.log("FileReceiver: Created new file: " + wholeOutputFilePath);
+                                } else {
+                                    outputFile.delete();
+                                    outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
+                                    outputFile.createNewFile(); // Create the file if it doesn't exist
                                 }
                                 // Receiver class is responsible for handling the data transfer for ONE file.
                                 // The serverSocket argument to Receiver constructor is not used by its start

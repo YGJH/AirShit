@@ -38,7 +38,6 @@ public class SendFileOptimized {
         // 限制最高併發數：以 CPU 核心數 * 4 為上限
         int maxThreads = Math.max(1, threadCount);
         this.threadCount = Math.min(Math.max(1, threadCount), maxThreads);
-        // LogPanel.log("SendFileOptimized: 限制 threadCount=" + this.threadCount + " (原始=" + threadCount + ")");
     }
 
     private TransferCallback getWrappedCallback() {
@@ -198,7 +197,7 @@ public class SendFileOptimized {
                     totalBytesSent += chunk.length;
                 }
                 
-                // LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
+                LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
                 
             } catch (Exception e) {
                 LogPanel.log("SenderWorker 錯誤: " + e.getMessage());
