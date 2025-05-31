@@ -83,11 +83,15 @@ public class FileSender {
                 String baseName = inputFile.getName(); // 資料夾的基本名稱
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
-                tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString(); // 壓縮檔案的完整路徑
-                // 會將小於 3MB 的檔案壓縮到 tempArchiveFilePath，
-                // 並將大於等於 3MB 的檔案填充到 largeFilesArray。
-                TarCompressor.start(inputFile,
-                        filesToProcess);
+                tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString();
+                try {
+                    // Pack directory into .tar in the temp dir and collect small files into filesToProcess
+                    TarCompressor.packToTar(inputFile, new File(tempArchiveFilePath), filesToProcess);
+                } catch (IOException e) {
+                    LogPanel.log("FileSender: 壓縮資料夾失敗: " + e.getMessage());
+                    if (callback != null) callback.onError(e);
+                    return;
+                }
                 int largeFileCount = filesToProcess.size(); // 大檔案的數量
                 // 將所有大檔案加入到待處理列表
                 for (File file : filesToProcess) {
