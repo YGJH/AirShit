@@ -294,7 +294,8 @@ public class FileSender {
                             }
                         } else {
                             displayName = fileToActuallySend.getName();
-                        }                        LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
+                        }                   
+                         LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
                                 + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
                                 
                         // Call onFileStart callback
@@ -316,8 +317,8 @@ public class FileSender {
                                     callback.onFileComplete(finalCurrentFileIndex, finalTotalFiles, finalDisplayName);
                                 }
                             } catch (Exception e) {
-                                LogPanel.log("FileSender: 檔案 " + finalDisplayName + " 的 SendFile 操作發生異常: "
-                                        + e.getClass().getSimpleName() + " - " + e.getMessage());
+                                // LogPanel.log("FileSender: 檔案 " + finalDisplayName + " 的 SendFile 操作發生異常: "
+                                //         + e.getClass().getSimpleName() + " - " + e.getMessage());
                                 if (callback != null) {
                                     // 多次呼叫 onError 比較棘手。考慮一個整體的失敗。
                                     // 目前，讓 SendFile 內部的錯誤由其自身的回呼處理。
@@ -328,39 +329,39 @@ public class FileSender {
                         senderOperationThread.start(); // 啟動執行緒
                         senderOperationThread.join(); // 等待此檔案的傳輸執行緒完成
 
-                        LogPanel.log("FileSender: 完成檔案 " + finalDisplayName + " 的 SendFile 操作。");
+                        // LogPanel.log("FileSender: 完成檔案 " + finalDisplayName + " 的 SendFile 操作。");
                     }
-                    LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
+                    // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
                     if (callback != null)
                         callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
                 }
             } // Socket, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
         } catch (IOException e) { // 捕獲 I/O 異常 (例如 Socket 連接失敗、讀寫錯誤等)
-            LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - "
-                    + e.getMessage());
-            if (callback != null)
-                callback.onError(e);
+            // LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - "
+                    // + e.getMessage());
+            // if (callback != null)
+                // callback.onError(e);
         } catch (InterruptedException e) { // 捕獲中斷異常 (例如 senderOperationThread.join() 被中斷)
             Thread.currentThread().interrupt(); // 重設中斷狀態
-            LogPanel.log("FileSender: sendFiles 被中斷: " + e.getMessage());
-            if (callback != null)
-                callback.onError(e);
+            // LogPanel.log("FileSender: sendFiles 被中斷: " + e.getMessage());
+            // if (callback != null)
+                // callback.onError(e);
         } finally {
             // 最後的清理工作：刪除臨時的壓縮檔及其目錄
             if (isDirectoryTransfer && tempArchiveFilePath != null) {
-                LogPanel.log("FileSender: 最後清理：嘗試刪除臨時壓縮檔: " + tempArchiveFilePath);
+                // LogPanel.log("FileSender: 最後清理：嘗試刪除臨時壓縮檔: " + tempArchiveFilePath);
                 try {
                     Path archivePath = Paths.get(tempArchiveFilePath);
 
                     Files.deleteIfExists(archivePath); // 刪除壓縮檔
-                    LogPanel.log("FileSender: 最後清理：已嘗試刪除壓縮檔 " + archivePath.getFileName());
+                    // LogPanel.log("FileSender: 最後清理：已嘗試刪除壓縮檔 " + archivePath.getFileName());
 
                     if (tempDirForArchive != null && Files.exists(tempDirForArchive)) {
                         Files.deleteIfExists(tempDirForArchive); // 刪除臨時目錄
-                        LogPanel.log("FileSender: 最後清理：已嘗試刪除臨時目錄: " + tempDirForArchive);
+                        // LogPanel.log("FileSender: 最後清理：已嘗試刪除臨時目錄: " + tempDirForArchive);
                     }
                 } catch (IOException ex) {
-                    LogPanel.log("FileSender: 最後清理：刪除臨時壓縮檔/目錄時出錯: " + ex.getMessage());
+                    // LogPanel.log("FileSender: 最後清理：刪除臨時壓縮檔/目錄時出錯: " + ex.getMessage());
                 }
             }
         }

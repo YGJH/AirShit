@@ -243,16 +243,16 @@ public class FileReceiver {
                                                     LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
                                                             + " after decompression.");
                                                 } catch (IOException eDel) {
-                                                    LogPanel.log("FileReceiver: Error deleting archive "
-                                                            + wholeOutputFilePath + " after decompression: "
-                                                            + eDel.getMessage());
+                                                    // LogPanel.log("FileReceiver: Error deleting archive "
+                                                    //         + wholeOutputFilePath + " after decompression: "
+                                                    //         + eDel.getMessage());
                                                 }
                                             } catch (Exception eDecompress) {
-                                                LogPanel.log("FileReceiver: Error decompressing " + wholeOutputFilePath
-                                                        + ": " + eDecompress.getMessage());
-                                                if (callback != null)
-                                                    callback.onError(new IOException(
-                                                            "Decompression failed for " + outputFileName, eDecompress));
+                                                // LogPanel.log("FileReceiver: Error decompressing " + wholeOutputFilePath
+                                                //         + ": " + eDecompress.getMessage());
+                                                // if (callback != null)
+                                                //     callback.onError(new IOException(
+                                                            // "Decompression failed for " + outputFileName, eDecompress));
                                                 overallSuccess = false; // Mark overall transfer as failed if
                                                                         // decompression fails
                                                 // break; // Optionally break if decompression failure is critical for
@@ -260,24 +260,24 @@ public class FileReceiver {
                                             }
                                         }
                                     } else {
-                                        LogPanel.log("FileReceiver: Data reception process reported failure for "
-                                                + outputFileName);
-                                        if (callback != null)
-                                            callback.onError(new IOException("Reception failed for " + outputFileName));
+                                        // LogPanel.log("FileReceiver: Data reception process reported failure for "
+                                        //         + outputFileName);
+                                        // if (callback != null)
+                                        //     callback.onError(new IOException("Reception failed for " + outputFileName));
                                         overallSuccess = false;
                                         break; // Stop processing further files if one fails to receive
                                     }
                                 } catch (InterruptedException e_intr) {
                                     Thread.currentThread().interrupt();
-                                    LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
-                                            + e_intr.getMessage());
+                                    // LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
+                                            // + e_intr.getMessage());
                                     if (callback != null)
                                         callback.onError(e_intr);
                                     overallSuccess = false;
                                     break;
                                 } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
-                                    LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
-                                            + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
+                                    // LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
+                                    //         + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
                                     if (callback != null)
                                         callback.onError(e_recv);
                                     overallSuccess = false;
@@ -291,44 +291,44 @@ public class FileReceiver {
                                 // onError would have been called by the failing part.
                                 // No explicit onError here unless to signal a general "multi-file transfer
                                 // incomplete".
-                                LogPanel.log(
-                                        "FileReceiver: Overall multi-file transfer did not complete successfully.");
+                                // LogPanel.log(
+                                        // "FileReceiver: Overall multi-file transfer did not complete successfully.");
                             }
 
                         } else { // proceedWithTransfer was false
-                            LogPanel.log(
-                                    "FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
-                            if (callback != null && totalSizeFromSender > 0) {
-                                callback.onError(new IOException("Transfer rejected or handshake failed."));
-                            } else if (callback != null) { // No specific error, but not proceeding
-                                callback.onError(new IOException("Transfer not initiated."));
-                            }
+                            // LogPanel.log(
+                            //         "FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
+                            // if (callback != null && totalSizeFromSender > 0) {
+                            //     callback.onError(new IOException("Transfer rejected or handshake failed."));
+                            // } else if (callback != null) { // No specific error, but not proceeding
+                            //     callback.onError(new IOException("Transfer not initiated."));
+                            // }
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
-                    LogPanel.log("FileReceiver: Timeout during handshake phase with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: Timeout during handshake phase with "
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
+                    //         + ": " + e.getMessage());
+                    // if (callback != null)
+                    //     callback.onError(e);
                 } catch (EOFException e) {
-                    LogPanel.log("FileReceiver: EOF during handshake with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ". Client likely disconnected. " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: EOF during handshake with "
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
+                    //         + ". Client likely disconnected. " + e.getMessage());
+                    // if (callback != null)
+                    //     callback.onError(e);
                 } catch (IOException e) {
-                    LogPanel.log("FileReceiver: IOException during handshake phase with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: IOException during handshake phase with "
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
+                    //         + ": " + e.getMessage());
+                    // if (callback != null)
+                    //     callback.onError(e);
                 } catch (Exception e) { // Catch-all for other handshake processing errors
-                    LogPanel.log("FileReceiver: General error during handshake processing with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: General error during handshake processing with "
+                            // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
+                            // + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    // if (callback != null)
+                        // callback.onError(e);
                 } finally {
                     if (handshakeSocket != null && !handshakeSocket.isClosed()) {
                         try {
@@ -339,7 +339,7 @@ public class FileReceiver {
                                             : "previous client")
                                     + " closed.");
                         } catch (IOException ex) {
-                            LogPanel.log("FileReceiver: Error closing handshake socket: " + ex.getMessage());
+                            // LogPanel.log("FileReceiver: Error closing handshake socket: " + ex.getMessage());
                         }
                     }
                 }

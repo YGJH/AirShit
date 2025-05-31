@@ -43,7 +43,7 @@ public class ReceiverOptimized {
      */
     public static void setComparisonMode(ComparisonMode mode) {
         currentMode = mode;
-        LogPanel.log("ReceiverOptimized: 切換到 " + getModeDescription(mode) + " 模式");
+        // LogPanel.log("ReceiverOptimized: 切換到 " + getModeDescription(mode) + " 模式");
     }
     
     /**
@@ -77,9 +77,9 @@ public class ReceiverOptimized {
         // 限制執行緒數量，避免過多併發
         int maxThreads = Math.max(1, threadCount);
         threadCount = Math.min(Math.max(1, threadCount), maxThreads);
-          LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
-                    " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + 
-                    ", 比對模式: " + getModeDescription(currentMode) + ")");
+        //   LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
+        //             " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + 
+        //             ", 比對模式: " + getModeDescription(currentMode) + ")");
 
         if (fileLength == 0) {
             if (cb != null) {
@@ -117,9 +117,9 @@ public class ReceiverOptimized {
                             
                         } catch (IOException e) {
                             LogPanel.log("ReceiverOptimized Worker: 連接錯誤: " + e.getMessage());
-                            if (cb != null) {
-                                cb.onError(e);
-                            }
+                            // if (cb != null) {
+                            //     cb.onError(e);
+                            // }
                         }
                     });
                     futures.add(future);
@@ -131,7 +131,7 @@ public class ReceiverOptimized {
                     try {
                         future.get();
                     } catch (Exception e) {
-                        LogPanel.log("ReceiverOptimized Worker 執行錯誤: " + e.getMessage());
+                        // LogPanel.log("ReceiverOptimized Worker 執行錯誤: " + e.getMessage());
                         allCompleted = false;
                     }
                 }
@@ -153,10 +153,10 @@ public class ReceiverOptimized {
                 return totalProcessed == fileLength && allCompleted;
             }
         } catch (IOException e) {
-            LogPanel.log("ReceiverOptimized: 檔案操作錯誤: " + e.getMessage());
-            if (cb != null) {
-                cb.onError(e);
-            }
+            // LogPanel.log("ReceiverOptimized: 檔案操作錯誤: " + e.getMessage());
+            // if (cb != null) {
+            //     cb.onError(e);
+            // }
             return false;
         }
     }    
@@ -224,32 +224,32 @@ public class ReceiverOptimized {
                         }
                         
                         if (result.totalProcessed < chunkLength) {
-                            LogPanel.log("ReceiverOptimized Worker: 接收不完整，預期 " + chunkLength + 
-                                       "，實際處理 " + result.totalProcessed);
+                            // LogPanel.log("ReceiverOptimized Worker: 接收不完整，預期 " + chunkLength + 
+                            //            "，實際處理 " + result.totalProcessed);
                             break;
                         }
                     }
                     
                 } catch (IOException e) {
-                    LogPanel.log("ReceiverOptimized Worker: 資料傳輸錯誤: " + e.getMessage());
-                    if (callback != null) {
-                        callback.onError(e);
-                    }
+                    // LogPanel.log("ReceiverOptimized Worker: 資料傳輸錯誤: " + e.getMessage());
+                    // if (callback != null) {
+                    //     callback.onError(e);
+                    // }
                 }
                 
-                LogPanel.log("ReceiverOptimized Worker 完成，寫入了 " + totalBytesRead + 
-                           " bytes，跳過了 " + totalBytesSkippedLocal + " bytes");
+                // LogPanel.log("ReceiverOptimized Worker 完成，寫入了 " + totalBytesRead + 
+                //            " bytes，跳過了 " + totalBytesSkippedLocal + " bytes");
                 
             } catch (Exception e) {
-                LogPanel.log("ReceiverOptimized Worker: 錯誤: " + e.getMessage());
-                if (callback != null) {
-                    callback.onError(e);
-                }
+                // LogPanel.log("ReceiverOptimized Worker: 錯誤: " + e.getMessage());
+                // if (callback != null) {
+                //     callback.onError(e);
+                // }
             } finally {
                 try {
                     dataSocket.close();
                 } catch (IOException e) {
-                    LogPanel.log("ReceiverOptimized Worker: 關閉 socket 錯誤: " + e.getMessage());
+                    // LogPanel.log("ReceiverOptimized Worker: 關閉 socket 錯誤: " + e.getMessage());
                 }
             }
         }
@@ -310,7 +310,7 @@ public class ReceiverOptimized {
                                 return optimizedBatchCompareAndWrite(newDataBuffer, chunkOffset, chunkLength);
                             }
                         } catch (IOException e) {
-                            LogPanel.log("ReceiverOptimized: 智能比對失敗，回退到直接寫入: " + e.getMessage());
+                            // LogPanel.log("ReceiverOptimized: 智能比對失敗，回退到直接寫入: " + e.getMessage());
                         }
                     }
                     return writeAllNewData(newDataBuffer, chunkOffset);
@@ -324,7 +324,7 @@ public class ReceiverOptimized {
                                 return optimizedBatchCompareAndWrite(newDataBuffer, chunkOffset, chunkLength);
                             }
                         } catch (IOException e) {
-                            LogPanel.log("ReceiverOptimized: 激進比對失敗，回退到直接寫入: " + e.getMessage());
+                            // LogPanel.log("ReceiverOptimized: 激進比對失敗，回退到直接寫入: " + e.getMessage());
                         }
                     }
                     return writeAllNewData(newDataBuffer, chunkOffset);
