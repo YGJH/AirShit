@@ -84,8 +84,7 @@ public class FileSender {
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
                 tempArchiveFilePath = Paths.get(tempDirForArchive.toString(), compressedFileName).toString(); // 壓縮檔案的完整路徑
-
-                // LZ4FileCompressor 會將小於 3MB 的檔案壓縮到 tempArchiveFilePath，
+                // 會將小於 3MB 的檔案壓縮到 tempArchiveFilePath，
                 // 並將大於等於 3MB 的檔案填充到 largeFilesArray。
                 TarCompressor.start(inputFile,
                         filesToProcess);
@@ -96,7 +95,6 @@ public class FileSender {
                         totalSizeOverall += file.length();
                     }
                 }
-
                 File archiveFile = new File(tempArchiveFilePath); // 創建代表壓縮檔的 File 物件
                 // 如果壓縮檔存在且有內容，也將其加入待處理列表
                 if (archiveFile.exists() && archiveFile.length() > 0) {
