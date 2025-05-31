@@ -29,9 +29,7 @@ public class Main { // 定義 Main 類別
         clientList.clear(); // 清空客戶端哈希表
     }
 
-    // 把 final 改成普通 static 以便运行时修改
     public static int DISCOVERY_PORT = 23333;
-    // 新增 multicast group 可变字段
     public static String MULTICAST_GROUP = "all-routers.mcast.net";
 
     static {
@@ -65,7 +63,6 @@ public class Main { // 定義 Main 類別
                 }
                 
                 String name = ni.getDisplayName().toLowerCase();
-                // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
                 if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") || 
                     name.contains("vbox") || name.contains("virtualbox")) {
                     System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Virtualization software interface.");
@@ -491,6 +488,19 @@ public class Main { // 定義 Main 類別
         }, "file-receiver-thread").start();
 
 
+        SwingUtilities.invokeLater(() -> {
+            GUI = new SendFileGUI();
+        });
+
+        try {
+            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+            multicastHello(); // Then announce yourself
+            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+            multicastHello(); // Then announce yourself
+            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+        } catch (Exception e) {}
+
+
         new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
@@ -501,19 +511,10 @@ public class Main { // 定義 Main 類別
                 }
             }
         }).start(); // 啟動檢查存活狀態的執行緒
-        SwingUtilities.invokeLater(() -> {
-            GUI = new SendFileGUI();
-        });
-        try {
-            multicastHello(); // Then announce yourself
-            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
-            multicastHello(); // Then announce yourself
-            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
-        } catch (Exception e) {}
     }
-
-
-
+    
+    
+    
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
         try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
             return socket.getLocalPort(); // 返回分配到的 TCP 端口號
