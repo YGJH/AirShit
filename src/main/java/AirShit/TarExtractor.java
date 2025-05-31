@@ -26,6 +26,9 @@ public class TarExtractor {
         // 確保輸出目錄存在
         if (!destDir.exists()) {
             destDir.mkdirs();
+        } else {
+            destDir.delete(); // 如果目標資料夾已存在，則刪除它
+            destDir.mkdirs(); // 重新建立目標資料夾
         }
 
         try (
