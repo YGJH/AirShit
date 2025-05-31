@@ -306,9 +306,7 @@ public class Main { // 定義 Main 類別
                                 listChanged = true;
                                 // Respond directly to the sender (unicast)
                                 Thread.sleep(100); // Slight delay to avoid flooding
-                                responseNewClient(packet.getAddress(), DISCOVERY_PORT);
-                            } else {
-                                responseNewClient(packet.getAddress(), DISCOVERY_PORT);
+                                responseNewClient(InetAddress.getByName(tempClient.getIPAddr()) , tempClient.getUDPPort());
                             }
                         }
                     }

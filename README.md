@@ -212,7 +212,7 @@ jpackage --type exe `
 
 ### packing_for_mac
 
-```windows
+```mac
 mvn clean package
 jpackage --type dmg \
              --dest ./dist \

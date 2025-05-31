@@ -35,8 +35,8 @@ public class ReceiverOptimized {
         int maxThreads = Math.max(1, threadCount);
         threadCount = Math.min(Math.max(1, threadCount), maxThreads);
         
-        // LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
-                    // " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
+        LogPanel.log("ReceiverOptimized: 開始接收檔案 " + outputFile + 
+                    " (預期大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         if (fileLength == 0) {
             if (cb != null) {
@@ -72,7 +72,7 @@ public class ReceiverOptimized {
                             worker.run();
                             
                         } catch (IOException e) {
-                            // LogPanel.log("ReceiverOptimized Worker: 連接錯誤: " + e.getMessage());
+                            LogPanel.log("ReceiverOptimized Worker: 連接錯誤: " + e.getMessage());
                             if (cb != null) {
                                 cb.onError(e);
                             }
@@ -87,14 +87,14 @@ public class ReceiverOptimized {
                     try {
                         future.get();
                     } catch (Exception e) {
-                        // LogPanel.log("ReceiverOptimized Worker 執行錯誤: " + e.getMessage());
+                        LogPanel.log("ReceiverOptimized Worker 執行錯誤: " + e.getMessage());
                         allCompleted = false;
                     }
                 }
                 
                 // 檢查接收是否完整
                 long totalReceived = totalBytesReceived.get();
-                // LogPanel.log("ReceiverOptimized: 總共接收 " + totalReceived + " bytes，預期 " + fileLength + " bytes");
+                LogPanel.log("ReceiverOptimized: 總共接收 " + totalReceived + " bytes，預期 " + fileLength + " bytes");
                 
                 if (totalReceived == fileLength && allCompleted && cb != null) {
                     cb.onComplete();
@@ -103,7 +103,7 @@ public class ReceiverOptimized {
                 return totalReceived == fileLength && allCompleted;
             }
         } catch (IOException e) {
-            // LogPanel.log("ReceiverOptimized: 檔案操作錯誤: " + e.getMessage());
+            LogPanel.log("ReceiverOptimized: 檔案操作錯誤: " + e.getMessage());
             if (cb != null) {
                 cb.onError(e);
             }
@@ -170,14 +170,14 @@ public class ReceiverOptimized {
                         }
                         
                         if (bytesRead < chunkLength) {
-                            // LogPanel.log("ReceiverOptimized Worker: 接收不完整，預期 " + chunkLength + 
-                                    //    "，實際 " + bytesRead);
+                            LogPanel.log("ReceiverOptimized Worker: 接收不完整，預期 " + chunkLength + 
+                                       "，實際 " + bytesRead);
                             break;
                         }
                     }
                     
                 } catch (IOException e) {
-                    // LogPanel.log("ReceiverOptimized Worker: 資料傳輸錯誤: " + e.getMessage());
+                    LogPanel.log("ReceiverOptimized Worker: 資料傳輸錯誤: " + e.getMessage());
                     if (callback != null) {
                         callback.onError(e);
                     }
@@ -186,7 +186,7 @@ public class ReceiverOptimized {
                 // LogPanel.log("ReceiverOptimized Worker 完成，接收了 " + totalBytesRead + " bytes");
                 
             } catch (Exception e) {
-                // LogPanel.log("ReceiverOptimized Worker: 錯誤: " + e.getMessage());
+                LogPanel.log("ReceiverOptimized Worker: 錯誤: " + e.getMessage());
                 if (callback != null) {
                     callback.onError(e);
                 }
@@ -194,7 +194,7 @@ public class ReceiverOptimized {
                 try {
                     dataSocket.close();
                 } catch (IOException e) {
-                    // LogPanel.log("ReceiverOptimized Worker: 關閉 socket 錯誤: " + e.getMessage());
+                    LogPanel.log("ReceiverOptimized Worker: 關閉 socket 錯誤: " + e.getMessage());
                 }
             }
         }

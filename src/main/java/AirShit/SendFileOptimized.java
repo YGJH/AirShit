@@ -87,8 +87,8 @@ public class SendFileOptimized {
             return;
         }
 
-        // LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
-                    // " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
+        LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
+                    " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
 
         // 建立檔案區塊佇列
         ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
@@ -132,7 +132,7 @@ public class SendFileOptimized {
                 try {
                     future.get();
                 } catch (ExecutionException e) {
-                    // LogPanel.log("SendFileOptimized Worker 錯誤: " + e.getCause());
+                    LogPanel.log("SendFileOptimized Worker 錯誤: " + e.getCause());
                 }
             }
 
@@ -165,7 +165,7 @@ public class SendFileOptimized {
             offset += length;
         }
         
-        // LogPanel.log("SendFileOptimized: 創建了 " + chunkQueue.size() + " 個 chunk，大小約 " + (chunkSize / 1024) + "KB");
+        LogPanel.log("SendFileOptimized: 創建了 " + chunkQueue.size() + " 個 chunk，大小約 " + (chunkSize / 1024) + "KB");
     }
 
     private static class SenderWorker implements Runnable {
@@ -201,7 +201,7 @@ public class SendFileOptimized {
                 // LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
                 
             } catch (Exception e) {
-                // LogPanel.log("SenderWorker 錯誤: " + e.getMessage());
+                LogPanel.log("SenderWorker 錯誤: " + e.getMessage());
                 if (callback != null) {
                     callback.onError(e);
                 }
@@ -209,7 +209,7 @@ public class SendFileOptimized {
                 try {
                     socketChannel.close();
                 } catch (IOException e) {
-                    // LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
+                    LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
                 }
             }
         }
@@ -249,7 +249,7 @@ public class SendFileOptimized {
                 return true;
                 
             } catch (Exception e) {
-                // LogPanel.log("發送 chunk 失敗: " + e.getMessage());
+                LogPanel.log("發送 chunk 失敗: " + e.getMessage());
                 return false;
             }
         }
