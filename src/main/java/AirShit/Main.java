@@ -493,7 +493,7 @@ public class Main { // 定義 Main 類別
         });
 
         try {
-            Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
+            Thread.sleep(500); // 等待 100 毫秒以確保 GUI 已經啟動
             multicastHello(); // Then announce yourself
             Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
             multicastHello(); // Then announce yourself

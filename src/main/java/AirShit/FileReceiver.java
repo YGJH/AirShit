@@ -224,7 +224,8 @@ public class FileReceiver {
                                 // The serverSocket argument to Receiver constructor is not used by its start
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
-                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocketChannel , negotiatedThreadCount); // Pass ServerSocketChannel
+                                // 使用同一個 ServerSocketChannel 供接收端綁定，不重開新的channel
+                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocketChannel, negotiatedThreadCount);
                                 boolean receptionWasSuccessful = false;
                                 try {
                                     receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,

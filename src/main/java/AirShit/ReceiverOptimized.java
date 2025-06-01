@@ -1,10 +1,6 @@
 package AirShit;
 
-import AirShit.ui.LogPanel;
-
 import java.io.*;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
@@ -14,13 +10,8 @@ import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.FileChannel;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 超高效能檔案接收器，使用 Zero Copy + Virtual Threads + 智能區塊比對
@@ -39,6 +30,7 @@ public class ReceiverOptimized {
     public boolean start(
             String outputFile,
             long fileLength,
+            /* port is already bound externally */
             int PORT,
             TransferCallback cb) throws InterruptedException {
         this.outputFile = outputFile;
@@ -66,11 +58,12 @@ public class ReceiverOptimized {
         ExecutorService mainThreadPool = Executors.newFixedThreadPool(threadCount); // 管理初始握手
 
         try {
-            serverSocket.bind(new InetSocketAddress(PORT));
-            serverSocket.configureBlocking(true); // 設定為阻塞模式
-            if(cb != null) {
-                cb.onStart(fileLength, outputFile);
-            }
+            // port already bound by FileReceiver; just ensure blocking
+            serverSocket.configureBlocking(true);
+             
+             if(cb != null) {
+                 cb.onStart(fileLength, outputFile);
+             }
             for(int i = 0 ; i < threadCount; i++) {
                 SocketChannel clientChannel = serverSocket.accept();
                 if (clientChannel != null) {
@@ -78,23 +71,20 @@ public class ReceiverOptimized {
                     mainThreadPool.submit(() -> ReceiverWorker(clientChannel));
                 }
             }
-            mainThreadPool.shutdown(); // 關閉主執行緒池，因為我們不需要再接受新的連線
-            while (!mainThreadPool.isTerminated()) {
+            mainThreadPool.shutdown();
+             while (!mainThreadPool.isTerminated()) {
                 // 等待所有虛擬執行緒完成
                 Thread.sleep(100); // 每 100 毫秒檢查一次
             }
             System.out.println("所有 client 處理完成，接收器結束。");
-            if (cb != null) {
-                cb.onComplete(outputFile);
-            }
-         
-            return true; // 這行不會被執行到，因為 while(true) 會一直循環
-
+            if (cb != null) cb.onComplete(outputFile);
+            return true;
         } catch (IOException e) {
             e.printStackTrace();
+            return false;
         } finally {
+            // ensure pool is shut down
             mainThreadPool.shutdown();
-            return false; // 如果有異常，返回 false
         }
 
     }
