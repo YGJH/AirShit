@@ -198,7 +198,9 @@ public class FileReceiver {
                         System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
-                            LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
+                            // 完成握手後關閉握手機制連線，避免干擾資料通道
+                            try { handshakeSocketChannel.close(); } catch (IOException ignore) {}
+                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
                         // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;

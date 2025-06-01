@@ -12,6 +12,9 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.apache.commons.io.IOIndexedException;
+
 import java.util.ArrayList;
 /**
  * 超高效能檔案接收器，使用 Zero Copy + Virtual Threads + 智能區塊比對
@@ -56,103 +59,106 @@ public class ReceiverOptimized {
         if(fileLength <= 500L * 1024L * 1024L ) { 
             threadCount = 1; // 如果檔案小於 500MB，則只使用單執行緒
         }
-        ExecutorService mainThreadPool = Executors.newFixedThreadPool(threadCount); // 管理初始握手
+        // 用虛擬執行緒接收每個 chunk，直到總 byte 數達到 fileLength
+        java.util.concurrent.atomic.AtomicLong bytesReceived = new java.util.concurrent.atomic.AtomicLong(0);
+        ExecutorService chunkExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
         try {
-            // port already bound by FileReceiver; just ensure blocking
             serverSocket.configureBlocking(true);
-            for(int i = 0 ; i < threadCount; i++) {
+            while (bytesReceived.get() < fileLength) {
                 SocketChannel clientChannel = serverSocket.accept();
                 if (clientChannel != null) {
-                    // 將該 clientChannel 交給固定執行緒池去處理「offset/length 讀取」
-                    mainThreadPool.submit(() -> ReceiverWorker(clientChannel));
+                    chunkExecutor.submit(() -> {
+                        try {
+                            // 1. header
+                            ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
+                            while (metaBuf.hasRemaining()) clientChannel.read(metaBuf);
+                            metaBuf.flip();
+                            long offset = metaBuf.getLong();
+                            long length = metaBuf.getLong();
+                            // 2. ACK
+                            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
+                            ackBuf.putLong(offset).putLong(length).flip();
+                            clientChannel.write(ackBuf);
+                            // 3. data
+                            try (RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
+                                 FileChannel outCh = raf.getChannel()) {
+                                ByteBuffer buf = ByteBuffer.allocate(8192);
+                                long written = 0;
+                                long pos = offset;
+                                while (written < length) {
+                                    int r = clientChannel.read(buf);
+                                    if (r <= 0) break;
+                                    buf.flip();
+                                    outCh.write(buf, pos);
+                                    pos += r;
+                                    written += r;
+                                    buf.clear();
+                                    if (cb != null) cb.onProgress(r);
+                                }
+                                bytesReceived.addAndGet(written);
+                            }
+                            clientChannel.close();
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
+                        }
+                    });
                 }
             }
-            mainThreadPool.shutdown();
-            while (!mainThreadPool.isTerminated()) {
-                // 等待所有虛擬執行緒完成
-                Thread.sleep(100); // 每 100 毫秒檢查一次
-            }
-            System.out.println("所有 client 處理完成，接收器結束。");
+            // 等待所有 chunk 完成
+            chunkExecutor.shutdown();
+            chunkExecutor.awaitTermination(1, java.util.concurrent.TimeUnit.HOURS);
+            System.out.println("所有 chunk 處理完成，接收器結束。");
             if (cb != null) cb.onComplete(outputFile);
             return true;
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             return false;
-        } finally {
-            // ensure pool is shut down
-            mainThreadPool.shutdown();
         }
 
     }
 
     private void ReceiverWorker(SocketChannel clientChannel) {
-        try (ExecutorService chunkExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-
-            // 2. 不關閉 clientChannel，持續從同一條 channel 讀 offset/length，再交給 handleChunk 去讀資料
-
+        try {
+            // 連續接收多個 chunk: 先 handshake header，再 ACK，再讀資料
             while (true) {
-                // 先讀 16 bytes 的 offset 和 length (皆為 long)
+                // 1. 讀取 header: offset + length (皆 long)
                 ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
                 while (metaBuf.hasRemaining()) {
                     int r = clientChannel.read(metaBuf);
-                    if (r == -1) {
-                        // client 已關閉連線
-                        return;
-                    }
+                    if (r == -1) return; // client 關閉
                 }
                 metaBuf.flip();
                 long offset = metaBuf.getLong();
                 long length = metaBuf.getLong();
                 System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
-
-                // 3. 為這個 offset/length 提交一個虛擬執行緒，讓它去真正讀 chunk 的資料
-                chunkExecutor.submit(() -> handleChunk(clientChannel, offset, length));
-            }
-
-        } catch (IOException e) {
-            System.err.println("處理 client 握手時發生 IOException: " + e.getMessage());
-        } finally {
-            // 如果握手階段結束（client 關閉連線），在此關閉 channel
-            try {
-                clientChannel.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-    }
-
-    private void handleChunk(SocketChannel clientChannel, long offset, long length) {
-
-        try {
-            // reply ACK (offset + length, both long)
-            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
-            ackBuf.putLong(offset).putLong(length);
-            ackBuf.flip();
-            while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
-            System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
-
-            // 為每個 chunk 打開自己的 RandomAccessFile/FileChannel，並根據 offset 寫入
-            try (RandomAccessFile raf = new RandomAccessFile(this.outputFile, "rw");
-                 FileChannel outChannel = raf.getChannel()) {
-                ByteBuffer buf = ByteBuffer.allocate(8192);
-                long writePos = offset;
-                int totalRead = 0;
-                while (totalRead < length) {
-                    int n = clientChannel.read(buf);
-                    if (n == -1) return; // client 已關閉
-                    buf.flip();
-                    // 直接將資料寫入指定偏移位置
-                    outChannel.write(buf, writePos);
-                    writePos += n;
-                    totalRead += n;
-                    buf.clear();
-                    if (cb != null) cb.onProgress(n);
+                // 2. 回覆 ACK
+                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
+                ackBuf.putLong(offset).putLong(length).flip();
+                while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
+                System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
+                // 3. 讀取資料並寫入檔案
+                try (RandomAccessFile raf = new RandomAccessFile(this.outputFile, "rw");
+                     FileChannel outChannel = raf.getChannel()) {
+                    ByteBuffer buf = ByteBuffer.allocate(8192);
+                    long writePos = offset;
+                    long totalRead = 0;
+                    while (totalRead < length) {
+                        int n = clientChannel.read(buf);
+                        if (n == -1) return; // client 關閉
+                        buf.flip();
+                        outChannel.write(buf, writePos);
+                        writePos += n;
+                        totalRead += n;
+                        buf.clear();
+                        if (cb != null) cb.onProgress(n);
+                    }
                 }
             }
-        } catch (IOException e) {
-            System.err.println("在虛擬執行緒讀 chunk 時發生 IOException: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Receiver handling data failed: " + e.getMessage());
+        } finally {
+            try { clientChannel.close(); } catch (IOException e) { e.printStackTrace(); }
         }
     }
 

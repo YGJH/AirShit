@@ -2,13 +2,14 @@ package AirShit;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
+import java.nio.channels.Channels;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 public class SendFileOptimized {
     
     private String serverHost;
@@ -107,30 +108,25 @@ public class SendFileOptimized {
          * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
          */
         private void sendChunk(String serverHost, int serverPort, String filePath, long offset, long length, TransferCallback callback) {
-            // Open socket and file channel for this chunk
             try (SocketChannel channel = SocketChannel.open();
                  RandomAccessFile raf = new RandomAccessFile(filePath, "r");
                  FileChannel inCh = raf.getChannel()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
-                // 1. 傳送 header: offset + length (both as long)
-                ByteBuffer header = ByteBuffer.allocate(Long.BYTES * 2);
-                header.putLong(offset).putLong(length);
-                header.flip();
-                while (header.hasRemaining()) channel.write(header);
-                // 2. 等待 ACK: offset + length (both long)
-                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
-                while (ackBuf.hasRemaining()) {
-                    int r = channel.read(ackBuf);
-                    if (r < 0) return;
-                }
-                ackBuf.flip();
-                long ackOff = ackBuf.getLong();
-                long ackLen = ackBuf.getLong();
-                if (ackOff != offset || ackLen != length) {
-                    return;
-                }
-                // 3. 傳送資料 via zero-copy
+                // wrap streams for header/ACK
+                var out = Channels.newOutputStream(channel);
+                var in = Channels.newInputStream(channel);
+                var dos = new DataOutputStream(out);
+                var dis = new DataInputStream(in);
+                // 1. send header
+                dos.writeLong(offset);
+                dos.writeLong(length);
+                dos.flush();
+                // 2. wait ACK
+                long ackOff = dis.readLong();
+                long ackLen = dis.readLong();
+                if (ackOff != offset || ackLen != length) return;
+                // 3. send data via zero-copy
                 long sent = 0;
                 while (sent < length) {
                     long n = inCh.transferTo(offset + sent, length - sent, channel);
