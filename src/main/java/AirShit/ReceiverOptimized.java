@@ -95,19 +95,18 @@ public class ReceiverOptimized {
             // 2. 不關閉 clientChannel，持續從同一條 channel 讀 offset/length，再交給 handleChunk 去讀資料
 
             while (true) {
-                // 先讀 8 bytes 的 offset，再讀 4 bytes 的 length
-                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-
-                // 如果 client 已經關閉，read() 會回傳 -1
-                int bytesRead = clientChannel.read(metaBuf);
-                if (bytesRead == -1) {
-                    System.out.println("Client 已正常關閉連線：" + clientChannel.getRemoteAddress());
-                    break;
+                // 先讀 8 bytes 的 offset，再讀 4 bytes 的 length，確保完整接收
+                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
+                int r = clientChannel.read(metaBuf);
+                if (r == -1) {
+                    break; // client 已關閉連線
+                } else if (r < Long.BYTES + Integer.BYTES) {
+                    System.out.println("未讀取到完整的 metadata，等待更多資料...");
+                    continue; // 尚未讀取到完整的 offset/length
                 }
-
                 metaBuf.flip();
                 long offset = metaBuf.getLong();
-                int length = metaBuf.getInt();
+                long length = metaBuf.getLong();
                 System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
 
                 // 3. 為這個 offset/length 提交一個虛擬執行緒，讓它去真正讀 chunk 的資料
@@ -127,13 +126,13 @@ public class ReceiverOptimized {
 
     }
 
-    private void handleChunk(SocketChannel clientChannel, long offset, int length) {
+    private void handleChunk(SocketChannel clientChannel, long offset, long length) {
 
         try {
             // reply ACK
-            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
             ackBuf.putLong(offset);
-            ackBuf.putInt(length);
+            ackBuf.putLong(length);
             ackBuf.flip();
             while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
             System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);

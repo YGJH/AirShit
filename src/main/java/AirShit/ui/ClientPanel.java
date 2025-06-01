@@ -117,13 +117,19 @@ public class ClientPanel extends JPanel {
         if (model == null)
             model = new DefaultListModel<>();
         model.clear(); // Clear the GUI list immediately
+        try {
+            Thread.sleep(10); // Ensure Main's client list is cleared
+        } catch (Exception e) {
+            // Handle any exceptions that might occur when clearing the list
+        }
         Main.multicastHello(); // Send out discovery packets
 
         // Schedule a GUI update after a short delay to allow Main to populate its list
         // from responses or existing knowledge.
-        Timer timer = new Timer(50, e -> SwingUtilities.invokeLater(this::refreshGuiListOnly)); // 0.5 second delay
+        Timer timer = new Timer(300, e -> SwingUtilities.invokeLater(this::refreshGuiListOnly)); // 0.3 second delay
         timer.setRepeats(false);
         timer.start();
+        refreshGuiListOnly();
     }
 
     /**
