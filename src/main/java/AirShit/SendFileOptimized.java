@@ -7,7 +7,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
+import java.util.ArrayList;
 public class SendFileOptimized {
     
     private String serverHost;
@@ -43,6 +43,7 @@ public class SendFileOptimized {
 
             // 3. 建立固定執行緒池
             ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
+            ArrayList<Thread> threads = new ArrayList<>();
             // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
             for (int i = 0; i < numChunks; i++) {
                 long offset = (long) i * chunkSize;
@@ -50,11 +51,19 @@ public class SendFileOptimized {
                 int length = (int) Math.min(chunkSize, fileSize - offset);
 
                 // 每個 chunk 單獨開一個 FileChannel
-                fixedPool.submit(new ChunkSenderTask(
+                // fixedPool.submit(new ChunkSenderTask(
+                //         serverHost, serverPort, filePath, offset, length, callback
+                // ));
+           
+                Thread t = new Thread(new ChunkSenderTask(
                         serverHost, serverPort, filePath, offset, length, callback
                 ));
+               threads.add(t);
             }
 
+            for(Thread t : threads) {
+                fixedPool.submit(t);
+            }
             // 5. 關閉 fixedPool，不再接受新任務，並等待所有任務完成
             fixedPool.shutdown();
             while (!fixedPool.isTerminated()) {

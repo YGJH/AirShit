@@ -12,7 +12,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
+import java.util.ArrayList;
 /**
  * 超高效能檔案接收器，使用 Zero Copy + Virtual Threads + 智能區塊比對
  */
@@ -61,15 +61,20 @@ public class ReceiverOptimized {
             // port already bound by FileReceiver; just ensure blocking
             serverSocket.configureBlocking(true);
              
-             if(cb != null) {
-                 cb.onStart(fileLength, outputFile);
-             }
+            if(cb != null) {
+                cb.onStart(fileLength, outputFile);
+            }
+            ArrayList<Thread> threads = new ArrayList<>();
             for(int i = 0 ; i < threadCount; i++) {
                 SocketChannel clientChannel = serverSocket.accept();
                 if (clientChannel != null) {
                     // 將該 clientChannel 交給固定執行緒池去處理「offset/length 讀取」
-                    mainThreadPool.submit(() -> ReceiverWorker(clientChannel));
+                    Thread t = new Thread(() -> ReceiverWorker(clientChannel));
+                    threads.add(t);
                 }
+            }
+            for (Thread t : threads) {
+                mainThreadPool.submit(t);
             }
             mainThreadPool.shutdown();
              while (!mainThreadPool.isTerminated()) {
