@@ -7,7 +7,8 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
+
 public class SendFileOptimized {
     
     private String serverHost;
@@ -15,8 +16,8 @@ public class SendFileOptimized {
     private String filePath;
     private int threadCount;
     private TransferCallback callback;
-    private int chunkSize = 40 * 1024 * 1024 ; // 單位：bytes
-
+    private final long chunkSize = 4L * 1024 * 1024;               // 4MB 單位的 chunk 大小
+    private final long MAX_CHUNK_SIZE = 6L * 1024 * 1024 * 1024;    // 最大每輪處理 6GB
     public SendFileOptimized(
         String serverHost,
         int serverPort,
@@ -39,29 +40,34 @@ public class SendFileOptimized {
             long fileSize = fileChannel.size();
 
             // 2. 計算要分成多少個 chunk
-            int numChunks = (int) ((fileSize + chunkSize - 1) / chunkSize);
+            int round = (int) Math.ceil((double) fileSize / MAX_CHUNK_SIZE);
+            for(int i = 0 ; i < round ; i++) {
+                long RoundSize = Math.min(MAX_CHUNK_SIZE, fileSize - i * MAX_CHUNK_SIZE);
+                long numChunks = (long) ((RoundSize + chunkSize - 1) / chunkSize);
+                long chunkPerThread = (long) Math.ceil((double) numChunks / threadCount);
+                // 3. 建立固定執行緒池
+                ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
+                // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
+                for (int j = 0; j < threadCount; j++) {
+                    // 計算本輪第 j 執行緒要處理的區段偏移及長度
+                    long offset = i * MAX_CHUNK_SIZE + j * chunkSize * chunkPerThread;
+                    if (offset >= fileSize) {
+                        break; // 無更多資料
+                    }
+                    long length = Math.min(chunkSize * chunkPerThread, fileSize - offset);
+                    fixedPool.submit(new ChunkSenderTask(
+                            serverHost, serverPort, filePath, offset, length, callback
+                    ));
+                }
+                fixedPool.shutdown();
+                while (!fixedPool.isTerminated()) {
+                    Thread.sleep(100); // 每 100ms 檢查一次
+                }
 
-            // 3. 建立固定執行緒池
-            ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
-            // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
-            for (int i = 0; i < numChunks; i++) {
-                long offset = (long) i * chunkSize;
-                // 最後一個 chunk 的長度可能小於 chunkSize
-                int length = (int) Math.min(chunkSize, fileSize - offset);
 
-                // 每個 chunk 單獨開一個 FileChannel
-                fixedPool.submit(new ChunkSenderTask(
-                        serverHost, serverPort, filePath, offset, length, callback
-                ));
-           
             }
 
             // 5. 關閉 fixedPool，不再接受新任務，並等待所有任務完成
-            fixedPool.shutdown();
-            while (!fixedPool.isTerminated()) {
-                Thread.sleep(100); // 每 100ms 檢查一次
-            }
-
             // 關閉主文件通道
             fileChannel.close();
             raf.close();
@@ -78,35 +84,26 @@ public class SendFileOptimized {
         private final String serverHost;
         private final int serverPort;
         private final String filePath;
-        private final long offset;
-        private final int length;
+        private final long chunkOffset;
+        private final long chunkSize;
         private static TransferCallback callback;
-        public ChunkSenderTask(String serverHost, int serverPort, String filePath, long offset, int length, TransferCallback callback) {
+        public ChunkSenderTask(String serverHost, int serverPort, String filePath, long chunkOffset , long chunkSize, TransferCallback callback) {
             this.serverHost = serverHost;
             this.serverPort = serverPort;
             this.filePath = filePath;
-            this.offset = offset;
-            this.length = length;
+            this.chunkOffset = chunkOffset;
+            this.chunkSize = chunkSize;
             ChunkSenderTask.callback = callback;
         }
 
         @Override
         public void run() {
-            // 在每個固定執行緒內部，建立一個 VirtualThreadPerTaskExecutor
-            ExecutorService virtualPool = Executors.newVirtualThreadPerTaskExecutor();
-            // 將實際傳送 chunk 的任務提交給 virtualPool
-            virtualPool.submit(() -> {
-                sendChunk();
-            });
-
-            // 關閉 virtualPool，不再接受新任務，等該虛擬執行緒完成
-            virtualPool.shutdown();
-            try {
-                while (!virtualPool.isTerminated()) {
-                    Thread.sleep(50);
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            ExecutorService virtualThreadPool = Executors.newVirtualThreadPerTaskExecutor();
+            // 直接呼叫 sendChunk，裡面會為每個 packet 建立 vpool
+            for(int i = 0; i < chunkSize; i += 8192) {
+                long offset = chunkOffset + i * 8192;
+                long length = Math.min(8192, chunkSize - i);
+                virtualThreadPool.submit(() -> sendChunk(serverHost, serverPort, filePath, offset, length, callback));
             }
         }
 
@@ -114,67 +111,41 @@ public class SendFileOptimized {
          * 真正的 chunk 傳送邏輯：開啟 SocketChannel、先送 offset+length header，等 ACK，
          * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
          */
-        private void sendChunk() {
+        private void sendChunk(String serverHost, int serverPort, String filePath, long offset, long length, TransferCallback callback) {
             try (SocketChannel channel = SocketChannel.open()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
-                System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
-                        + "，準備傳送 chunk offset=" + offset + ", length=" + length);
-
-                // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
-                ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                headerBuf.putLong(offset);
-                headerBuf.putInt((int) length);
-                headerBuf.flip();
-                while (headerBuf.hasRemaining()) channel.write(headerBuf);
-
-                // 2. 等待伺服端回傳 ACK (offset+length)
+                // 1. 傳送 header: offset + length
+                ByteBuffer header = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                header.putLong(offset);
+                header.putInt((int) length);
+                header.flip();
+                while (header.hasRemaining()) channel.write(header);
+                // 2. 等待 ACK
                 ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
                 while (ackBuf.hasRemaining()) {
-                    int rr = channel.read(ackBuf);
-                    if (rr == -1) return;
+                    int r = channel.read(ackBuf);
+                    if (r == -1) return; // connection closed
                 }
-                System.out.println("[" + Thread.currentThread().getName() + "] 收到 ACK，offset=" + offset + ", length=" + length);
                 ackBuf.flip();
-                long ackOffset = ackBuf.getLong();
-                int ackLength = ackBuf.getInt();
-                while (ackOffset != offset || ackLength != length) {
+                long ackOff = ackBuf.getLong();
+                int ackLen = ackBuf.getInt();
+                // 確認 ACK 正確，可重試
+                while (ackOff != offset || ackLen != (int) length) {
                     ackBuf.clear();
                     while (ackBuf.hasRemaining()) channel.read(ackBuf);
                     ackBuf.flip();
-                    ackOffset = ackBuf.getLong();
-                    ackLength = ackBuf.getInt();
-                    System.out.println("[" + Thread.currentThread().getName() + "] 收到 ACK，offset=" + offset + ", length=" + length);
+                    ackOff = ackBuf.getLong();
+                    ackLen = ackBuf.getInt();
                 }
-
-                System.out.println("[" + Thread.currentThread().getName() + "] 開始傳送 chunk 資料，offset=" + offset + ", length=" + length);
-
-                // 3. 傳送實際 chunk 資料 (長度為 length)，每個 packet 附帶全域 offset
-                try (RandomAccessFile rafChunk = new RandomAccessFile(filePath, "r");
-                     FileChannel chunkChannel = rafChunk.getChannel()) {
-                    ByteBuffer buf = ByteBuffer.allocate(8192);
-                    long globalPos = offset;
-                    int totalRemaining = length;
-                    while (totalRemaining > 0) {
-                        buf.clear();
-                        int read = chunkChannel.read(buf, globalPos);
-                        if (read == -1 || read == 0) break;
-                        buf.flip();
-                        int packetLen = buf.remaining();
-                        // packet header: offset + length
-                        ByteBuffer pktHdr = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                        pktHdr.putLong(globalPos);
-                        pktHdr.putInt(packetLen);
-                        pktHdr.flip();
-                        // send header then data
-                        while (pktHdr.hasRemaining()) channel.write(pktHdr);
-                        while (buf.hasRemaining()) channel.write(buf);
-                        if (callback != null) {
-                            callback.onProgress(packetLen);
-                        }
-                        globalPos += packetLen;
-                        totalRemaining -= packetLen;
-                    }
+                // 3. 傳送資料
+                try (RandomAccessFile raf = new RandomAccessFile(filePath, "r");
+                     FileChannel inCh = raf.getChannel()) {
+                    ByteBuffer buf = ByteBuffer.allocate((int) length);
+                    inCh.read(buf, offset);
+                    buf.flip();
+                    while (buf.hasRemaining()) channel.write(buf);
+                    if (callback != null) callback.onProgress(length);
                 }
             } catch (IOException e) {
                 e.printStackTrace();

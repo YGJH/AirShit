@@ -60,24 +60,15 @@ public class ReceiverOptimized {
         try {
             // port already bound by FileReceiver; just ensure blocking
             serverSocket.configureBlocking(true);
-             
-            if(cb != null) {
-                cb.onStart(fileLength, outputFile);
-            }
-            ArrayList<Thread> threads = new ArrayList<>();
             for(int i = 0 ; i < threadCount; i++) {
                 SocketChannel clientChannel = serverSocket.accept();
                 if (clientChannel != null) {
                     // 將該 clientChannel 交給固定執行緒池去處理「offset/length 讀取」
-                    Thread t = new Thread(() -> ReceiverWorker(clientChannel));
-                    threads.add(t);
+                    mainThreadPool.submit(() -> ReceiverWorker(clientChannel));
                 }
             }
-            for (Thread t : threads) {
-                mainThreadPool.submit(t);
-            }
             mainThreadPool.shutdown();
-             while (!mainThreadPool.isTerminated()) {
+            while (!mainThreadPool.isTerminated()) {
                 // 等待所有虛擬執行緒完成
                 Thread.sleep(100); // 每 100 毫秒檢查一次
             }
@@ -142,17 +133,19 @@ public class ReceiverOptimized {
             while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
             System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
 
-            // 為每個 chunk 打開自己的 RandomAccessFile/FileChannel
+            // 為每個 chunk 打開自己的 RandomAccessFile/FileChannel，並根據 offset 寫入
             try (RandomAccessFile raf = new RandomAccessFile(this.outputFile, "rw");
                  FileChannel outChannel = raf.getChannel()) {
-                raf.seek(offset);
                 ByteBuffer buf = ByteBuffer.allocate(8192);
+                long writePos = offset;
                 int totalRead = 0;
                 while (totalRead < length) {
                     int n = clientChannel.read(buf);
                     if (n == -1) return; // client 已關閉
                     buf.flip();
-                    outChannel.write(buf);
+                    // 直接將資料寫入指定偏移位置
+                    outChannel.write(buf, writePos);
+                    writePos += n;
                     totalRead += n;
                     buf.clear();
                     if (cb != null) cb.onProgress(n);
