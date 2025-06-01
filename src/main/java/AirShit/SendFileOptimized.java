@@ -98,13 +98,8 @@ public class SendFileOptimized {
 
         @Override
         public void run() {
-            ExecutorService virtualThreadPool = Executors.newVirtualThreadPerTaskExecutor();
-            // 直接呼叫 sendChunk，裡面會為每個 packet 建立 vpool
-            for(int i = 0; i < chunkSize; i += 8192) {
-                long offset = chunkOffset + i * 8192;
-                long length = Math.min(8192, chunkSize - i);
-                virtualThreadPool.submit(() -> sendChunk(serverHost, serverPort, filePath, offset, length, callback));
-            }
+            // 一個連線處理整個 chunk (offset, length)
+            sendChunk(serverHost, serverPort, filePath, chunkOffset, chunkSize, callback);
         }
 
         /**
@@ -112,41 +107,39 @@ public class SendFileOptimized {
          * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
          */
         private void sendChunk(String serverHost, int serverPort, String filePath, long offset, long length, TransferCallback callback) {
-            try (SocketChannel channel = SocketChannel.open()) {
+            // Open socket and file channel for this chunk
+            try (SocketChannel channel = SocketChannel.open();
+                 RandomAccessFile raf = new RandomAccessFile(filePath, "r");
+                 FileChannel inCh = raf.getChannel()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
                 // 1. 傳送 header: offset + length
                 ByteBuffer header = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                header.putLong(offset);
-                header.putInt((int) length);
+                header.putLong(offset).putInt((int) length);
                 header.flip();
                 while (header.hasRemaining()) channel.write(header);
                 // 2. 等待 ACK
                 ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
                 while (ackBuf.hasRemaining()) {
                     int r = channel.read(ackBuf);
-                    if (r == -1) return; // connection closed
+                    if (r < 0) return; // connection closed
                 }
                 ackBuf.flip();
                 long ackOff = ackBuf.getLong();
                 int ackLen = ackBuf.getInt();
-                // 確認 ACK 正確，可重試
-                while (ackOff != offset || ackLen != (int) length) {
-                    ackBuf.clear();
-                    while (ackBuf.hasRemaining()) channel.read(ackBuf);
-                    ackBuf.flip();
-                    ackOff = ackBuf.getLong();
-                    ackLen = ackBuf.getInt();
+                // 可選: 驗證 ACK 正確
+                if (ackOff != offset || ackLen != (int) length) {
+                    // ACK mismatch, abort
+                    return;
                 }
-                // 3. 傳送資料
-                try (RandomAccessFile raf = new RandomAccessFile(filePath, "r");
-                     FileChannel inCh = raf.getChannel()) {
-                    ByteBuffer buf = ByteBuffer.allocate((int) length);
-                    inCh.read(buf, offset);
-                    buf.flip();
-                    while (buf.hasRemaining()) channel.write(buf);
-                    if (callback != null) callback.onProgress(length);
+                // 3. 傳送資料 via zero-copy
+                long sent = 0;
+                while (sent < length) {
+                    long n = inCh.transferTo(offset + sent, length - sent, channel);
+                    if (n <= 0) break;
+                    sent += n;
                 }
+                if (callback != null) callback.onProgress(sent);
             } catch (IOException e) {
                 e.printStackTrace();
             }

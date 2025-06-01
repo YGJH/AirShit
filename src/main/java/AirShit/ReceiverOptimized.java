@@ -18,6 +18,7 @@ import java.util.ArrayList;
  */
 public class ReceiverOptimized {
     private ServerSocketChannel serverSocket;
+
     private int threadCount;
     private String outputFile;
     private TransferCallback cb;
