@@ -101,17 +101,17 @@ public class ReceiverOptimized {
 
             while (true) {
                 // 先讀 8 bytes 的 offset，再讀 4 bytes 的 length，確保完整接收
-                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
-                int r = clientChannel.read(metaBuf);
-                if (r == -1) {
-                    break; // client 已關閉連線
-                } else if (r < Long.BYTES + Integer.BYTES) {
-                    System.out.println("未讀取到完整的 metadata，等待更多資料...");
-                    continue; // 尚未讀取到完整的 offset/length
+                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                while (metaBuf.hasRemaining()) {
+                    int r = clientChannel.read(metaBuf);
+                    if (r == -1) {
+                        // client 已關閉連線
+                        return;
+                    }
                 }
                 metaBuf.flip();
                 long offset = metaBuf.getLong();
-                long length = metaBuf.getLong();
+                int length = metaBuf.getInt();
                 System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
 
                 // 3. 為這個 offset/length 提交一個虛擬執行緒，讓它去真正讀 chunk 的資料

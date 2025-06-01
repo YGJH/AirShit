@@ -130,29 +130,27 @@ public class SendFileOptimized {
                         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
 
                 // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
-                ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
+                ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
                 headerBuf.putLong(offset);
-                headerBuf.putLong(length);
+                headerBuf.putInt((int) length);
                 headerBuf.flip();
-                while (headerBuf.hasRemaining()) {
-                    channel.write(headerBuf);
-                }
+                while (headerBuf.hasRemaining()) channel.write(headerBuf);
 
-                // 2. 等待伺服端回傳 ACK (8 bytes)
-                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
-                int r = channel.read(ackBuf);
-                if (r < Long.BYTES + Long.BYTES) {
-                    return;
+                // 2. 等待伺服端回傳 ACK (offset+length)
+                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                while (ackBuf.hasRemaining()) {
+                    int rr = channel.read(ackBuf);
+                    if (rr == -1) return;
                 }
                 ackBuf.flip();
                 long ackOffset = ackBuf.getLong();
-                long ackLength = ackBuf.getLong();
+                int ackLength = ackBuf.getInt();
                 while (ackOffset != offset || ackLength != length) {
                     ackBuf.clear();
-                    r = channel.read(ackBuf);
+                    while (ackBuf.hasRemaining()) channel.read(ackBuf);
                     ackBuf.flip();
                     ackOffset = ackBuf.getLong();
-                    ackLength = ackBuf.getLong();
+                    ackLength = ackBuf.getInt();
                 }
 
                 // 3. 傳送實際 chunk 資料 (長度為 length)，為每個 chunk 打開自己的 FileChannel
