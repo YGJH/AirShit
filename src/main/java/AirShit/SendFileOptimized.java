@@ -43,7 +43,6 @@ public class SendFileOptimized {
 
             // 3. 建立固定執行緒池
             ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
-            ArrayList<Thread> threads = new ArrayList<>();
             // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
             for (int i = 0; i < numChunks; i++) {
                 long offset = (long) i * chunkSize;
@@ -51,19 +50,12 @@ public class SendFileOptimized {
                 int length = (int) Math.min(chunkSize, fileSize - offset);
 
                 // 每個 chunk 單獨開一個 FileChannel
-                // fixedPool.submit(new ChunkSenderTask(
-                //         serverHost, serverPort, filePath, offset, length, callback
-                // ));
-           
-                Thread t = new Thread(new ChunkSenderTask(
+                fixedPool.submit(new ChunkSenderTask(
                         serverHost, serverPort, filePath, offset, length, callback
                 ));
-               threads.add(t);
+           
             }
 
-            for(Thread t : threads) {
-                fixedPool.submit(t);
-            }
             // 5. 關閉 fixedPool，不再接受新任務，並等待所有任務完成
             fixedPool.shutdown();
             while (!fixedPool.isTerminated()) {
@@ -157,21 +149,31 @@ public class SendFileOptimized {
 
                 System.out.println("[" + Thread.currentThread().getName() + "] 開始傳送 chunk 資料，offset=" + offset + ", length=" + length);
 
-                // 3. 傳送實際 chunk 資料 (長度為 length)，為每個 chunk 打開自己的 FileChannel
+                // 3. 傳送實際 chunk 資料 (長度為 length)，每個 packet 附帶全域 offset
                 try (RandomAccessFile rafChunk = new RandomAccessFile(filePath, "r");
                      FileChannel chunkChannel = rafChunk.getChannel()) {
-                    long remaining = length;
-                    long pos = offset;
-                    while (remaining > 0) {
-                        long transferred = chunkChannel.transferTo(pos, remaining, channel);
-                        if (transferred <= 0) {
-                            break; // 無法繼續傳送
-                        }
+                    ByteBuffer buf = ByteBuffer.allocate(8192);
+                    long globalPos = offset;
+                    int totalRemaining = length;
+                    while (totalRemaining > 0) {
+                        buf.clear();
+                        int read = chunkChannel.read(buf, globalPos);
+                        if (read == -1 || read == 0) break;
+                        buf.flip();
+                        int packetLen = buf.remaining();
+                        // packet header: offset + length
+                        ByteBuffer pktHdr = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                        pktHdr.putLong(globalPos);
+                        pktHdr.putInt(packetLen);
+                        pktHdr.flip();
+                        // send header then data
+                        while (pktHdr.hasRemaining()) channel.write(pktHdr);
+                        while (buf.hasRemaining()) channel.write(buf);
                         if (callback != null) {
-                            callback.onProgress(transferred);
+                            callback.onProgress(packetLen);
                         }
-                        pos += transferred;
-                        remaining -= transferred;
+                        globalPos += packetLen;
+                        totalRemaining -= packetLen;
                     }
                 }
             } catch (IOException e) {

@@ -12,7 +12,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 /**
  * 超高效能檔案接收器，使用 Zero Copy + Virtual Threads + 智能區塊比對
@@ -33,7 +32,7 @@ public class ReceiverOptimized {
             long fileLength,
             /* port is already bound externally */
             int PORT,
-            TransferCallback cb) {
+            TransferCallback cb) throws InterruptedException {
         this.outputFile = outputFile;
         this.cb = cb;
         File out = new File(this.outputFile);
@@ -58,42 +57,34 @@ public class ReceiverOptimized {
         }
         ExecutorService mainThreadPool = Executors.newFixedThreadPool(threadCount); // 管理初始握手
 
-        // 以虛擬執行緒並行處理 chunk data
-        ExecutorService vpool = Executors.newVirtualThreadPerTaskExecutor();
-        AtomicLong bytesReceived = new AtomicLong();
         try {
             // port already bound by FileReceiver; just ensure blocking
             serverSocket.configureBlocking(true);
              
-            if (cb != null) cb.onStart(fileLength, outputFile);
-            while (bytesReceived.get() < fileLength) {
-                SocketChannel client = serverSocket.accept();
-                // 讀 header: offset(8) + length(4)
-                ByteBuffer header = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                while (header.hasRemaining()) {
-                    if (client.read(header) == -1) throw new IOException("Client closed prematurely");
-                }
-                header.flip();
-                long offset = header.getLong();
-                int length = header.getInt();
-                System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
-                bytesReceived.addAndGet(length);
-                // 提交虛擬執行緒處理 chunk data 與 ACK
-                vpool.submit(() -> {
-                    try {
-                        handleChunk(client, offset, length);
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    } finally {
-                        try { client.close(); } catch (IOException e) {}
-                    }
-                });
+            if(cb != null) {
+                cb.onStart(fileLength, outputFile);
             }
-            vpool.shutdown();
-            vpool.awaitTermination(1, java.util.concurrent.TimeUnit.HOURS);
+            ArrayList<Thread> threads = new ArrayList<>();
+            for(int i = 0 ; i < threadCount; i++) {
+                SocketChannel clientChannel = serverSocket.accept();
+                if (clientChannel != null) {
+                    // 將該 clientChannel 交給固定執行緒池去處理「offset/length 讀取」
+                    Thread t = new Thread(() -> ReceiverWorker(clientChannel));
+                    threads.add(t);
+                }
+            }
+            for (Thread t : threads) {
+                mainThreadPool.submit(t);
+            }
+            mainThreadPool.shutdown();
+             while (!mainThreadPool.isTerminated()) {
+                // 等待所有虛擬執行緒完成
+                Thread.sleep(100); // 每 100 毫秒檢查一次
+            }
+            System.out.println("所有 client 處理完成，接收器結束。");
             if (cb != null) cb.onComplete(outputFile);
             return true;
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             e.printStackTrace();
             return false;
         } finally {
