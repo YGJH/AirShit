@@ -113,23 +113,21 @@ public class SendFileOptimized {
                  FileChannel inCh = raf.getChannel()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
-                // 1. 傳送 header: offset + length
-                ByteBuffer header = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                header.putLong(offset).putInt((int) length);
+                // 1. 傳送 header: offset + length (both as long)
+                ByteBuffer header = ByteBuffer.allocate(Long.BYTES * 2);
+                header.putLong(offset).putLong(length);
                 header.flip();
                 while (header.hasRemaining()) channel.write(header);
-                // 2. 等待 ACK
-                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                // 2. 等待 ACK: offset + length (both long)
+                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
                 while (ackBuf.hasRemaining()) {
                     int r = channel.read(ackBuf);
-                    if (r < 0) return; // connection closed
+                    if (r < 0) return;
                 }
                 ackBuf.flip();
                 long ackOff = ackBuf.getLong();
-                int ackLen = ackBuf.getInt();
-                // 可選: 驗證 ACK 正確
-                if (ackOff != offset || ackLen != (int) length) {
-                    // ACK mismatch, abort
+                long ackLen = ackBuf.getLong();
+                if (ackOff != offset || ackLen != length) {
                     return;
                 }
                 // 3. 傳送資料 via zero-copy

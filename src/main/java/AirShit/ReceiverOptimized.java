@@ -92,8 +92,8 @@ public class ReceiverOptimized {
             // 2. 不關閉 clientChannel，持續從同一條 channel 讀 offset/length，再交給 handleChunk 去讀資料
 
             while (true) {
-                // 先讀 8 bytes 的 offset，再讀 4 bytes 的 length，確保完整接收
-                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                // 先讀 16 bytes 的 offset 和 length (皆為 long)
+                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
                 while (metaBuf.hasRemaining()) {
                     int r = clientChannel.read(metaBuf);
                     if (r == -1) {
@@ -103,7 +103,7 @@ public class ReceiverOptimized {
                 }
                 metaBuf.flip();
                 long offset = metaBuf.getLong();
-                int length = metaBuf.getInt();
+                long length = metaBuf.getLong();
                 System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
 
                 // 3. 為這個 offset/length 提交一個虛擬執行緒，讓它去真正讀 chunk 的資料
@@ -126,10 +126,9 @@ public class ReceiverOptimized {
     private void handleChunk(SocketChannel clientChannel, long offset, long length) {
 
         try {
-            // reply ACK (offset 8 bytes + length 4 bytes)
-            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-            ackBuf.putLong(offset);
-            ackBuf.putInt((int) length);
+            // reply ACK (offset + length, both long)
+            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
+            ackBuf.putLong(offset).putLong(length);
             ackBuf.flip();
             while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
             System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
