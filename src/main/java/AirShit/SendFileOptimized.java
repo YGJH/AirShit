@@ -142,6 +142,7 @@ public class SendFileOptimized {
                     int rr = channel.read(ackBuf);
                     if (rr == -1) return;
                 }
+                System.out.println("[" + Thread.currentThread().getName() + "] 收到 ACK，offset=" + offset + ", length=" + length);
                 ackBuf.flip();
                 long ackOffset = ackBuf.getLong();
                 int ackLength = ackBuf.getInt();
@@ -151,7 +152,10 @@ public class SendFileOptimized {
                     ackBuf.flip();
                     ackOffset = ackBuf.getLong();
                     ackLength = ackBuf.getInt();
+                    System.out.println("[" + Thread.currentThread().getName() + "] 收到 ACK，offset=" + offset + ", length=" + length);
                 }
+
+                System.out.println("[" + Thread.currentThread().getName() + "] 開始傳送 chunk 資料，offset=" + offset + ", length=" + length);
 
                 // 3. 傳送實際 chunk 資料 (長度為 length)，為每個 chunk 打開自己的 FileChannel
                 try (RandomAccessFile rafChunk = new RandomAccessFile(filePath, "r");

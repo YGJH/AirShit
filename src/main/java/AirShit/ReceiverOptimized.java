@@ -134,10 +134,10 @@ public class ReceiverOptimized {
     private void handleChunk(SocketChannel clientChannel, long offset, long length) {
 
         try {
-            // reply ACK
-            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Long.BYTES);
+            // reply ACK (offset 8 bytes + length 4 bytes)
+            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
             ackBuf.putLong(offset);
-            ackBuf.putLong(length);
+            ackBuf.putInt((int) length);
             ackBuf.flip();
             while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
             System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
