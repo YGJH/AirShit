@@ -275,14 +275,6 @@ public class FileReceiver {
                                         overallSuccess = false;
                                         break; // Stop processing further files if one fails to receive
                                     }
-                                } catch (InterruptedException e_intr) {
-                                    Thread.currentThread().interrupt();
-                                    // LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
-                                            // + e_intr.getMessage());
-                                    if (callback != null)
-                                        callback.onError(e_intr);
-                                    overallSuccess = false;
-                                    break;
                                 } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
                                     // LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
                                     //         + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
