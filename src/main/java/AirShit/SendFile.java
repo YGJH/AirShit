@@ -116,7 +116,7 @@ public class SendFile {
             // LogPanel.log("SendFile: 為空檔案添加了一個零長度區塊。");
         }
         if (chunkQueue.isEmpty() && fileLength > 0){ // 理論上如果上述邏輯正確，不應發生
-            //  LogPanel.log("錯誤: 對於非空檔案，在啟動 worker 前區塊佇列為空。");
+             LogPanel.log("錯誤: 對於非空檔案，在啟動 worker 前區塊佇列為空。");
              if (workerCallback != null) workerCallback.onError(new IOException("對於非空檔案，區塊佇列意外為空。"));
              return;
         }
@@ -150,7 +150,7 @@ public class SendFile {
                         try { 
                             socketChannel.close();
                         } catch (IOException sce) { 
-                            LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());
+                            // LogPanel.log("關閉失敗的 socket channel 時出錯: " + sce.getMessage());
                         }
                     }
                     // workersToStart.decrementAndGet();
@@ -281,7 +281,7 @@ public class SendFile {
                         }
                         offsetWithinSuperChunk += lengthForThisSubChunk;
                         if (lengthForThisSubChunk == 0 && offsetWithinSuperChunk < currentSuperChunkLength) { 
-                            //  LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 子區塊長度為0但未完成超級區塊的分割。");
+                             LogPanel.log("SendFile.populateChunkQueue: 錯誤 - 子區塊長度為0但未完成超級區塊的分割。");
                              break;
                         }
                     }
@@ -395,7 +395,7 @@ public class SendFile {
                              // 如果 transferTo 返回 0，表示 Socket 的傳送緩衝區可能已滿。
                              // 短暫休眠可以避免忙等待循環。
                              // 如果連接已斷開，後續的嘗試或超時會拋出 IOException。
-                            //  LogPanel.log("SenderWorker (" + workerName + "): transferTo 為區塊 " + chunk + " 返回 0，剩餘 " + (chunk.length - bytesTransferredForThisChunk) + " 位元組。Socket 緩衝區可能已滿。短暫休眠。");
+                             LogPanel.log("SenderWorker (" + workerName + "): transferTo 為區塊 " + chunk + " 返回 0，剩餘 " + (chunk.length - bytesTransferredForThisChunk) + " 位元組。Socket 緩衝區可能已滿。短暫休眠。");
                              Thread.sleep(20); // 減少休眠時間，更頻繁地檢查。
                         } else if (transferredThisCall < 0) {
                             // transferTo 返回負值通常不正常，表示源通道 (檔案) 出錯或 EOF (對檔案不應發生)。

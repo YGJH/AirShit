@@ -34,14 +34,14 @@ public class Receiver {
         File out = new File(outputFile);
         if (out.getParentFile() != null && !out.getParentFile().exists()) {
             if (!out.getParentFile().mkdirs()) {
-                LogPanel.log("Receiver: Failed to create parent directories for " + outputFile);
+                // LogPanel.log("Receiver: Failed to create parent directories for " + outputFile);
                 if (cb != null) cb.onError(new IOException("Failed to create parent directories for " + outputFile));
                 return false;
             }
         }
         if (out.exists()) {
             if (!out.delete()) {
-                LogPanel.log("Receiver: Failed to delete existing file " + outputFile);
+                // LogPanel.log("Receiver: Failed to delete existing file " + outputFile);
                  if (cb != null) cb.onError(new IOException("Failed to delete existing file " + outputFile));
                 return false;
             }
@@ -49,17 +49,17 @@ public class Receiver {
         
         // Handle zero-byte file creation explicitly
         if (fileLength == 0) {
-            LogPanel.log("Receiver: Expecting a zero-byte file: " + outputFile);
+            // LogPanel.log("Receiver: Expecting a zero-byte file: " + outputFile);
             try (FileOutputStream fos = new FileOutputStream(out)) {
                 // Empty file created, no further action needed from workers for data.
             } catch (IOException e) {
-                LogPanel.log("Receiver: Failed to create zero-byte file " + outputFile + ": " + e.getMessage());
+                // LogPanel.log("Receiver: Failed to create zero-byte file " + outputFile + ": " + e.getMessage());
                 if (cb != null) cb.onError(e);
                 return false;
             }
         }
 
-        LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
+        // LogPanel.log("Receiver starting. Expecting file: " + outputFile + ", Size: " + fileLength + ", Connections: " + threadCount);
 
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
         List<Future<?>> futures = new ArrayList<>();
@@ -87,9 +87,9 @@ public class Receiver {
 
                     futures.add(pool.submit(new ReceiverWorker(dataSock, raf, cb, totalBytesActuallyReceivedOverall, fileLength)));
                 } catch (IOException e) {
-                    LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
+                    // LogPanel.log("Receiver: Error accepting connection for worker " + i + ": " + e.getMessage());
                     if (dataSock != null && !dataSock.isClosed()) {
-                        try { dataSock.close(); } catch (IOException ex) { LogPanel.log("Error closing dataSock on accept error: " + ex.getMessage()); }
+                        // try { dataSock.close(); } catch (IOException ex) { LogPanel.log("Error closing dataSock on accept error: " + ex.getMessage()); }
                     }
                 }
             }
@@ -106,12 +106,12 @@ public class Receiver {
             pool.shutdown(); // Signal that no new tasks will be submitted
             // LogPanel.log("Receiver: Pool shutdown initiated. Waiting for termination...");
             if (!pool.awaitTermination(24, TimeUnit.HOURS)) { // Wait for tasks to complete
-                LogPanel.log("Receiver: Pool termination timeout. Forcing shutdown.");
+                // LogPanel.log("Receiver: Pool termination timeout. Forcing shutdown.");
                 pool.shutdownNow(); // Forcefully stop tasks
                 if (cb != null) cb.onError(new IOException("Receiver tasks timed out."));
                 return false; // Transfer failed due to timeout
             }
-            LogPanel.log("Receiver: Pool terminated.");
+            // LogPanel.log("Receiver: Pool terminated.");
 
             boolean allTasksOk = true;
             for (Future<?> future : futures) {
@@ -119,12 +119,12 @@ public class Receiver {
                     future.get(); // Check for exceptions from worker tasks
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt(); // Preserve interrupt status
-                    LogPanel.log("Receiver main thread interrupted while waiting for a worker: " + e.getMessage());
+                    // LogPanel.log("Receiver main thread interrupted while waiting for a worker: " + e.getMessage());
                     allTasksOk = false;
                     if (cb != null) cb.onError(e);
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
-                    LogPanel.log("A receiver task failed with ExecutionException. Cause: " + (cause != null ? cause.getClass().getSimpleName() + " - " + cause.getMessage() : "Unknown cause"));
+                    // LogPanel.log("A receiver task failed with ExecutionException. Cause: " + (cause != null ? cause.getClass().getSimpleName() + " - " + cause.getMessage() : "Unknown cause"));
                     // cause.printStackTrace(); // For detailed debugging
                     allTasksOk = false;
                     if (cb != null) {
@@ -146,7 +146,7 @@ public class Receiver {
                         // if (cb != null) cb.onComplete(out.getName());
                         return true;
                     } else {
-                        LogPanel.log("Zero-byte file discrepancy. Expected size: 0, Actual disk size: " + (out.exists() ? out.length() : "N/A") + ", Reported by workers: " + totalBytesActuallyReceivedOverall.get());
+                        // LogPanel.log("Zero-byte file discrepancy. Expected size: 0, Actual disk size: " + (out.exists() ? out.length() : "N/A") + ", Reported by workers: " + totalBytesActuallyReceivedOverall.get());
                         if (cb != null) cb.onError(new IOException("Zero-byte file reception failed validation."));
                         return false;
                     }
@@ -154,31 +154,31 @@ public class Receiver {
 
                 // For non-zero byte files
                 long finalFileSizeOnDisk = out.length();
-                LogPanel.log("Receiver: All tasks completed. Expected size: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ", Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
+                // LogPanel.log("Receiver: All tasks completed. Expected size: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ", Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
                 if (finalFileSizeOnDisk == fileLength) {
                     // Additional check: ensure total bytes processed by workers also matches
                     if (totalBytesActuallyReceivedOverall.get() == fileLength) {
-                        LogPanel.log("File received successfully: " + outputFile + ", Final Size: " + finalFileSizeOnDisk);
+                        // LogPanel.log("File received successfully: " + outputFile + ", Final Size: " + finalFileSizeOnDisk);
                         // if (cb != null) cb.onComplete();
                         return true;
                     } else {
-                        LogPanel.log("File size on disk matches expected, but total bytes processed by workers (" + totalBytesActuallyReceivedOverall.get() + ") does not match fileLength (" + fileLength + ").");
+                        // LogPanel.log("File size on disk matches expected, but total bytes processed by workers (" + totalBytesActuallyReceivedOverall.get() + ") does not match fileLength (" + fileLength + ").");
                         if (cb != null) cb.onError(new IOException("Internal inconsistency: Worker byte count mismatch. Expected " + fileLength + ", workers processed " + totalBytesActuallyReceivedOverall.get()));
                         return false;
                     }
                 } else {
-                    LogPanel.log("File size mismatch. Expected: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ". Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
+                    // LogPanel.log("File size mismatch. Expected: " + fileLength + ", Actual disk size: " + finalFileSizeOnDisk + ". Total bytes reported by workers: " + totalBytesActuallyReceivedOverall.get());
                     if (cb != null) cb.onError(new IOException("File size mismatch after transfer. Expected " + fileLength + ", got " + finalFileSizeOnDisk));
                     return false;
                 }
             } else {
-                LogPanel.log("One or more receiver tasks failed. File transfer incomplete or corrupted.");
+                // LogPanel.log("One or more receiver tasks failed. File transfer incomplete or corrupted.");
                 // cb.onError should have been called by the failing task or by the ExecutionException handler.
                 return false;
             }
 
         } catch (IOException e) { // Catches IOException from new RandomAccessFile
-            LogPanel.log("Receiver: IOException during RandomAccessFile setup or outer scope: " + e.getMessage());
+            // LogPanel.log("Receiver: IOException during RandomAccessFile setup or outer scope: " + e.getMessage());
             if (cb != null) cb.onError(e);
             return false;
         } finally {
@@ -187,13 +187,13 @@ public class Receiver {
                     try {
                         s.close();
                     } catch (IOException e) {
-                        LogPanel.log("Receiver: Error closing a data socket in finally: " + e.getMessage());
+                        // LogPanel.log("Receiver: Error closing a data socket in finally: " + e.getMessage());
                     }
                 }
             }
-            LogPanel.log("Receiver: All accepted data sockets attempted to close.");
+            // LogPanel.log("Receiver: All accepted data sockets attempted to close.");
             if (!pool.isTerminated()) { // Ensure pool is fully stopped
-                LogPanel.log("Receiver: Forcing pool shutdown in final finally block.");
+                // LogPanel.log("Receiver: Forcing pool shutdown in final finally block.");
                 pool.shutdownNow();
             }
         }
@@ -220,7 +220,7 @@ public class Receiver {
         @Override
         public void run() {
             String workerName = Thread.currentThread().getName();
-            LogPanel.log("ReceiverWorker ("+ workerName +"): Started.");
+            // LogPanel.log("ReceiverWorker ("+ workerName +"): Started.");
             try (InputStream socketInputStream = dataSocket.getInputStream();
                  ReadableByteChannel rbc = Channels.newChannel(socketInputStream)) {
 
@@ -229,7 +229,7 @@ public class Receiver {
                 ByteBuffer dataWriteBuffer = ByteBuffer.wrap(dataArray); // ByteBuffer for writing to FileChannel
 
                 while (true) { // Loop to read multiple chunks if sender sends them on this connection
-                    LogPanel.log("ReceiverWorker ("+ workerName +"): Top of chunk read loop. Waiting for header.");
+                    // LogPanel.log("ReceiverWorker ("+ workerName +"): Top of chunk read loop. Waiting for header.");
                     headerBuffer.clear();
                     int headerBytesReadCount = 0;
                     try {
@@ -237,7 +237,7 @@ public class Receiver {
                             int bytesReadThisCall = rbc.read(headerBuffer);
                             if (bytesReadThisCall == -1) { // EOF
                                 if (headerBytesReadCount == 0) { // Clean EOF before any header byte for this chunk
-                                    LogPanel.log("ReceiverWorker ("+ workerName +"): Clean EOF detected on header read (0 bytes). Worker finishing as sender likely closed connection after sending all its chunks for this worker.");
+                                    // LogPanel.log("ReceiverWorker ("+ workerName +"): Clean EOF detected on header read (0 bytes). Worker finishing as sender likely closed connection after sending all its chunks for this worker.");
                                     return; // Normal termination for this worker
                                 }
                                 // EOF in the middle of a header
@@ -247,11 +247,11 @@ public class Receiver {
                         }
                     } catch (EOFException e) { // Catch EOF specifically from the header read loop
                         if (headerBytesReadCount == 0 && !headerBuffer.hasRemaining()) { // This case should be caught by bytesReadThisCall == -1 above
-                             LogPanel.log("ReceiverWorker ("+ workerName +"): EOF on header read (no bytes read), worker finishing. Message: " + e.getMessage());
+                            //  LogPanel.log("ReceiverWorker ("+ workerName +"): EOF on header read (no bytes read), worker finishing. Message: " + e.getMessage());
                              return; // Normal if sender closes after sending all its data.
                         }
                         // If EOF occurs after some header bytes, it's an error.
-                        LogPanel.log("ReceiverWorker ("+ workerName +"): EOFException after reading " + headerBytesReadCount + " header bytes: " + e.getMessage());
+                        // LogPanel.log("ReceiverWorker ("+ workerName +"): EOFException after reading " + headerBytesReadCount + " header bytes: " + e.getMessage());
                         throw e; // Propagate as it's an incomplete header
                     }
 
@@ -259,7 +259,7 @@ public class Receiver {
                     long offset = headerBuffer.getLong();
                     long length = headerBuffer.getLong();
 
-                    LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d. Expected total file length: %d", workerName, offset, length, expectedTotalFileLength));
+                    // LogPanel.log(String.format("ReceiverWorker (%s): Got header: offset=%d, length=%d. Expected total file length: %d", workerName, offset, length, expectedTotalFileLength));
 
                     // --- Start of validation logic ---
                     if (length < 0) {
@@ -268,7 +268,7 @@ public class Receiver {
 
                     if (expectedTotalFileLength == 0) { // Special case for zero-byte files
                         if (offset == 0 && length == 0) {
-                            LogPanel.log(String.format("ReceiverWorker (%s): Received and validated (0,0) chunk for zero-byte file. Worker finishing.", workerName));
+                            // LogPanel.log(String.format("ReceiverWorker (%s): Received and validated (0,0) chunk for zero-byte file. Worker finishing.", workerName));
                             // No data to read, no raf/fileChannel to use. This worker's job is done.
                             return;
                         } else {
@@ -301,7 +301,7 @@ public class Receiver {
                     // --- End of validation logic ---
 
                     if (length == 0) {
-                        LogPanel.log(String.format("ReceiverWorker (%s): Received zero-length chunk (offset=%d) for non-empty file. Skipping data read for this chunk.", workerName, offset));
+                        // LogPanel.log(String.format("ReceiverWorker (%s): Received zero-length chunk (offset=%d) for non-empty file. Skipping data read for this chunk.", workerName, offset));
                         continue; // Go to read next header
                     }
 
@@ -345,21 +345,21 @@ public class Receiver {
                             callback.onProgress(n); // Report progress
                         }
                     }
-                    LogPanel.log(String.format("ReceiverWorker (%s): Finished receiving and writing chunk: offset=%d, length=%d. Total for this chunk: %d", workerName, offset, length, bytesReadForThisChunk));
+                    // LogPanel.log(String.format("ReceiverWorker (%s): Finished receiving and writing chunk: offset=%d, length=%d. Total for this chunk: %d", workerName, offset, length, bytesReadForThisChunk));
                 } // End of while(true) loop for reading chunks
 
             } catch (SocketTimeoutException e) {
-                LogPanel.log("Error in ReceiverWorker ("+ workerName +"): Socket timeout - " + e.getMessage());
+                // LogPanel.log("Error in ReceiverWorker ("+ workerName +"): Socket timeout - " + e.getMessage());
                 if (callback != null) callback.onError(e);
                 throw new RuntimeException("Socket timeout in ReceiverWorker for " + workerName, e);
             } catch (IOException e) { 
-                LogPanel.log("Error in ReceiverWorker ("+ workerName +"): " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                // LogPanel.log("Error in ReceiverWorker ("+ workerName +"): " + e.getClass().getSimpleName() + " - " + e.getMessage());
                 if (callback != null) {
                     callback.onError(e);
                 }
                 throw new RuntimeException("IOException in ReceiverWorker for " + workerName, e);
             } finally {
-                LogPanel.log("ReceiverWorker ("+ workerName +") finishing run method.");
+                // LogPanel.log("ReceiverWorker ("+ workerName +") finishing run method.");
             }
         }
     }
