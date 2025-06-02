@@ -11,6 +11,7 @@ import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import AirShit.ui.LogPanel;
+import AirShit.SendFileOptimized;
 
 /**
  * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
@@ -24,9 +25,7 @@ import AirShit.ui.LogPanel;
 public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
-    private SendFile senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
     private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
-    // private final int ITHREADS = 1<<30; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 
     private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // 預設 Socket 操作超時時間（秒）
@@ -324,47 +323,24 @@ public class FileSender {
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
 
-                        senderInstance = new SendFile(this.host, this.port, fileToActuallySend, negotiatedThreadCount,
-                                callback);                        // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
-                        // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
-                        final String finalDisplayName = displayName; // 用於日誌
-                        final int finalCurrentFileIndex = currentFileIndex;
-                        final int finalTotalFiles = totalFiles;                        
-                        Thread senderOperationThread = new Thread(() -> {
-                            try {
-                                senderInstance.start(); // 此方法會阻塞直到該檔案傳送完成或出錯
-                                // Call onFileComplete callback on successful completion
-                                if (callback != null) {
-                                    callback.onFileComplete(finalCurrentFileIndex, finalTotalFiles, finalDisplayName);
-                                }
-                            } catch (Exception e) {
-                                // LogPanel.log("FileSender: 檔案 " + finalDisplayName + " 的 SendFile 操作發生異常: "
-                                //         + e.getClass().getSimpleName() + " - " + e.getMessage());
-                                if (callback != null) {
-                                    // 多次呼叫 onError 比較棘手。考慮一個整體的失敗。
-                                    // 目前，讓 SendFile 內部的錯誤由其自身的回呼處理。
-                                }
-                            }
-                        });
-                        senderOperationThread.setName("FileSender-Op-" + finalDisplayName); // 設定執行緒名稱
-                        senderOperationThread.start(); // 啟動執行緒
-                        senderOperationThread.join(); // 等待此檔案的傳輸執行緒完成
-
-                        // LogPanel.log("FileSender: 完成檔案 " + finalDisplayName + " 的 SendFile 操作。");
+                        // use optimized file sender for chunked transfer
+                        SendFileOptimized optimizedSender = new SendFileOptimized(
+                                this.host, this.port,
+                                fileToActuallySend.getAbsolutePath(),
+                                negotiatedThreadCount,
+                                callback
+                        );
+                        optimizedSender.start();
+                        // Notify file complete
+                        if (callback != null) callback.onFileComplete(currentFileIndex, totalFiles, displayName);
                     }
                     // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
-                    if (callback != null)
-                        callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
+                    if (callback != null) callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
                 }
             } // Socket, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
-        } catch (IOException e) { // 捕獲 I/O 異常 (例如 Socket 連接失敗、讀寫錯誤等)
+        } catch (IOException e) { // 捕獲 I/O 異常
             // LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - "
                     // + e.getMessage());
-            // if (callback != null)
-                // callback.onError(e);
-        } catch (InterruptedException e) { // 捕獲中斷異常 (例如 senderOperationThread.join() 被中斷)
-            Thread.currentThread().interrupt(); // 重設中斷狀態
-            // LogPanel.log("FileSender: sendFiles 被中斷: " + e.getMessage());
             // if (callback != null)
                 // callback.onError(e);
         } finally {
