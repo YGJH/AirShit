@@ -64,102 +64,24 @@ public class ReceiverOptimized {
         ExecutorService chunkExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
         try {
-            serverSocket.configureBlocking(true);
-            while (bytesReceived.get() < fileLength) {
-                SocketChannel clientChannel = serverSocket.accept();
-                if (clientChannel != null) {
-                    chunkExecutor.submit(() -> {
-                        try {
-                            // 1. header
-                            ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
-                            while (metaBuf.hasRemaining()) clientChannel.read(metaBuf);
-                            metaBuf.flip();
-                            long offset = metaBuf.getLong();
-                            long length = metaBuf.getLong();
-                            // 2. ACK
-                            ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
-                            ackBuf.putLong(offset).putLong(length).flip();
-                            clientChannel.write(ackBuf);
-                            // 3. data
-                            try (RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
-                                 FileChannel outCh = raf.getChannel()) {
-                                ByteBuffer buf = ByteBuffer.allocate(8192);
-                                long written = 0;
-                                long pos = offset;
-                                while (written < length) {
-                                    int r = clientChannel.read(buf);
-                                    if (r <= 0) break;
-                                    buf.flip();
-                                    outCh.write(buf, pos);
-                                    pos += r;
-                                    written += r;
-                                    buf.clear();
-                                    if (cb != null) cb.onProgress(r);
-                                }
-                                bytesReceived.addAndGet(written);
-                            }
-                            clientChannel.close();
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                        }
-                    });
-                }
-            }
-            // 等待所有 chunk 完成
-            chunkExecutor.shutdown();
-            chunkExecutor.awaitTermination(1, java.util.concurrent.TimeUnit.HOURS);
-            System.out.println("所有 chunk 處理完成，接收器結束。");
-            if (cb != null) cb.onComplete(outputFile);
-            return true;
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            return false;
-        }
-
-    }
-
-    private void ReceiverWorker(SocketChannel clientChannel) {
-        try {
-            // 連續接收多個 chunk: 先 handshake header，再 ACK，再讀資料
-            while (true) {
-                // 1. 讀取 header: offset + length (皆 long)
-                ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
-                while (metaBuf.hasRemaining()) {
-                    int r = clientChannel.read(metaBuf);
-                    if (r == -1) return; // client 關閉
-                }
-                metaBuf.flip();
-                long offset = metaBuf.getLong();
-                long length = metaBuf.getLong();
-                System.out.println("收到 metadata => offset: " + offset + ", length: " + length);
-                // 2. 回覆 ACK
-                ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
-                ackBuf.putLong(offset).putLong(length).flip();
-                while (ackBuf.hasRemaining()) clientChannel.write(ackBuf);
-                System.out.println("已回覆 ACK => offset: " + offset + ", length: " + length);
-                // 3. 讀取資料並寫入檔案
-                try (RandomAccessFile raf = new RandomAccessFile(this.outputFile, "rw");
-                     FileChannel outChannel = raf.getChannel()) {
-                    ByteBuffer buf = ByteBuffer.allocate(8192);
-                    long writePos = offset;
-                    long totalRead = 0;
-                    while (totalRead < length) {
-                        int n = clientChannel.read(buf);
-                        if (n == -1) return; // client 關閉
-                        buf.flip();
-                        outChannel.write(buf, writePos);
-                        writePos += n;
-                        totalRead += n;
-                        buf.clear();
-                        if (cb != null) cb.onProgress(n);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Receiver handling data failed: " + e.getMessage());
-        } finally {
-            try { clientChannel.close(); } catch (IOException e) { e.printStackTrace(); }
-        }
-    }
-
-}
+            System.out.println("ReceiverOptimized: expecting fileLength=" + fileLength + ", threads=" + threadCount);
+             serverSocket.configureBlocking(true);
+             while (bytesReceived.get() < fileLength) {
+                 System.out.println("ReceiverOptimized: waiting for chunk connection...");
+                 SocketChannel clientChannel = serverSocket.accept();
+                 if (clientChannel != null) {
+                     chunkExecutor.submit(() -> {
+                         try {
+                            System.out.println("ReceiverOptimized: chunk connection accepted");
+                             // 1. header
+                             ByteBuffer metaBuf = ByteBuffer.allocate(Long.BYTES * 2);
+                             while (metaBuf.hasRemaining()) clientChannel.read(metaBuf);
+                             metaBuf.flip();
+                             long offset = metaBuf.getLong();
+                             long length = metaBuf.getLong();
+                             System.out.println("ReceiverOptimized: header offset=" + offset + ", length=" + length);
+                             // 2. ACK
+                             ByteBuffer ackBuf = ByteBuffer.allocate(Long.BYTES * 2);
+                             ackBuf.putLong(offset).putLong(length).flip();
+                             clientChannel.write(ackBuf);
+                           

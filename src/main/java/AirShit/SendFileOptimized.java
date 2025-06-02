@@ -33,9 +33,10 @@ public class SendFileOptimized {
         this.callback = callback;
     }
     public void start() {
-
-        try {
-            // 1. 打開本地檔案，取得 FileChannel 與檔案大小
+        // Prevent division by zero
+        this.threadCount = Math.max(1, this.threadCount);
+         try {
+             // 1. 打開本地檔案，取得 FileChannel 與檔案大小
             RandomAccessFile raf = new RandomAccessFile(filePath, "r");
             FileChannel fileChannel = raf.getChannel();
             long fileSize = fileChannel.size();

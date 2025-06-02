@@ -82,7 +82,8 @@ public class FileReceiver {
                             LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                             System.out.println("metaParts: " + initialMetadata);
                             String[] metaParts = initialMetadata.split("@");
-                            if (metaParts.length < 5) {
+                            // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir, origFolder
+                            if (metaParts.length < 6) {
                                 throw new IOException("Invalid initial metadata format (expected 6 parts, got "
                                         + metaParts.length + "): " + initialMetadata);
                             }
@@ -91,7 +92,8 @@ public class FileReceiver {
                             totalSizeFromSender = Long.parseLong(metaParts[2]); // Potential NumberFormatException
                             clientAnnouncedThreads = Integer.parseInt(metaParts[3]); // Potential NumberFormatException
                             isDirectoryTransferFromSender = "1".equals(metaParts[4]);
-                            originalFolderNameFromSender = metaParts[5];
+                            // Guard original folder name if provided
+                            originalFolderNameFromSender = metaParts[5] != null ? metaParts[5] : "-";
 
                             LogPanel.log(String.format(
                                     "FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d, IsDir=%b, OrigFolder=%s",
