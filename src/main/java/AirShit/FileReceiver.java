@@ -13,9 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
-import java.net.InetSocketAddress; // Added import
-import java.nio.channels.ServerSocketChannel; // Added import
-import java.nio.channels.SocketChannel; // Added import
 
 public class FileReceiver {
 
@@ -51,13 +48,11 @@ public class FileReceiver {
     }
 
     public void start(TransferCallback callback) throws IOException {
-        try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) { // Changed from ServerSocket
-            serverSocketChannel.bind(new InetSocketAddress(port)); // Bind the channel
-            serverSocketChannel.configureBlocking(true); // Ensure it's in blocking mode for accept()
-            LogPanel.log("FileReceiver started on port: " + port + ". Waiting for senders using ServerSocketChannel...");
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            LogPanel.log("FileReceiver started on port: " + port + ". Waiting for senders...");
 
             while (true) {
-                SocketChannel handshakeSocketChannel = null; // Changed from Socket
+                Socket handshakeSocket = null;
                 List<FileInfo> filesExpected = new ArrayList<>();
                 long totalSizeFromSender = 0;
                 String senderNameFromSender = null;
@@ -70,13 +65,13 @@ public class FileReceiver {
                 int negotiatedThreadCount = 1;
 
                 try {
-                    handshakeSocketChannel = serverSocketChannel.accept(); // Changed from serverSocket.accept()
+                    handshakeSocket = serverSocket.accept();
                     LogPanel.log("FileReceiver: Accepted handshake connection from "
-                            + handshakeSocketChannel.getRemoteAddress()); // Changed to use SocketChannel method
-                    handshakeSocketChannel.socket().setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000); // Use socket() to access Socket options
+                            + handshakeSocket.getRemoteSocketAddress());
+                    handshakeSocket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000);
 
-                    try (DataInputStream dis = new DataInputStream(handshakeSocketChannel.socket().getInputStream()); // Get streams from socket()
-                            DataOutputStream dos = new DataOutputStream(handshakeSocketChannel.socket().getOutputStream())) {
+                    try (DataInputStream dis = new DataInputStream(handshakeSocket.getInputStream());
+                            DataOutputStream dos = new DataOutputStream(handshakeSocket.getOutputStream())) {
 
                         // Phase 1: Read Initial Metadata
                         String initialMetadata = null; // Initialize
@@ -198,9 +193,7 @@ public class FileReceiver {
                         System.out.println("negotiatedThreadCount: " + negotiatedThreadCount);
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
-                            // 完成握手後關閉握手機制連線，避免干擾資料通道
-                            try { handshakeSocketChannel.close(); } catch (IOException ignore) {}
-                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
+                            LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
                         // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;
@@ -226,14 +219,11 @@ public class FileReceiver {
                                 // The serverSocket argument to Receiver constructor is not used by its start
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
-                                // 使用同一個 ServerSocketChannel 供接收端綁定，不重開新的channel
-                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocketChannel, negotiatedThreadCount);
+                                Receiver dataReceiver = new Receiver(serverSocket);
                                 boolean receptionWasSuccessful = false;
                                 try {
                                     receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,
-                                            fileSizeForThisFile,
-                                            port,
-                                            callback);
+                                            fileSizeForThisFile, negotiatedThreadCount, callback);
                                     if (receptionWasSuccessful) {
                                         LogPanel.log(
                                                 "FileReceiver: Data reception successful for: " + wholeOutputFilePath);
@@ -277,6 +267,14 @@ public class FileReceiver {
                                         overallSuccess = false;
                                         break; // Stop processing further files if one fails to receive
                                     }
+                                } catch (InterruptedException e_intr) {
+                                    Thread.currentThread().interrupt();
+                                    // LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
+                                            // + e_intr.getMessage());
+                                    if (callback != null)
+                                        callback.onError(e_intr);
+                                    overallSuccess = false;
+                                    break;
                                 } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
                                     // LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
                                     //         + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
@@ -309,35 +307,35 @@ public class FileReceiver {
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
                     // LogPanel.log("FileReceiver: Timeout during handshake phase with "
-                    //         + (handshakeSocketChannel != null ? handshakeSocketChannel.getRemoteAddress() : "unknown client") // Updated logging
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
                     //         + ": " + e.getMessage());
                     // if (callback != null)
                     //     callback.onError(e);
                 } catch (EOFException e) {
                     // LogPanel.log("FileReceiver: EOF during handshake with "
-                    //         + (handshakeSocketChannel != null ? handshakeSocketChannel.getRemoteAddress() : "unknown client") // Updated logging
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
                     //         + ". Client likely disconnected. " + e.getMessage());
                     // if (callback != null)
                     //     callback.onError(e);
                 } catch (IOException e) {
                     // LogPanel.log("FileReceiver: IOException during handshake phase with "
-                    //         + (handshakeSocketChannel != null ? handshakeSocketChannel.getRemoteAddress() : "unknown client") // Updated logging
+                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
                     //         + ": " + e.getMessage());
                     // if (callback != null)
                     //     callback.onError(e);
                 } catch (Exception e) { // Catch-all for other handshake processing errors
                     // LogPanel.log("FileReceiver: General error during handshake processing with "
-                            // + (handshakeSocketChannel != null ? handshakeSocketChannel.getRemoteAddress() : "unknown client") // Updated logging
+                            // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
                             // + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
                     // if (callback != null)
                         // callback.onError(e);
                 } finally {
-                    if (handshakeSocketChannel != null && handshakeSocketChannel.isOpen()) { // Check isOpen for Channel
+                    if (handshakeSocket != null && !handshakeSocket.isClosed()) {
                         try {
-                            handshakeSocketChannel.close();
+                            handshakeSocket.close();
                             LogPanel.log("FileReceiver: Handshake socket with "
-                                    + (handshakeSocketChannel.getRemoteAddress() != null // Check if remote address was available
-                                            ? handshakeSocketChannel.getRemoteAddress()
+                                    + (handshakeSocket.getRemoteSocketAddress() != null
+                                            ? handshakeSocket.getRemoteSocketAddress()
                                             : "previous client")
                                     + " closed.");
                         } catch (IOException ex) {
@@ -347,7 +345,7 @@ public class FileReceiver {
                 }
                 LogPanel.log("FileReceiver: Finished handling current sender. Ready for next handshake.");
             } // End while(true)
-        } // ServerSocketChannel closed here by try-with-resources
+        } // ServerSocket closed here
     }
 
     // FileReceiveDialog class (ensure Main.GUI and SendFileGUI.formatFileSize are

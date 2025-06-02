@@ -2,7 +2,6 @@ package AirShit;
 
 import java.io.*;
 import java.net.Socket;
-import java.net.InetSocketAddress; // Added import
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,7 +11,6 @@ import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import AirShit.ui.LogPanel;
-import java.nio.channels.SocketChannel; // Added import
 
 /**
  * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
@@ -26,8 +24,9 @@ import java.nio.channels.SocketChannel; // Added import
 public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
-    private SendFileOptimized senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
+    private SendFile senderInstance; // 用於傳送單一檔案資料的 SendFile 實例
     private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
+    // private final int ITHREADS = 1<<30; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 
     private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // 預設 Socket 操作超時時間（秒）
@@ -163,12 +162,12 @@ public class FileSender {
                     (isDirectoryTransfer ? "1" : "0") + "@" + // "1" 表示目錄，"0" 表示檔案
                     originalFolderName;
 
-            // 使用 try-with-resources 管理 SocketChannel 和相關的流
-            try (SocketChannel socketChannel = SocketChannel.open(new InetSocketAddress(host, port)); // Changed from Socket to SocketChannel
-                    DataOutputStream dos = new DataOutputStream(socketChannel.socket().getOutputStream()); // Get streams from socket()
-                    DataInputStream dis = new DataInputStream(socketChannel.socket().getInputStream())) { // Get streams from socket()
+            // 使用 try-with-resources 管理 Socket 和相關的流
+            try (Socket socket = new Socket(host, port); // 建立到接收端的 Socket 連接 (用於握手)
+                    DataOutputStream dos = new DataOutputStream(socket.getOutputStream()); // 用於向 Socket 寫入資料
+                    DataInputStream dis = new DataInputStream(socket.getInputStream())) { // 用於從 Socket 讀取資料
 
-                socketChannel.socket().setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000); // Use socket() to access Socket options
+                socket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000); // 設定 Socket 操作的超時時間
 
                 LogPanel.log("FileSender: 正在傳送初始元數據: " + initialMetadata);
                 dos.writeUTF(initialMetadata); // 傳送初始元數據字串
@@ -250,14 +249,14 @@ public class FileSender {
 
                 // ===== 階段 3: 等待接收方決定 =====
                 // 等待接收端的決定 (OK@協商後的執行緒數 或 REJECT)
-                int originalTimeoutMillis = socketChannel.socket().getSoTimeout(); // 保存原始超時設定
-                socketChannel.socket().setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000); // 設定較長的超時以等待使用者操作
+                int originalTimeoutMillis = socket.getSoTimeout(); // 保存原始超時設定
+                socket.setSoTimeout(USER_INTERACTION_TIMEOUT_MINUTES * 60 * 1000); // 設定較長的超時以等待使用者操作
                 LogPanel.log("FileSender: 設定超時為 " + USER_INTERACTION_TIMEOUT_MINUTES + " 分鐘，等待接收端決定 (OK@/REJECT)。");
                 String receiverDecision;
                 try {
                     receiverDecision = dis.readUTF(); // 讀取接收端的決定
                 } finally {
-                    socketChannel.socket().setSoTimeout(originalTimeoutMillis); // 恢復原始超時設定
+                    socket.setSoTimeout(originalTimeoutMillis); // 恢復原始超時設定
                     LogPanel.log("FileSender: 超時已恢復至 " + originalTimeoutMillis / 1000 + " 秒。");
                 }
                 LogPanel.log("FileSender: 收到來自接收端的決定: " + receiverDecision);
@@ -324,12 +323,14 @@ public class FileSender {
                         }
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
-                        senderInstance = new SendFileOptimized(this.host, this.port, fileToActuallySend.getAbsolutePath(), negotiatedThreadCount,
+
+                        senderInstance = new SendFile(this.host, this.port, fileToActuallySend, negotiatedThreadCount,
                                 callback);                        // 在新執行緒中運行 SendFile 操作以保持 UI 回應性，但等待其完成後再處理下一個檔案。
                         // 若要實現真正的並行檔案傳輸，SendFile 和 Receiver 需要重大重新設計。
                         final String finalDisplayName = displayName; // 用於日誌
                         final int finalCurrentFileIndex = currentFileIndex;
-                        final int finalTotalFiles = totalFiles;                        Thread senderOperationThread = new Thread(() -> {
+                        final int finalTotalFiles = totalFiles;                        
+                        Thread senderOperationThread = new Thread(() -> {
                             try {
                                 senderInstance.start(); // 此方法會阻塞直到該檔案傳送完成或出錯
                                 // Call onFileComplete callback on successful completion
@@ -355,7 +356,7 @@ public class FileSender {
                     if (callback != null)
                         callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
                 }
-            } // SocketChannel, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
+            } // Socket, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
         } catch (IOException e) { // 捕獲 I/O 異常 (例如 Socket 連接失敗、讀寫錯誤等)
             // LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - "
                     // + e.getMessage());
