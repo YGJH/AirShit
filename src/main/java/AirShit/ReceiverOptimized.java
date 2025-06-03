@@ -18,36 +18,64 @@ public class ReceiverOptimized {
     public static TransferCallback transferCallback; // 傳輸回調介面，用於通知傳輸進度或結果
     // 伺服端固定執行緒池大小 (處理多個 client 連線)
     private int SERVER_THREAD_COUNT;
+    /** 預設單個 chunk 大小 (與 SendFileOptimized 保持一致) */
+    public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
+    /** 預期接收的 chunk 數量，若 <=0 則無限循環 */
+    private int expectedChunks;
     public ReceiverOptimized(int SERVER_PORT , String OUTPUT_FILE , int threadCount , TransferCallback callback) {
         this.SERVER_PORT = SERVER_PORT;
         this.SERVER_THREAD_COUNT = threadCount;
         this.OUTPUT_FILE = OUTPUT_FILE;
         ReceiverOptimized.transferCallback = callback;
+        this.expectedChunks = -1;
+    }
+    /** 用於設定預期 chunk 數量的構造器 */
+    public ReceiverOptimized(int SERVER_PORT, String OUTPUT_FILE, int threadCount, TransferCallback callback, int expectedChunks) {
+        this(SERVER_PORT, OUTPUT_FILE, threadCount, callback);
+        this.expectedChunks = expectedChunks;
     }
     public void start() {
         // 建立固定執行緒池，處理每個進來的 client 連線
         ExecutorService serverPool = Executors.newFixedThreadPool(SERVER_THREAD_COUNT);
 
-        try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
+        // 使用 try-with-resources 管理 ServerSocketChannel, RandomAccessFile, FileChannel
+        try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
+             RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
+             java.nio.channels.FileChannel outFileChannel = raf.getChannel()) {
             serverChannel.bind(new InetSocketAddress(SERVER_PORT));
             // System.out.println("伺服端啟動，監聽 port = " + SERVER_PORT);
 
             // 若 OUTPUT_FILE 尚未存在或大小為 0，可在此預先創建空檔，並設定到適當大小
             // 也可以先不動，等第一個 chunk 進來再調整大小。
-            RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
-            FileChannel outFileChannel = raf.getChannel();
-
-            while (true) {
-                // 等待客戶端連線
-                SocketChannel clientChannel = serverChannel.accept();
-                // System.out.println("收到新連線： " + clientChannel.getRemoteAddress());
-                // submit 到伺服端的固定執行緒池中處理
-                serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
+            if (expectedChunks > 0) {
+                // 限定接收次數
+                for (int i = 0; i < expectedChunks; i++) {
+                    SocketChannel clientChannel = serverChannel.accept();
+                    serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
+                }
+                // 等待所有 chunk 處理結束，再關閉 FileChannel
+                serverPool.shutdown();
+                try {
+                    serverPool.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                } catch (InterruptedException ie) {
+                    ie.printStackTrace();
+                }
+            } else {
+                // 無限循環接收
+                while (true) {
+                    SocketChannel clientChannel = serverChannel.accept();
+                    serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
             serverPool.shutdown();
+            try {
+                serverPool.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+            } catch (InterruptedException ie) {
+                ie.printStackTrace();
+            }
         }
     }
 
@@ -60,16 +88,9 @@ public class ReceiverOptimized {
     private static void handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
         try (SocketChannel channel = clientChannel) {
             ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-            // 讀取 offset (8 bytes) + length (4 bytes)
-            headerBuffer.clear();
-            int readBytes = 0;
+            // 讀取 offset + length
             while (headerBuffer.hasRemaining()) {
-                int r = channel.read(headerBuffer);
-                if (r == -1) {
-                    // System.err.println("Client 關閉連線或傳輸異常。");
-                    return;
-                }
-                readBytes += r;
+                if (channel.read(headerBuffer) == -1) return;
             }
             headerBuffer.flip();
             long offset = headerBuffer.getLong();
@@ -99,14 +120,22 @@ public class ReceiverOptimized {
                 }
                 dataBuffer.flip();
                 // 寫入檔案於指定位置
-                outFileChannel.write(dataBuffer, writePosition);
+                try {
+                    outFileChannel.write(dataBuffer, writePosition);
+                } catch (java.nio.channels.ClosedChannelException cce) {
+                    // FileChannel closed prematurely, abort this chunk
+                    return;
+                }
+
                 if (transferCallback != null) {
                     transferCallback.onProgress(r);
                 }
                 writePosition += r;
+
                 bytesToReceive -= r;
             }
-            // System.out.println("成功接收並寫入 chunk，offset=" + offset + ", length=" + length);
+            outFileChannel.force(false); // 確保資料寫入磁碟
+            
         } catch (IOException e) {
             e.printStackTrace();
         }

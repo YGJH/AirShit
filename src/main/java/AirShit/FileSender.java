@@ -335,7 +335,7 @@ public class FileSender {
                         );
                         optimizedSender.start();
                         // Notify file complete
-                        if (callback != null) callback.onFileComplete(currentFileIndex, totalFiles, displayName);
+                        if (callback != null) callback.onFileComplete(1+currentFileIndex, totalFiles, displayName);
                     }
                     // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
                     if (callback != null) callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete

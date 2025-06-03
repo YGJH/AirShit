@@ -226,16 +226,21 @@ public class FileReceiver {
                                 // This might need review based on Receiver.java's actual implementation.
                                 // Use optimized receiver on the same server channel
                                 serverSocketChannel.close();
+                                // Calculate expected number of chunks to receive and use constructor to limit loop
+                                int expectedChunks = (int)((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE - 1)
+                                        / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
                                         port,
-                                        wholeOutputFilePath, negotiatedThreadCount , callback);
-                                 boolean receptionWasSuccessful = true;
-                                 new Thread(() -> {
+                                        wholeOutputFilePath,
+                                        negotiatedThreadCount,
+                                        callback,
+                                        expectedChunks);
+                                boolean receptionWasSuccessful = true;
+                                //  new Thread(() -> {
                                      try {
                                          dataReceiver.start();
                                      } catch (Exception e) {
                                      }
-                                     if (receptionWasSuccessful) {
                                          try {
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
                                              TarExtractor.start(new File(wholeOutputFilePath),
@@ -255,10 +260,9 @@ public class FileReceiver {
                                         } catch (Exception eDecompress) {
 
                                         }
-                                    }
-                                }).run();
+                                // }).run();
                                 if (callback != null) {
-                                    callback.onFileComplete(currentFileIndex, totalFiles, outputFileName);
+                                    callback.onFileComplete(currentFileIndex-1, totalFiles, outputFileName);
                                     callback.onComplete(outputFileName);
                                 }
 
@@ -266,7 +270,9 @@ public class FileReceiver {
 
                             if (callback != null) {
                                 callback.onComplete();
-                            } 
+                            }
+                            // Exit after completing the transfer to end the program
+                            return;
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
