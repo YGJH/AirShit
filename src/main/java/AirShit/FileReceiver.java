@@ -271,8 +271,6 @@ public class FileReceiver {
                             if (callback != null) {
                                 callback.onComplete();
                             }
-                            // Exit after completing the transfer to end the program
-                            return;
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
