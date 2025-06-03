@@ -241,6 +241,7 @@ public class FileReceiver {
                                          dataReceiver.start();
                                      } catch (Exception e) {
                                      }
+                                     if(new File(wholeOutputFilePath).exists() && wholeOutputFilePath.endsWith(".tar")) {
                                          try {
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
                                              TarExtractor.start(new File(wholeOutputFilePath),
@@ -260,6 +261,7 @@ public class FileReceiver {
                                         } catch (Exception eDecompress) {
 
                                         }
+                                     }
                                 // }).run();
                                 if (callback != null) {
                                     callback.onFileComplete(currentFileIndex-1, totalFiles, outputFileName);
