@@ -227,81 +227,44 @@ public class FileReceiver {
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
                                         port,
                                         wholeOutputFilePath, negotiatedThreadCount);
-                                 boolean receptionWasSuccessful = false;
-                                 try {
-                                     dataReceiver.start();
-                                     receptionWasSuccessful = true;
+                                 boolean receptionWasSuccessful = true;
+                                 new Thread(() -> {
+                                     try {
+                                         dataReceiver.start();
+                                     } catch (Exception e) {
+                                         LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
+                                                 + ": " + e.getMessage());
+                                         if (callback != null)
+                                             callback.onError(e);
+                                     }
                                      if (receptionWasSuccessful) {
-                                        LogPanel.log(
-                                                "FileReceiver: Data reception successful for: " + wholeOutputFilePath);
-                                        if (outputFileName.endsWith(".tar")) {
-                                            // Decompress into the same directory where the .tar was saved
+                                         try {
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
-                                            LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath
-                                                    + " into folder " + decompressedTargetFolder);
-                                            try {
-                                                TarExtractor.start(new File(wholeOutputFilePath),
-                                                        new File(decompressedTargetFolder));
-                                                LogPanel.log("FileReceiver: Decompression complete into "
-                                                        + decompressedTargetFolder);
-                                                // Delete the .tar file after successful decompression
-                                                try {
-                                                    Files.deleteIfExists(Paths.get(wholeOutputFilePath));
-                                                    LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
-                                                            + " after decompression.");
-                                                } catch (IOException eDel) {
-                                                    // LogPanel.log("FileReceiver: Error deleting archive "
-                                                    //         + wholeOutputFilePath + " after decompression: "
-                                                    //         + eDel.getMessage());
-                                                }
-                                            } catch (Exception eDecompress) {
-                                                // LogPanel.log("FileReceiver: Error decompressing " + wholeOutputFilePath
-                                                //         + ": " + eDecompress.getMessage());
-                                                // if (callback != null)
-                                                //     callback.onError(new IOException(
-                                                            // "Decompression failed for " + outputFileName, eDecompress));
-                                                overallSuccess = false; // Mark overall transfer as failed if
-                                                                        // decompression fails
-                                                // break; // Optionally break if decompression failure is critical for
-                                                // subsequent files
+                                             TarExtractor.start(new File(wholeOutputFilePath),
+                                             new File(decompressedTargetFolder));
+                                             LogPanel.log("FileReceiver: Decompression complete into "
+                                             + decompressedTargetFolder);
+                                             // Delete the .tar file after successful decompression
+                                             try {
+                                                 Files.deleteIfExists(Paths.get(wholeOutputFilePath));
+                                                 LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
+                                                 + " after decompression.");
+                                            } catch (IOException eDel) {
+                                                // LogPanel.log("FileReceiver: Error deleting archive "
+                                                //         + wholeOutputFilePath + " after decompression: "
+                                                //         + eDel.getMessage());
                                             }
+                                        } catch (Exception eDecompress) {
+
                                         }
-                                    } else {
-                                        // LogPanel.log("FileReceiver: Data reception process reported failure for "
-                                        //         + outputFileName);
-                                        // if (callback != null)
-                                        //     callback.onError(new IOException("Reception failed for " + outputFileName));
-                                        overallSuccess = false;
-                                        break; // Stop processing further files if one fails to receive
                                     }
-                                } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
-                                    // LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
-                                    //         + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
-                                    if (callback != null)
-                                        callback.onError(e_recv);
-                                    overallSuccess = false;
-                                    break;
-                                }
+                                }).run();
+
                             } // End of loop for filesExpected
 
-                            if (overallSuccess && callback != null) {
+                            if (callback != null) {
                                 callback.onComplete();
-                            } else if (!overallSuccess && callback != null) {
-                                // onError would have been called by the failing part.
-                                // No explicit onError here unless to signal a general "multi-file transfer
-                                // incomplete".
-                                // LogPanel.log(
-                                        // "FileReceiver: Overall multi-file transfer did not complete successfully.");
-                            }
-
-                        } else { // proceedWithTransfer was false
-                            // LogPanel.log(
-                            //         "FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
-                            // if (callback != null && totalSizeFromSender > 0) {
-                            //     callback.onError(new IOException("Transfer rejected or handshake failed."));
-                            // } else if (callback != null) { // No specific error, but not proceeding
-                            //     callback.onError(new IOException("Transfer not initiated."));
-                            // }
+                            } 
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
