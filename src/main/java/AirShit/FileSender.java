@@ -294,7 +294,6 @@ public class FileSender {
                     int fileIndex = 0;
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
-                        fileIndex++;
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {
@@ -318,7 +317,7 @@ public class FileSender {
                                 
                         // Call onFileStart callback
                         if (callback != null) {
-                            callback.onFileStart(currentFileIndex, totalFiles, displayName);
+                            callback.onFileStart(fileIndex++, totalFiles, displayName);
                             callback.onStart(
                                 fileToActuallySend.length(),
                                 displayName

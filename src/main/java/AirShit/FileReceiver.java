@@ -234,10 +234,6 @@ public class FileReceiver {
                                      try {
                                          dataReceiver.start();
                                      } catch (Exception e) {
-                                        //  LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
-                                                //  + ": " + e.getMessage());
-                                         if (callback != null)
-                                             callback.onError(e);
                                      }
                                      if (receptionWasSuccessful) {
                                          try {
@@ -261,7 +257,10 @@ public class FileReceiver {
                                         }
                                     }
                                 }).run();
-                                if (callback != null) callback.onFileComplete(currentFileIndex, totalFiles, outputFileName);
+                                if (callback != null) {
+                                    callback.onFileComplete(currentFileIndex, totalFiles, outputFileName);
+                                    callback.onComplete(outputFileName);
+                                }
 
                             } // End of loop for filesExpected
 
