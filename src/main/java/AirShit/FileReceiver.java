@@ -227,7 +227,7 @@ public class FileReceiver {
                                 serverSocketChannel.close();
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
                                         port,
-                                        wholeOutputFilePath, negotiatedThreadCount);
+                                        wholeOutputFilePath, negotiatedThreadCount , callback);
                                  boolean receptionWasSuccessful = true;
                                  new Thread(() -> {
                                      try {

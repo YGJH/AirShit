@@ -33,10 +33,10 @@ public class SendFileOptimized {
             
             FileChannel fileChannel = raf.getChannel();
             long fileSize = fileChannel.size();
-            System.out.println("檔案大小：" + fileSize + " bytes");
+            // System.out.println("檔案大小：" + fileSize + " bytes");
             // 2. 計算要分成多少個 chunk
             int numChunks = (int) ((fileSize + chunkSize - 1) / chunkSize);
-            System.out.println("將檔案拆成 " + numChunks + " 個 chunk (每chunk 大小約 " + chunkSize + " bytes)");
+            // System.out.println("將檔案拆成 " + numChunks + " 個 chunk (每chunk 大小約 " + chunkSize + " bytes)");
 
             // 3. 建立固定執行緒池
             ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
@@ -58,7 +58,7 @@ public class SendFileOptimized {
                 Thread.sleep(100); // 每 100ms 檢查一次
             }
 
-            System.out.println("所有 chunk 傳送完畢！");
+            // System.out.println("所有 chunk 傳送完畢！");
             fileChannel.close();
             raf.close();
         } catch (IOException | InterruptedException e) {
@@ -113,8 +113,8 @@ public class SendFileOptimized {
             try (SocketChannel channel = SocketChannel.open()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
-                System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
-                        + "，準備傳送 chunk offset=" + offset + ", length=" + length);
+                // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
+                //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
 
                 // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
                 ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
@@ -129,16 +129,16 @@ public class SendFileOptimized {
                 ByteBuffer ackBuf = ByteBuffer.allocate(1);
                 int r = channel.read(ackBuf);
                 if (r != 1) {
-                    System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
+                    // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
                     return;
                 }
                 ackBuf.flip();
                 byte ack = ackBuf.get();
                 if (ack != 1) {
-                    System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
+                    // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
                     return;
                 }
-                System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
+                // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
 
                 // 3. 傳送實際 chunk 資料 (長度為 length)
                 //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
@@ -155,7 +155,7 @@ public class SendFileOptimized {
                     pos += transferred;
                     remaining -= transferred;
                 }
-                System.out.println("完成傳送 chunk offset=" + offset + ", length=" + length);
+                // System.out.println("完成傳送 chunk offset=" + offset + ", length=" + length);
             } catch (IOException e) {
                 e.printStackTrace();
             }
