@@ -218,6 +218,7 @@ public class FileReceiver {
                                 }
                                 if (callback != null) {
                                     callback.onFileStart(currentFileIndex++, totalFiles, outputFileName);
+                                    callback.onStart(fileSizeForThisFile, outputFileName);
                                 }
                                 // Receiver class is responsible for handling the data transfer for ONE file.
                                 // The serverSocket argument to Receiver constructor is not used by its start
@@ -233,8 +234,8 @@ public class FileReceiver {
                                      try {
                                          dataReceiver.start();
                                      } catch (Exception e) {
-                                         LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
-                                                 + ": " + e.getMessage());
+                                        //  LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
+                                                //  + ": " + e.getMessage());
                                          if (callback != null)
                                              callback.onError(e);
                                      }
@@ -243,13 +244,13 @@ public class FileReceiver {
                                             String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
                                              TarExtractor.start(new File(wholeOutputFilePath),
                                              new File(decompressedTargetFolder));
-                                             LogPanel.log("FileReceiver: Decompression complete into "
-                                             + decompressedTargetFolder);
+                                            //  LogPanel.log("FileReceiver: Decompression complete into "
+                                            //  + decompressedTargetFolder);
                                              // Delete the .tar file after successful decompression
                                              try {
                                                  Files.deleteIfExists(Paths.get(wholeOutputFilePath));
-                                                 LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
-                                                 + " after decompression.");
+                                                //  LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
+                                                //  + " after decompression.");
                                             } catch (IOException eDel) {
                                                 // LogPanel.log("FileReceiver: Error deleting archive "
                                                 //         + wholeOutputFilePath + " after decompression: "
@@ -260,6 +261,7 @@ public class FileReceiver {
                                         }
                                     }
                                 }).run();
+                                if (callback != null) callback.onFileComplete(currentFileIndex, totalFiles, outputFileName);
 
                             } // End of loop for filesExpected
 

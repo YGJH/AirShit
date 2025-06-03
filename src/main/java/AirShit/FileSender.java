@@ -319,6 +319,10 @@ public class FileSender {
                         // Call onFileStart callback
                         if (callback != null) {
                             callback.onFileStart(currentFileIndex, totalFiles, displayName);
+                            callback.onStart(
+                                fileToActuallySend.length(),
+                                displayName
+                            );
                         }
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
