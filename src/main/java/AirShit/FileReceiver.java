@@ -103,32 +103,32 @@ public class FileReceiver {
 
                             dos.writeUTF("ACK_METADATA");
                             dos.flush();
-                            LogPanel.log("FileReceiver: Sent ACK_METADATA.");
+                            // LogPanel.log("FileReceiver: Sent ACK_METADATA.");
 
                         } catch (NumberFormatException e) {
-                            LogPanel.log("FileReceiver: Error parsing metadata numbers: " + e.getMessage()
-                                    + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata numbers: " + e.getMessage()
+                            //         + " from metadata: " + initialMetadata);
                             // Consider sending a NACK or just closing the socket, which would lead to EOF
                             // or other error on sender side
                             // For now, let the exception propagate to the outer catch, which will close the
                             // socket.
                             throw new IOException("Metadata parsing error (numbers): " + e.getMessage(), e);
                         } catch (ArrayIndexOutOfBoundsException e) {
-                            LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " + e.getMessage()
-                                    + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " + e.getMessage()
+                            //         + " from metadata: " + initialMetadata);
                             throw new IOException("Metadata parsing error (parts): " + e.getMessage(), e);
                         } catch (Exception e) { // Catch any other unexpected error during this critical phase
-                            LogPanel.log(
-                                    "FileReceiver: Unexpected error during initial metadata processing or ACK sending: "
-                                            + e.getClass().getSimpleName() + " - " + e.getMessage());
+                            // LogPanel.log(
+                            //         "FileReceiver: Unexpected error during initial metadata processing or ACK sending: "
+                            //                 + e.getClass().getSimpleName() + " - " + e.getMessage());
                             // e.printStackTrace(); // For more detailed debugging if needed
                             throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
                         // Phase 2: Read File Info Loop
+                        // LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): "
+                        //         + fileInfoString);
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
-                            LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): "
-                                    + fileInfoString);
                             String[] fileInfoParts = fileInfoString.split("@");
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
@@ -201,7 +201,7 @@ public class FileReceiver {
                         // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;
-                            int currentFileIndex = 1;
+                            int currentFileIndex = 0;
                             for (FileInfo currentFileToReceive : filesExpected) {
                                 String outputFileName = currentFileToReceive.name;
                                 long fileSizeForThisFile = currentFileToReceive.size;
@@ -209,7 +209,8 @@ public class FileReceiver {
                                 // newly created/existing sub-folder
                                 String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator
                                         + outputFileName;
-
+                                System.out.println("wholeOutputFilePath: " + wholeOutputFilePath + " fileSizeForThisFile: "
+                                        + fileSizeForThisFile);
                                 File outputFile = new File(wholeOutputFilePath);
                                 if (outputFile.exists() == false) {
                                     outputFile.getParentFile().mkdirs(); // Ensure parent directories exist

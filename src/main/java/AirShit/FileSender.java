@@ -194,9 +194,6 @@ public class FileSender {
                         } else {
                             // 這是大檔案
                             if (parentOfSelectedPath != null) {
-                                // 相對於父目錄計算，結果會包含 selectedPath 的名稱
-                                // e.g., parent="D:\folder", filePath="D:\folder\competitiveShit\.git\pack.idx"
-                                // relativePath = "competitiveShit\.git\pack.idx"
                                 Path relativePath;
                                 try {
                                     relativePath = parentOfSelectedPath.relativize(filePath);
@@ -206,11 +203,6 @@ public class FileSender {
                                 }
                                 nameToSend = relativePath.toString();
                             } else {
-                                // 如果選擇的是根目錄下的資料夾 (e.g., "C:\competitiveShit")
-                                // parentOfSelectedPath 會是 "C:\"
-                                // 如果選擇的是根目錄本身 (e.g., "C:\"), parentOfSelectedPath 是 null
-                                // 這種情況下，我們希望路徑直接從 selectedPath 的名稱開始
-                                // filePath 相對於 selectedPath (inputFile.toPath())
                                 try {
                                     Path relativeToSelected = selectedPath.relativize(filePath);
                                     if (relativeToSelected.toString().isEmpty()
