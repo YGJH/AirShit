@@ -48,12 +48,12 @@ public class FileReceiver {
     }
 
     public void start(TransferCallback callback) throws IOException {
-        try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
-            serverSocketChannel.bind(new InetSocketAddress(port));
-            serverSocketChannel.configureBlocking(true);
-             LogPanel.log("FileReceiver: Listening on port " + port + " for handshake...");
+        while (true) {
+            try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+                serverSocketChannel.bind(new InetSocketAddress(port));
+                serverSocketChannel.configureBlocking(true);
+                LogPanel.log("FileReceiver: Listening on port " + port + " for handshake...");
 
-            while (true) {
                 SocketChannel handshakeChannel = null;
                 List<FileInfo> filesExpected = new ArrayList<>();
                 long totalSizeFromSender = 0;
@@ -224,6 +224,7 @@ public class FileReceiver {
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
                                 // Use optimized receiver on the same server channel
+                                serverSocketChannel.close();
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
                                         port,
                                         wholeOutputFilePath, negotiatedThreadCount);
