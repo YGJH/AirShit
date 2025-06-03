@@ -1,90 +1,110 @@
 package AirShit;
-
-import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * High-performance chunk-based file receiver: one connection per chunk, zero-copy writes.
- */
 public class ReceiverOptimized {
-    private final ServerSocketChannel serverSocket;
 
-    // The threadCount parameter is not needed here (one connection per chunk), but kept for signature compatibility
-    public ReceiverOptimized(ServerSocketChannel serverSocket, int threadCount) {
-        this.serverSocket = serverSocket;
+    // 監聽的 TCP port
+    private int SERVER_PORT ;
+    // 最終要寫入的檔案名稱 (建議與來源檔同大小預先建好)
+    private String OUTPUT_FILE ;
+    // 伺服端固定執行緒池大小 (處理多個 client 連線)
+    private int SERVER_THREAD_COUNT;
+    public ReceiverOptimized(int SERVER_PORT , String OUTPUT_FILE , int threadCount) {
+        this.SERVER_PORT = SERVER_PORT;
+        this.SERVER_THREAD_COUNT = threadCount;
+        this.OUTPUT_FILE = OUTPUT_FILE;
     }
+    public void start() {
+        // 建立固定執行緒池，處理每個進來的 client 連線
+        ExecutorService serverPool = Executors.newFixedThreadPool(SERVER_THREAD_COUNT);
 
-    public boolean start(
-            String outputFile,
-            long fileLength,
-            int port,
-            TransferCallback cb) throws InterruptedException {
-        // Prepare output file
-        File out = new File(outputFile);
-        if (out.exists()) out.delete();
-        out.getParentFile().mkdirs();
-        try { out.createNewFile(); } catch (IOException e) { return false; }
+        try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
+            serverChannel.bind(new InetSocketAddress(SERVER_PORT));
+            System.out.println("伺服端啟動，監聽 port = " + SERVER_PORT);
 
-        AtomicLong bytesReceived = new AtomicLong(0);
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        try {
-            serverSocket.configureBlocking(true);
-            // Accept one connection per chunk until fileLength reached
-            while (bytesReceived.get() < fileLength) {
-                SocketChannel client = serverSocket.accept();
-                if (client == null) continue;
-                executor.submit(() -> {
-                    try {
-                        // 1. Read header (offset and length)
-                        ByteBuffer header = ByteBuffer.allocate(Long.BYTES * 2);
-                        while (header.hasRemaining()) client.read(header);
-                        header.flip();
-                        long offset = header.getLong();
-                        long length = header.getLong();
-                        // 2. Send ACK (echo header)
-                        ByteBuffer ack = ByteBuffer.allocate(Long.BYTES * 2);
-                        ack.putLong(offset).putLong(length).flip();
-                        while (ack.hasRemaining()) client.write(ack);
-                        // 3. Receive chunk data and write to file at offset
-                        try (RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
-                             FileChannel outCh = raf.getChannel()) {
-                            ByteBuffer buf = ByteBuffer.allocate(8192);
-                            long written = 0;
-                            long position = offset;
-                            while (written < length) {
-                                int r = client.read(buf);
-                                if (r <= 0) break;
-                                buf.flip();
-                                outCh.write(buf, position);
-                                position += r;
-                                written += r;
-                                buf.clear();
-                                if (cb != null) cb.onProgress(r);
-                            }
-                            bytesReceived.addAndGet(written);
-                        }
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
-                    } finally {
-                        try { client.close(); } catch (IOException ignore) {}
-                    }
-                });
+            // 若 OUTPUT_FILE 尚未存在或大小為 0，可在此預先創建空檔，並設定到適當大小
+            // 也可以先不動，等第一個 chunk 進來再調整大小。
+            RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
+            FileChannel outFileChannel = raf.getChannel();
+
+            while (true) {
+                // 等待客戶端連線
+                SocketChannel clientChannel = serverChannel.accept();
+                System.out.println("收到新連線： " + clientChannel.getRemoteAddress());
+                // submit 到伺服端的固定執行緒池中處理
+                serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
             }
-            executor.shutdown();
-            executor.awaitTermination(1, java.util.concurrent.TimeUnit.HOURS);
-            if (cb != null) cb.onComplete();
-            return true;
         } catch (IOException e) {
             e.printStackTrace();
-            return false;
+        } finally {
+            serverPool.shutdown();
+        }
+    }
+
+    /**
+     * 處理每個 client 連線：先讀 offset, length，回 ACK，然後再讀 chunk 資料並寫進檔案。
+     *
+     * @param clientChannel 與客戶端溝通的 SocketChannel
+     * @param outFileChannel 用來寫入檔案的 FileChannel
+     */
+    private static void handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
+        try (SocketChannel channel = clientChannel) {
+            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+            // 讀取 offset (8 bytes) + length (4 bytes)
+            headerBuffer.clear();
+            int readBytes = 0;
+            while (headerBuffer.hasRemaining()) {
+                int r = channel.read(headerBuffer);
+                if (r == -1) {
+                    System.err.println("Client 關閉連線或傳輸異常。");
+                    return;
+                }
+                readBytes += r;
+            }
+            headerBuffer.flip();
+            long offset = headerBuffer.getLong();
+            int length = headerBuffer.getInt();
+            System.out.println("準備接收 chunk，offset=" + offset + ", length=" + length);
+
+            // 回傳 ACK (1 byte)，代表伺服端準備好接收 chunk
+            ByteBuffer ackBuf = ByteBuffer.allocate(1);
+            ackBuf.put((byte) 1);
+            ackBuf.flip();
+            while (ackBuf.hasRemaining()) {
+                channel.write(ackBuf);
+            }
+
+            // 接著從管道讀取 length bytes 的 chunk 資料
+            long bytesToReceive = length;
+            // 在 outFileChannel 上設定 position 為 offset，並將 chunk 寫進去
+            outFileChannel.position(offset);
+            // 使用一個中介 ByteBuffer 來分多次寫入
+            ByteBuffer dataBuffer = ByteBuffer.allocate(64 * 1024); // 64 KB 暫存
+            while (bytesToReceive > 0) {
+                dataBuffer.clear();
+                int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
+                dataBuffer.limit(toRead);
+                int r = channel.read(dataBuffer);
+                if (r == -1) {
+                    System.err.println("Client 非預期關閉連線，尚未接收完整 chunk。");
+                    return;
+                }
+                dataBuffer.flip();
+                // 寫入檔案
+                outFileChannel.write(dataBuffer);
+                bytesToReceive -= r;
+            }
+            System.out.println("成功接收並寫入 chunk，offset=" + offset + ", length=" + length);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }

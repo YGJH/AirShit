@@ -224,11 +224,13 @@ public class FileReceiver {
                                 // method if it connects out.
                                 // This might need review based on Receiver.java's actual implementation.
                                 // Use optimized receiver on the same server channel
-                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocketChannel, negotiatedThreadCount);
+                                ReceiverOptimized dataReceiver = new ReceiverOptimized(
+                                        port,
+                                        wholeOutputFilePath, negotiatedThreadCount);
                                  boolean receptionWasSuccessful = false;
                                  try {
-                                    receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,
-                                            fileSizeForThisFile, port, callback);
+                                     dataReceiver.start();
+                                     receptionWasSuccessful = true;
                                      if (receptionWasSuccessful) {
                                         LogPanel.log(
                                                 "FileReceiver: Data reception successful for: " + wholeOutputFilePath);
@@ -272,14 +274,6 @@ public class FileReceiver {
                                         overallSuccess = false;
                                         break; // Stop processing further files if one fails to receive
                                     }
-                                } catch (InterruptedException e_intr) {
-                                    Thread.currentThread().interrupt();
-                                    // LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
-                                            // + e_intr.getMessage());
-                                    if (callback != null)
-                                        callback.onError(e_intr);
-                                    overallSuccess = false;
-                                    break;
                                 } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
                                     // LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
                                     //         + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
