@@ -147,7 +147,7 @@ public class SendFileOptimized {
                 while (remaining > 0) {
                     long transferred = fileChannel.transferTo(pos, remaining, channel);
                     if (transferred <= 0) {
-                        break; // 無法繼續傳送
+                        continue; // 無法繼續傳送
                     }
                     if(transferCallback != null) {
                        transferCallback.onProgress(transferred);

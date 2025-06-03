@@ -86,25 +86,24 @@ public class ReceiverOptimized {
 
             // 接著從管道讀取 length bytes 的 chunk 資料
             long bytesToReceive = length;
-            // 在 outFileChannel 上設定 position 為 offset，並將 chunk 寫進去
-            outFileChannel.position(offset);
-            // 使用一個中介 ByteBuffer 來分多次寫入
+            // 使用絕對位置寫入避免共享 channel 的 position 干擾
             ByteBuffer dataBuffer = ByteBuffer.allocate(64 * 1024); // 64 KB 暫存
+            long writePosition = offset;
             while (bytesToReceive > 0) {
                 dataBuffer.clear();
                 int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
                 dataBuffer.limit(toRead);
                 int r = channel.read(dataBuffer);
                 if (r == -1) {
-                    // System.err.println("Client 非預期關閉連線，尚未接收完整 chunk。");
                     return;
                 }
                 dataBuffer.flip();
-                // 寫入檔案
-                outFileChannel.write(dataBuffer);
-                if(transferCallback != null) {
+                // 寫入檔案於指定位置
+                outFileChannel.write(dataBuffer, writePosition);
+                if (transferCallback != null) {
                     transferCallback.onProgress(r);
                 }
+                writePosition += r;
                 bytesToReceive -= r;
             }
             // System.out.println("成功接收並寫入 chunk，offset=" + offset + ", length=" + length);
