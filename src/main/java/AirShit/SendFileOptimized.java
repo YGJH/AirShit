@@ -1,15 +1,15 @@
 package AirShit;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
-import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.nio.channels.Channels;
+import java.net.InetSocketAddress;
+import java.nio.channels.SocketChannel;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.util.concurrent.TimeUnit;
 public class SendFileOptimized {
     
     private String serverHost;
@@ -47,8 +47,8 @@ public class SendFileOptimized {
                 long RoundSize = Math.min(MAX_CHUNK_SIZE, fileSize - i * MAX_CHUNK_SIZE);
                 long numChunks = (long) ((RoundSize + chunkSize - 1) / chunkSize);
                 long chunkPerThread = (long) Math.ceil((double) numChunks / threadCount);
-                // 3. 建立固定執行緒池
-                ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
+                // 3. 建立虛擬執行緒池
+                ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
                 // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
                 for (int j = 0; j < threadCount; j++) {
                     // 計算本輪第 j 執行緒要處理的區段偏移及長度
@@ -57,14 +57,12 @@ public class SendFileOptimized {
                         break; // 無更多資料
                     }
                     long length = Math.min(chunkSize * chunkPerThread, fileSize - offset);
-                    fixedPool.submit(new ChunkSenderTask(
+                    executor.submit(new ChunkSenderTask(
                             serverHost, serverPort, filePath, offset, length, callback
                     ));
                 }
-                fixedPool.shutdown();
-                while (!fixedPool.isTerminated()) {
-                    Thread.sleep(100); // 每 100ms 檢查一次
-                }
+                executor.shutdown();
+                executor.awaitTermination(1, TimeUnit.HOURS);
 
 
             }
@@ -114,11 +112,8 @@ public class SendFileOptimized {
                  FileChannel inCh = raf.getChannel()) {
                 channel.configureBlocking(true);
                 channel.connect(new InetSocketAddress(serverHost, serverPort));
-                // wrap streams for header/ACK
-                var out = Channels.newOutputStream(channel);
-                var in = Channels.newInputStream(channel);
-                var dos = new DataOutputStream(out);
-                var dis = new DataInputStream(in);
+                DataOutputStream dos = new DataOutputStream(Channels.newOutputStream(channel));
+                DataInputStream dis = new DataInputStream(Channels.newInputStream(channel));
                 // 1. send header
                 dos.writeLong(offset);
                 dos.writeLong(length);
@@ -126,18 +121,22 @@ public class SendFileOptimized {
                 // 2. wait ACK
                 long ackOff = dis.readLong();
                 long ackLen = dis.readLong();
-                if (ackOff != offset || ackLen != length) return;
+                if (ackOff != offset || ackLen != length) {
+                    channel.close();
+                    return;
+                }
                 // 3. send data via zero-copy
                 long sent = 0;
                 while (sent < length) {
                     long n = inCh.transferTo(offset + sent, length - sent, channel);
-                    if (n <= 0) break;
-                    sent += n;
-                }
+                     if (n <= 0) break;
+                     sent += n;
+                     if (callback != null) callback.onProgress(n);
+                 }
                 if (callback != null) callback.onProgress(sent);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+             } catch (IOException e) {
+                 e.printStackTrace();
+             }
+         }
     }
 }
