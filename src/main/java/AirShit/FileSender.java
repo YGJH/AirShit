@@ -309,30 +309,23 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-                        int dataPort = this.port + 1; // ← new data port
+                        int dataPort = this.port + 1; // ← must match receiver's dataPort
 
-                        // now open a listener on dataPort, not `port`:
-                        try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
-                            dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                            dataServer.bind(new InetSocketAddress(dataPort));
-                            dataServer.configureBlocking(true);
+                        try (Socket startSocket = new Socket(host, dataPort);
+                                DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
+                                DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
 
-                            SocketChannel dataChannel = dataServer.accept();
-                            try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
-                                    DataOutputStream os = new DataOutputStream(Channels.newOutputStream(dataChannel))) {
+                            startSocket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
+                            startDos.writeUTF("START_FILE");
+                            startDos.flush();
 
-                                String startFileMessage = is.readUTF();
-                                if (!"START_FILE".equals(startFileMessage)) {
-                                    throw new IOException("Expected START_FILE but got: " + startFileMessage);
-                                }
-                                os.writeUTF("START_FILE_ACK");
-                                os.flush();
-                            } finally {
-                                dataChannel.close();
+                            String startAck = startDis.readUTF();
+                            if (!"START_FILE_ACK".equals(startAck)) {
+                                throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
                             }
 
                         } catch (IOException e) {
-                            LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
+                            LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
                             if (callback != null)
                                 callback.onError(e);
                             return;
