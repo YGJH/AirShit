@@ -288,6 +288,7 @@ public class FileSender {
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
                         try {
+
                             dos.writeUTF("START_FILE");
                             dos.flush();
 

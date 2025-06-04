@@ -233,7 +233,7 @@ public class FileReceiver {
                                         DataOutputStream os = new DataOutputStream(Channels.newOutputStream(channel))) {
 
                                         String startFileMessage = is.readUTF();
-                                        if (!startFileMessage.startsWith("START_FILE@")) {
+                                        if (!startFileMessage.startsWith("START_FILE")) {
                                             throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                         }
                                         os.writeUTF("START_FILE_ACK");
