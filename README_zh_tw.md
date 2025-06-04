@@ -5,7 +5,7 @@
 
 =====================================================
 
-版本: 1.4.0
+版本: 1.3.0
 
 最後更新: 2025-05-30
 
@@ -151,7 +151,7 @@ AirShit/
 #### Linux / macOS / windows
 
 ```command line
-mvn compile exec:java
+mvn compile javafx:run
 ```
 
 
