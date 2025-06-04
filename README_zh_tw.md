@@ -11,6 +11,11 @@
 
 =====================================================
 
+# 注意
+Release 1.2.0 為當前穩定版本；1.3.* 系列目前仍屬不穩定版本。
+若未偵測到其他裝置，請在每臺設備的客戶端面板下方點擊「重新整理」按鈕。
+
+
 ## 簡介
 
 ### image
@@ -156,3 +161,37 @@ mvn compile exec:java
 *   **網路介面:** 在某些具有多個網路介面的系統上，UDP 組播可能需要正確配置或選擇特定的網路介面才能正常工作。`Main.java` 中的 `findCorrectNetworkInterface()` 嘗試處理此問題。
 *   **編碼:** 應用程式內部及建置腳本均指定使用 UTF-8 編碼，以確保跨平台檔案名稱和訊息的正確處理。
 *   **jpackage (打包):** `jpackage` 工具是 JDK 14 及更高版本的一部分。如果使用較舊的 JDK，`packing` 功能可能無法使用。
+
+
+### packing
+
+```windows
+mvn clean package
+# jpackage --type exe `
+              --dest "dist" `
+              --input "target"`
+              --name "AirShit" `
+              --main-jar "AirShit-1.0-SNAPSHOT/jar"`
+              --java-options "-Dfile.encoding=UTF-8" `
+              --app-version 1.3.4 `
+              --vendor "AirShit Project" `
+              --win-menu `
+              --win-shortcut `
+              --icon ".\src\main\resources\asset\kitty.ico" `
+              --runtime-image "c:\Program Files\Java\jdk-21"
+```
+
+### packing_for_mac
+
+```mac
+mvn clean package
+jpackage --type dmg \
+             --dest ./dist \
+             --input target \
+             --name "AirShit" \
+             --main-jar AirShit-1.0-SNAPSHOT.jar \
+             --java-options "-Xmx512m" \
+             --app-version 1.2.0 \
+             --vendor "AirShit Project" \
+             --icon src/main/resources/asset/kitty.icns
+```
