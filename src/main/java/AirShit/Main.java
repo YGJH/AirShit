@@ -522,6 +522,9 @@ public class Main { // 定義 Main 類別
             try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
                 try (ServerSocket s = new ServerSocket(socket.getLocalPort() + 1)) {
                     s.close(); // 嘗試關閉下一個端口以確保它是空閒的
+                    if(s.isBound()) { // 如果下一個端口已被佔用，則繼續循環尋找下一個空閒端口
+                        continue;
+                    }
                     return socket.getLocalPort(); // 返回分配到的 TCP 端口號
                 } catch (IOException e) { // 捕捉 I/O 異常
                     // 如果下一個端口已被佔用，則繼續循環尋找下一個空閒端口
