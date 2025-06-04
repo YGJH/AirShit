@@ -1,7 +1,12 @@
 package AirShit;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.StandardSocketOptions;
+import java.nio.channels.Channels;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -304,28 +309,34 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-                        try (
-                                Socket startSocket = new Socket(host, port);
-                                DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
-                                DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
-                            // 同樣設定超時，避免永遠卡住
-                            startSocket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
+                        int dataPort = this.port + 1; // ← new data port
 
-                            startDos.writeUTF("START_FILE");
-                            startDos.flush();
+                        // now open a listener on dataPort, not `port`:
+                        try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
+                            dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                            dataServer.bind(new InetSocketAddress(dataPort));
+                            dataServer.configureBlocking(true);
 
-                            String startAck = startDis.readUTF();
-                            if (!"START_FILE_ACK".equals(startAck)) {
-                                throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
+                            SocketChannel dataChannel = dataServer.accept();
+                            try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
+                                    DataOutputStream os = new DataOutputStream(Channels.newOutputStream(dataChannel))) {
+
+                                String startFileMessage = is.readUTF();
+                                if (!"START_FILE".equals(startFileMessage)) {
+                                    throw new IOException("Expected START_FILE but got: " + startFileMessage);
+                                }
+                                os.writeUTF("START_FILE_ACK");
+                                os.flush();
+                            } finally {
+                                dataChannel.close();
                             }
 
                         } catch (IOException e) {
-                            LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
+                            LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
                             if (callback != null)
                                 callback.onError(e);
                             return;
                         }
-
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {

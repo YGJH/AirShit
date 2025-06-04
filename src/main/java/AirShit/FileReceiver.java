@@ -230,22 +230,21 @@ public class FileReceiver {
                                     callback.onStart(fileSizeForThisFile, outputFileName);
                                 }
                                 // receive START_FILE message
-                                serverSocketChannel.close();
 
-                                try {
-                                    ServerSocketChannel dataServer = ServerSocketChannel.open();
+                                int dataPort = this.port + 1; // ← new data port
+
+                                // now open a listener on dataPort, not `port`:
+                                try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
                                     dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                                    dataServer.socket().setReuseAddress(true);
-                                    dataServer.socket().setSoTimeout(500_000);
-                                    dataServer.bind(new InetSocketAddress(port));
+                                    dataServer.bind(new InetSocketAddress(dataPort));
                                     dataServer.configureBlocking(true);
-                                    SocketChannel dataChannel = dataServer.accept();
 
+                                    SocketChannel dataChannel = dataServer.accept();
                                     try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
                                             DataOutputStream os = new DataOutputStream(
                                                     Channels.newOutputStream(dataChannel))) {
+
                                         String startFileMessage = is.readUTF();
-                                        System.out.println("startFileMessage: " + startFileMessage);
                                         if (!"START_FILE".equals(startFileMessage)) {
                                             throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                         }
@@ -253,7 +252,6 @@ public class FileReceiver {
                                         os.flush();
                                     } finally {
                                         dataChannel.close();
-                                        dataServer.close();
                                     }
 
                                 } catch (IOException e) {
