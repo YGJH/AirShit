@@ -286,6 +286,23 @@ public class FileSender {
                     int fileIndex = 0;
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
+                        // send start signal
+                        try {
+                            dos.writeUTF("START_FILE");
+                            dos.flush();
+
+                            String startAck = dis.readUTF(); // 等待接收端的 START_FILE_ACK
+                            if (!"START_FILE_ACK".equals(startAck)) {
+                                throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
+                            }
+
+                        } catch (IOException e) {
+                            LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
+                            if (callback != null) callback.onError(e);
+                            return;
+                        }
+                        
+                        
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {

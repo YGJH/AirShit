@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
-
 public class FileReceiver {
 
     public int port;
@@ -221,12 +220,33 @@ public class FileReceiver {
                                     callback.onFileStart(currentFileIndex++, totalFiles, outputFileName);
                                     callback.onStart(fileSizeForThisFile, outputFileName);
                                 }
-                                // Receiver class is responsible for handling the data transfer for ONE file.
-                                // The serverSocket argument to Receiver constructor is not used by its start
-                                // method if it connects out.
-                                // This might need review based on Receiver.java's actual implementation.
-                                // Use optimized receiver on the same server channel
+                                // receive START_FILE message
+                                try {
+                                    serverSocketChannel.close(); // Close the initial server socket to prevent reuse
+                                    serverSocketChannel.socket().setSoTimeout(500000); // Set a timeout for the accept
+                                    serverSocketChannel.bind(new InetSocketAddress(port));
+                                    serverSocketChannel.configureBlocking(true);
+                                    SocketChannel channel = serverSocketChannel.accept();
+
+                                    // wrap channel in streams, all in the same try-with-resources
+                                    try (DataInputStream is = new DataInputStream(Channels.newInputStream(channel));
+                                        DataOutputStream os = new DataOutputStream(Channels.newOutputStream(channel))) {
+
+                                        String startFileMessage = is.readUTF();
+                                        if (!startFileMessage.startsWith("START_FILE@")) {
+                                            throw new IOException("Expected START_FILE but got: " + startFileMessage);
+                                        }
+                                        os.writeUTF("START_FILE_ACK");
+                                        os.flush();
+                                    }
+                                } catch (IOException e) {
+                                    LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
+                                    if (callback != null) callback.onError(e);
+                                    return;
+                                }
+
                                 serverSocketChannel.close();
+
                                 // Calculate expected number of chunks to receive and use constructor to limit loop
                                 int expectedChunks = (int)((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE - 1)
                                         / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
