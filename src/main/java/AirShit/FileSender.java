@@ -287,12 +287,17 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-                        try {
+                        try (
+                            // 在每個檔案傳輸前，先發送 START_FILE 訊息
+                            DataOutputStream startDos = new DataOutputStream(socket.getOutputStream());
+                            DataInputStream startDis = new DataInputStream(socket.getInputStream())
+                        ) {
 
-                            dos.writeUTF("START_FILE");
-                            dos.flush();
 
-                            String startAck = dis.readUTF(); // 等待接收端的 START_FILE_ACK
+                            startDos.writeUTF("START_FILE");
+                            startDos.flush();
+
+                            String startAck = startDis.readUTF(); // 等待接收端的 START_FILE_ACK
                             if (!"START_FILE_ACK".equals(startAck)) {
                                 throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
                             }

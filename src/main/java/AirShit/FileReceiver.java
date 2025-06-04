@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
+
 public class FileReceiver {
 
     public int port;
@@ -67,12 +68,12 @@ public class FileReceiver {
 
                 try {
                     handshakeChannel = serverSocketChannel.accept();
-                     LogPanel.log("FileReceiver: Accepted handshake from "
-                                    + handshakeChannel.getRemoteAddress());
+                    LogPanel.log("FileReceiver: Accepted handshake from "
+                            + handshakeChannel.getRemoteAddress());
                     // Setup handshake streams
                     handshakeChannel.configureBlocking(true);
                     try (DataInputStream dis = new DataInputStream(Channels.newInputStream(handshakeChannel));
-                         DataOutputStream dos = new DataOutputStream(Channels.newOutputStream(handshakeChannel))) {
+                            DataOutputStream dos = new DataOutputStream(Channels.newOutputStream(handshakeChannel))) {
 
                         // Phase 1: Read Initial Metadata
                         String initialMetadata = null; // Initialize
@@ -81,7 +82,8 @@ public class FileReceiver {
                             LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                             System.out.println("metaParts: " + initialMetadata);
                             String[] metaParts = initialMetadata.split("@");
-                            // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir, origFolder
+                            // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir,
+                            // origFolder
                             if (metaParts.length < 6) {
                                 throw new IOException("Invalid initial metadata format (expected 6 parts, got "
                                         + metaParts.length + "): " + initialMetadata);
@@ -105,27 +107,31 @@ public class FileReceiver {
                             // LogPanel.log("FileReceiver: Sent ACK_METADATA.");
 
                         } catch (NumberFormatException e) {
-                            // LogPanel.log("FileReceiver: Error parsing metadata numbers: " + e.getMessage()
-                            //         + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata numbers: " +
+                            // e.getMessage()
+                            // + " from metadata: " + initialMetadata);
                             // Consider sending a NACK or just closing the socket, which would lead to EOF
                             // or other error on sender side
                             // For now, let the exception propagate to the outer catch, which will close the
                             // socket.
                             throw new IOException("Metadata parsing error (numbers): " + e.getMessage(), e);
                         } catch (ArrayIndexOutOfBoundsException e) {
-                            // LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " + e.getMessage()
-                            //         + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " +
+                            // e.getMessage()
+                            // + " from metadata: " + initialMetadata);
                             throw new IOException("Metadata parsing error (parts): " + e.getMessage(), e);
                         } catch (Exception e) { // Catch any other unexpected error during this critical phase
                             // LogPanel.log(
-                            //         "FileReceiver: Unexpected error during initial metadata processing or ACK sending: "
-                            //                 + e.getClass().getSimpleName() + " - " + e.getMessage());
+                            // "FileReceiver: Unexpected error during initial metadata processing or ACK
+                            // sending: "
+                            // + e.getClass().getSimpleName() + " - " + e.getMessage());
                             // e.printStackTrace(); // For more detailed debugging if needed
                             throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
                         // Phase 2: Read File Info Loop
-                        // LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): "
-                        //         + fileInfoString);
+                        // LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" +
+                        // numFilesToExpect + "): "
+                        // + fileInfoString);
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
                             String[] fileInfoParts = fileInfoString.split("@");
@@ -197,7 +203,7 @@ public class FileReceiver {
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
-                        // Call onFileStart callback
+                            // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;
                             int currentFileIndex = 0;
@@ -208,8 +214,9 @@ public class FileReceiver {
                                 // newly created/existing sub-folder
                                 String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator
                                         + outputFileName;
-                                System.out.println("wholeOutputFilePath: " + wholeOutputFilePath + " fileSizeForThisFile: "
-                                        + fileSizeForThisFile);
+                                System.out.println(
+                                        "wholeOutputFilePath: " + wholeOutputFilePath + " fileSizeForThisFile: "
+                                                + fileSizeForThisFile);
                                 File outputFile = new File(wholeOutputFilePath);
                                 if (outputFile.exists() == false) {
                                     outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
@@ -222,33 +229,38 @@ public class FileReceiver {
                                 }
                                 // receive START_FILE message
                                 try {
-                                    serverSocketChannel.close(); // Close the initial server socket to prevent reuse
-                                    serverSocketChannel.socket().setSoTimeout(500000); // Set a timeout for the accept
-                                    serverSocketChannel.bind(new InetSocketAddress(port));
-                                    serverSocketChannel.configureBlocking(true);
-                                    SocketChannel channel = serverSocketChannel.accept();
+                                    // 針對每個檔案開新的 dataServer，以免影響主 serverSocketChannel
+                                    ServerSocketChannel dataServer = ServerSocketChannel.open();
+                                    dataServer.socket().setSoTimeout(500_000);
+                                    dataServer.bind(new InetSocketAddress(port));
+                                    dataServer.configureBlocking(true);
+                                    SocketChannel dataChannel = dataServer.accept();
 
-                                    // wrap channel in streams, all in the same try-with-resources
-                                    try (DataInputStream is = new DataInputStream(Channels.newInputStream(channel));
-                                        DataOutputStream os = new DataOutputStream(Channels.newOutputStream(channel))) {
-
+                                    try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
+                                            DataOutputStream os = new DataOutputStream(
+                                                    Channels.newOutputStream(dataChannel))) {
                                         String startFileMessage = is.readUTF();
-                                        if (!startFileMessage.startsWith("START_FILE")) {
+                                        if (!"START_FILE".equals(startFileMessage)) {
                                             throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                         }
                                         os.writeUTF("START_FILE_ACK");
                                         os.flush();
+                                    } finally {
+                                        dataChannel.close();
+                                        dataServer.close();
                                     }
                                 } catch (IOException e) {
                                     LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
-                                    if (callback != null) callback.onError(e);
+                                    if (callback != null)
+                                        callback.onError(e);
                                     return;
                                 }
-
                                 serverSocketChannel.close();
 
-                                // Calculate expected number of chunks to receive and use constructor to limit loop
-                                int expectedChunks = (int)((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE - 1)
+                                // Calculate expected number of chunks to receive and use constructor to limit
+                                // loop
+                                int expectedChunks = (int) ((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE
+                                        - 1)
                                         / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
                                         port,
@@ -257,35 +269,35 @@ public class FileReceiver {
                                         callback,
                                         expectedChunks);
                                 boolean receptionWasSuccessful = true;
-                                //  new Thread(() -> {
-                                     try {
-                                         dataReceiver.start();
-                                     } catch (Exception e) {
-                                     }
-                                     if(new File(wholeOutputFilePath).exists() && wholeOutputFilePath.endsWith(".tar")) {
-                                         try {
-                                            String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
-                                             TarExtractor.start(new File(wholeOutputFilePath),
-                                             new File(decompressedTargetFolder));
-                                            //  LogPanel.log("FileReceiver: Decompression complete into "
-                                            //  + decompressedTargetFolder);
-                                             // Delete the .tar file after successful decompression
-                                             try {
-                                                 Files.deleteIfExists(Paths.get(wholeOutputFilePath));
-                                                //  LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
-                                                //  + " after decompression.");
-                                            } catch (IOException eDel) {
-                                                // LogPanel.log("FileReceiver: Error deleting archive "
-                                                //         + wholeOutputFilePath + " after decompression: "
-                                                //         + eDel.getMessage());
-                                            }
-                                        } catch (Exception eDecompress) {
-
+                                // new Thread(() -> {
+                                try {
+                                    dataReceiver.start();
+                                } catch (Exception e) {
+                                }
+                                if (new File(wholeOutputFilePath).exists() && wholeOutputFilePath.endsWith(".tar")) {
+                                    try {
+                                        String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
+                                        TarExtractor.start(new File(wholeOutputFilePath),
+                                                new File(decompressedTargetFolder));
+                                        // LogPanel.log("FileReceiver: Decompression complete into "
+                                        // + decompressedTargetFolder);
+                                        // Delete the .tar file after successful decompression
+                                        try {
+                                            Files.deleteIfExists(Paths.get(wholeOutputFilePath));
+                                            // LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
+                                            // + " after decompression.");
+                                        } catch (IOException eDel) {
+                                            // LogPanel.log("FileReceiver: Error deleting archive "
+                                            // + wholeOutputFilePath + " after decompression: "
+                                            // + eDel.getMessage());
                                         }
-                                     }
+                                    } catch (Exception eDecompress) {
+
+                                    }
+                                }
                                 // }).run();
                                 if (callback != null) {
-                                    callback.onFileComplete(currentFileIndex-1, totalFiles, outputFileName);
+                                    callback.onFileComplete(currentFileIndex - 1, totalFiles, outputFileName);
                                     callback.onComplete(outputFileName);
                                 }
 
@@ -298,35 +310,40 @@ public class FileReceiver {
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
                     // LogPanel.log("FileReceiver: Timeout during handshake phase with "
-                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                    //         + ": " + e.getMessage());
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getMessage());
                     // if (callback != null)
-                    //     callback.onError(e);
+                    // callback.onError(e);
                 } catch (EOFException e) {
                     // LogPanel.log("FileReceiver: EOF during handshake with "
-                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                    //         + ". Client likely disconnected. " + e.getMessage());
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ". Client likely disconnected. " + e.getMessage());
                     // if (callback != null)
-                    //     callback.onError(e);
+                    // callback.onError(e);
                 } catch (IOException e) {
                     // LogPanel.log("FileReceiver: IOException during handshake phase with "
-                    //         + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                    //         + ": " + e.getMessage());
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getMessage());
                     // if (callback != null)
-                    //     callback.onError(e);
+                    // callback.onError(e);
                 } catch (Exception e) { // Catch-all for other handshake processing errors
                     // LogPanel.log("FileReceiver: General error during handshake processing with "
-                            // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            // + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
                     // if (callback != null)
-                        // callback.onError(e);
+                    // callback.onError(e);
                 } finally {
                     if (handshakeChannel != null && handshakeChannel.isOpen()) {
                         try {
                             handshakeChannel.close();
                             LogPanel.log("FileReceiver: Closed handshake socket to prevent reuse as data channel.");
                         } catch (IOException ex) {
-                            // LogPanel.log("FileReceiver: Error closing handshake socket: " + ex.getMessage());
+                            // LogPanel.log("FileReceiver: Error closing handshake socket: " +
+                            // ex.getMessage());
                         }
                     }
                 }
