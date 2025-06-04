@@ -9,6 +9,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.net.SocketTimeoutException;
+import java.net.StandardSocketOptions;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ public class FileReceiver {
     public void start(TransferCallback callback) throws IOException {
         while (true) {
             try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+                serverSocketChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true); // <— 新增
                 serverSocketChannel.bind(new InetSocketAddress(port));
                 serverSocketChannel.configureBlocking(true);
                 LogPanel.log("FileReceiver: Listening on port " + port + " for handshake...");
@@ -228,9 +230,12 @@ public class FileReceiver {
                                     callback.onStart(fileSizeForThisFile, outputFileName);
                                 }
                                 // receive START_FILE message
+                                serverSocketChannel.close();
+
                                 try {
-                                    // 針對每個檔案開新的 dataServer，以免影響主 serverSocketChannel
                                     ServerSocketChannel dataServer = ServerSocketChannel.open();
+                                    dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                                    dataServer.socket().setReuseAddress(true);
                                     dataServer.socket().setSoTimeout(500_000);
                                     dataServer.bind(new InetSocketAddress(port));
                                     dataServer.configureBlocking(true);
@@ -240,6 +245,7 @@ public class FileReceiver {
                                             DataOutputStream os = new DataOutputStream(
                                                     Channels.newOutputStream(dataChannel))) {
                                         String startFileMessage = is.readUTF();
+                                        System.out.println("startFileMessage: " + startFileMessage);
                                         if (!"START_FILE".equals(startFileMessage)) {
                                             throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                         }
@@ -249,6 +255,7 @@ public class FileReceiver {
                                         dataChannel.close();
                                         dataServer.close();
                                     }
+
                                 } catch (IOException e) {
                                     LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
                                     if (callback != null)

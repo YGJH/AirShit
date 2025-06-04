@@ -84,16 +84,20 @@ public class FileSender {
                 tempDirForArchive = Files.createTempDirectory("airshit_send_temp_"); // 創建唯一的臨時目錄
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
                 File archiveFileForTarCompressor = new File(tempDirForArchive.resolve(compressedFileName).toString());
-                tempArchiveFilePath = archiveFileForTarCompressor.getAbsolutePath(); 
+                tempArchiveFilePath = archiveFileForTarCompressor.getAbsolutePath();
 
                 try {
-                    LogPanel.log("FileSender: Calling TarCompressor.packToTar. Input: " + inputFile.getAbsolutePath() + ", Output: " + tempArchiveFilePath);
-                    // TarCompressor.packToTar is responsible for adding large files AND the .tar archive to filesToProcess
+                    LogPanel.log("FileSender: Calling TarCompressor.packToTar. Input: " + inputFile.getAbsolutePath()
+                            + ", Output: " + tempArchiveFilePath);
+                    // TarCompressor.packToTar is responsible for adding large files AND the .tar
+                    // archive to filesToProcess
                     TarCompressor.packToTar(inputFile, archiveFileForTarCompressor, filesToProcess);
-                    LogPanel.log("FileSender: TarCompressor.packToTar finished. filesToProcess size: " + filesToProcess.size());
+                    LogPanel.log("FileSender: TarCompressor.packToTar finished. filesToProcess size: "
+                            + filesToProcess.size());
                 } catch (IOException e) {
                     LogPanel.log("FileSender: 壓縮資料夾失敗: " + e.getMessage());
-                    if (callback != null) callback.onError(e);
+                    if (callback != null)
+                        callback.onError(e);
                     return;
                 }
 
@@ -105,26 +109,35 @@ public class FileSender {
                         if (file != null && file.exists() && file.length() > 0) {
                             totalSizeOverall += file.length();
                         } else {
-                            LogPanel.log("FileSender: Warning - file in filesToProcess is null, non-existent, or empty: " + (file != null ? file.getAbsolutePath() : "null file object"));
+                            LogPanel.log(
+                                    "FileSender: Warning - file in filesToProcess is null, non-existent, or empty: "
+                                            + (file != null ? file.getAbsolutePath() : "null file object"));
                         }
                     }
-                    LogPanel.log("FileSender: Directory processing complete. filesToProcess count: " + filesToProcess.size() + ". Calculated totalSizeOverall: " + SendFileGUI.formatFileSize(totalSizeOverall));
+                    LogPanel.log(
+                            "FileSender: Directory processing complete. filesToProcess count: " + filesToProcess.size()
+                                    + ". Calculated totalSizeOverall: " + SendFileGUI.formatFileSize(totalSizeOverall));
                 }
 
                 // If, after TarCompressor's processing, filesToProcess is still empty,
                 // then the directory truly yielded no files to send.
                 if (filesToProcess.isEmpty()) {
-                    LogPanel.log("FileSender: 目錄 '" + inputFile.getName() + "' 為空或沒有產生任何要傳送的檔案。 (filesToProcess is empty after TarCompressor)");
-                    // Attempt to clean up the tar file if it exists but wasn't added (e.g., it was empty or TarCompressor failed to add it)
+                    LogPanel.log("FileSender: 目錄 '" + inputFile.getName()
+                            + "' 為空或沒有產生任何要傳送的檔案。 (filesToProcess is empty after TarCompressor)");
+                    // Attempt to clean up the tar file if it exists but wasn't added (e.g., it was
+                    // empty or TarCompressor failed to add it)
                     try {
                         if (archiveFileForTarCompressor.exists()) {
-                             Files.deleteIfExists(archiveFileForTarCompressor.toPath());
-                             LogPanel.log("FileSender: Cleaned up (potentially empty/failed) tar file: " + tempArchiveFilePath);
+                            Files.deleteIfExists(archiveFileForTarCompressor.toPath());
+                            LogPanel.log("FileSender: Cleaned up (potentially empty/failed) tar file: "
+                                    + tempArchiveFilePath);
                         }
                     } catch (IOException ex) {
-                        LogPanel.log("FileSender: Error cleaning up tar file " + tempArchiveFilePath + ": " + ex.getMessage());
+                        LogPanel.log("FileSender: Error cleaning up tar file " + tempArchiveFilePath + ": "
+                                + ex.getMessage());
                     }
-                    if (callback != null) callback.onComplete(); // Or onError, depending on desired behavior
+                    if (callback != null)
+                        callback.onComplete(); // Or onError, depending on desired behavior
                     return; // No files to send
                 }
             } else { // 如果是傳送單一檔案
@@ -132,11 +145,14 @@ public class FileSender {
                 if (inputFile.exists() && inputFile.isFile()) {
                     totalSizeOverall = inputFile.length();
                 } else {
-                    LogPanel.log("FileSender: Error - Single file is invalid or does not exist: " + inputFile.getAbsolutePath());
-                    if (callback != null) callback.onError(new IOException("Selected file is invalid: " + inputFile.getName()));
+                    LogPanel.log("FileSender: Error - Single file is invalid or does not exist: "
+                            + inputFile.getAbsolutePath());
+                    if (callback != null)
+                        callback.onError(new IOException("Selected file is invalid: " + inputFile.getName()));
                     return;
                 }
-                LogPanel.log("FileSender: 選擇了單一檔案: " + inputFile.getName() + ", Size: " + SendFileGUI.formatFileSize(totalSizeOverall));
+                LogPanel.log("FileSender: 選擇了單一檔案: " + inputFile.getName() + ", Size: "
+                        + SendFileGUI.formatFileSize(totalSizeOverall));
             }
 
             // 再次檢查是否有檔案需要傳送 (This is a final safeguard)
@@ -190,7 +206,8 @@ public class FileSender {
                         if (tempArchiveFilePath != null
                                 && filePath.equals(Paths.get(tempArchiveFilePath).normalize())) {
                             // 這是壓縮檔
-                            nameToSend = inputFile.getName() + ".tar"; // Ensure this matches how receiver might expect it or how it's named
+                            nameToSend = inputFile.getName() + ".tar"; // Ensure this matches how receiver might expect
+                                                                       // it or how it's named
                         } else {
                             // 這是大檔案
                             if (parentOfSelectedPath != null) {
@@ -280,7 +297,7 @@ public class FileSender {
                         callback.onError(new IOException("傳輸被接收端拒絕。"));
                 } else { // 未知的決定
                     throw new IOException("FileSender: 收到來自接收端的未知決定: " + receiverDecision);
-                }                // ===== 階段 4: 資料傳輸 (如果接受) =====
+                } // ===== 階段 4: 資料傳輸 (如果接受) =====
                 if (transferAcceptedByReceiver) {
                     final int totalFiles = filesToProcess.size();
                     int fileIndex = 0;
@@ -288,27 +305,27 @@ public class FileSender {
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
                         try (
-                            // 在每個檔案傳輸前，先發送 START_FILE 訊息
-                            DataOutputStream startDos = new DataOutputStream(socket.getOutputStream());
-                            DataInputStream startDis = new DataInputStream(socket.getInputStream())
-                        ) {
-
+                                Socket startSocket = new Socket(host, port);
+                                DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
+                                DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
+                            // 同樣設定超時，避免永遠卡住
+                            startSocket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
 
                             startDos.writeUTF("START_FILE");
                             startDos.flush();
 
-                            String startAck = startDis.readUTF(); // 等待接收端的 START_FILE_ACK
+                            String startAck = startDis.readUTF();
                             if (!"START_FILE_ACK".equals(startAck)) {
                                 throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
                             }
 
                         } catch (IOException e) {
                             LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
-                            if (callback != null) callback.onError(e);
+                            if (callback != null)
+                                callback.onError(e);
                             return;
                         }
-                        
-                        
+
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {
@@ -326,17 +343,16 @@ public class FileSender {
                             }
                         } else {
                             displayName = fileToActuallySend.getName();
-                        }                   
-                         LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
+                        }
+                        LogPanel.log("FileSender: 開始傳輸檔案: " + displayName + " ("
                                 + SendFileGUI.formatFileSize(fileToActuallySend.length()) + ")");
-                                
+
                         // Call onFileStart callback
                         if (callback != null) {
                             callback.onFileStart(fileIndex++, totalFiles, displayName);
                             callback.onStart(
-                                fileToActuallySend.length(),
-                                displayName
-                            );
+                                    fileToActuallySend.length(),
+                                    displayName);
                         }
 
                         // 創建 SendFile 實例，傳入協商後的執行緒數
@@ -346,21 +362,23 @@ public class FileSender {
                                 this.host, this.port,
                                 fileToActuallySend.getAbsolutePath(),
                                 negotiatedThreadCount,
-                                callback
-                        );
+                                callback);
                         optimizedSender.start();
                         // Notify file complete
-                        if (callback != null) callback.onFileComplete(1+currentFileIndex, totalFiles, displayName);
+                        if (callback != null)
+                            callback.onFileComplete(1 + currentFileIndex, totalFiles, displayName);
                     }
                     // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
-                    if (callback != null) callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
+                    if (callback != null)
+                        callback.onComplete(); // 所有檔案傳輸完成後，呼叫 onComplete
                 }
             } // Socket, dos, dis 的 try-with-resources 區塊結束，它們會自動關閉
         } catch (IOException e) { // 捕獲 I/O 異常
-            // LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " + e.getClass().getSimpleName() + " - "
-                    // + e.getMessage());
+            // LogPanel.log("FileSender: sendFiles 過程中發生 IOException: " +
+            // e.getClass().getSimpleName() + " - "
+            // + e.getMessage());
             // if (callback != null)
-                // callback.onError(e);
+            // callback.onError(e);
         } finally {
             // 最後的清理工作：刪除臨時的壓縮檔及其目錄
             if (isDirectoryTransfer && tempArchiveFilePath != null) {
