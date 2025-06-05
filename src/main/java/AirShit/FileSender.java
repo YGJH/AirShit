@@ -30,6 +30,7 @@ import AirShit.SendFileOptimized;
 public class FileSender {
     private String host; // 接收端主機名稱或 IP
     private int port; // 接收端埠號
+    private int port2; // 接收端第二個埠號（用於資料傳輸）
     private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
 
@@ -44,9 +45,10 @@ public class FileSender {
      * @param host 接收端主機。
      * @param port 接收端埠號。
      */
-    public FileSender(String host, int port) {
+    public FileSender(String host, int port , int port2) {
         this.host = host;
         this.port = port;
+        this.port2 = port2;
     }
 
     /**
@@ -309,9 +311,8 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-                        int dataPort = this.port + 1; // ← must match receiver's dataPort
 
-                        try (Socket startSocket = new Socket(host, dataPort);
+                        try (Socket startSocket = new Socket(host, port2);
                                 DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
                                 DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
 

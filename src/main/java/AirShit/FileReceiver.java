@@ -20,6 +20,7 @@ import AirShit.ui.FXFileChooserAdapter;
 public class FileReceiver {
 
     public int port;
+    private int port2;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
     // private final int ITHREADS = 1<<30;
     private File selectedSaveDirectory; // 確保這是 FileReceiver 的成員變數
@@ -44,8 +45,9 @@ public class FileReceiver {
         }
     }
 
-    FileReceiver(int port) {
+    FileReceiver(int port , int port2) {
         this.port = port;
+        this.port2 = port2;
     }
 
     public void start(TransferCallback callback) throws IOException {
@@ -231,12 +233,10 @@ public class FileReceiver {
                                 }
                                 // receive START_FILE message
 
-                                int dataPort = this.port + 1; // ← new data port
-
                                 // now open a listener on dataPort, not `port`:
                                 try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
                                     dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                                    dataServer.bind(new InetSocketAddress(dataPort));
+                                    dataServer.bind(new InetSocketAddress(port2));
                                     dataServer.configureBlocking(true);
 
                                     SocketChannel dataChannel = dataServer.accept();

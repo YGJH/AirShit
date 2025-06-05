@@ -473,7 +473,8 @@ public class SendFileGUI extends JFrame {
             try {
                 FileSender sender = new FileSender(
                         target.getIPAddr(),
-                        target.getTCPPort());
+                        target.getTCPPort(),
+                        target.getTCPPort2());
                 sender.sendFiles(file,
                         Main.getClient().getUserName(),
                         callback);

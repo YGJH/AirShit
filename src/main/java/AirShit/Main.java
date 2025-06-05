@@ -39,7 +39,13 @@ public class Main { // 定義 Main 類別
         } catch (UnknownHostException e) { // 異常處理：未知主機
             userName = System.getProperty("user" + UUID.randomUUID().toString().substring(0, 8)); // 使用隨機字串作為使用者名稱
         }
-        client = new Client(getNonLoopbackIP(), userName, getFreeTCPPort(), DISCOVERY_PORT,
+        int tcp1 = getFreeTCPPort();
+        int tcp2 = getFreeTCPPort();
+        while(tcp1 == tcp2) { // 確保兩個 TCP 端口不相同
+            tcp2 = getFreeTCPPort(); // 重新取得第二個 TCP 端口
+        }
+
+        client = new Client(getNonLoopbackIP(), userName, tcp1, tcp2, DISCOVERY_PORT,
                 System.getProperty("os.name")); // 取得可用的 TCP 端口
     }
 
@@ -277,9 +283,9 @@ public class Main { // 定義 Main 類別
                             if (clientIp.equals(client.getIPAddr()) && clientName.equals(client.getUserName())) {
                                 // It's our own heartbeat
                             } else if (!clientList.containsKey(clientName)) {
-                                Client tempClient = new Client(clientIp, clientName, Integer.parseInt(parts[3]),
-                                        Integer.parseInt(parts[4]), parts[5]); // Assuming parts[4] is discovery port,
-                                                                               // parts[5] is OS
+                                Client tempClient = new Client(clientIp, clientName, Integer.parseInt(parts[3]), Integer.parseInt(parts[4]),
+                                        Integer.parseInt(parts[5]), parts[6]); // Assuming parts[5] is discovery port,
+                                                                               // parts[6] is OS
                                 clientList.put(tempClient.getUserName(), tempClient);
                                 System.out
                                         .println("Main: Added new client from HEARTBEAT: " + tempClient.getUserName());
@@ -374,7 +380,7 @@ public class Main { // 定義 Main 類別
                 + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
         startMulticastListener(); // Start listening first
 
-        fileReceiver = new FileReceiver(client.getTCPPort()); // Temporarily commented out
+        fileReceiver = new FileReceiver(client.getTCPPort() , client.getTCPPort2()); // Temporarily commented out
 
 
         TransferCallback cb = new TransferCallback() {
@@ -518,13 +524,7 @@ public class Main { // 定義 Main 類別
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
         while(true) {
             try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
-                try (ServerSocket s = new ServerSocket(socket.getLocalPort() + 1)) {
-                    s.close(); // 嘗試關閉下一個端口以確保它是空閒的
                     return socket.getLocalPort(); // 返回分配到的 TCP 端口號
-                } catch (IOException e) { // 捕捉 I/O 異常
-                    // 如果下一個端口已被佔用，則繼續循環尋找下一個空閒端口
-                    continue;
-                }
             } catch (IOException e) { // 捕捉 I/O 異常
                 continue;
             }
@@ -722,7 +722,7 @@ public class Main { // 定義 Main 類別
             String newIP = getIPFromNetworkInterface(networkInterface);
             if (newIP != null && !newIP.equals(client.getIPAddr())) {
                 // 創建新的客戶端實例
-                client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
+                client = new Client(newIP, client.getUserName(), client.getTCPPort(), client.getTCPPort2(),
                                    client.getUDPPort(), client.getOS());
                 // LogPanel.log("Network interface changed to: " + networkInterface.getDisplayName() + " (IP: " + newIP + ")");
             }
@@ -730,7 +730,7 @@ public class Main { // 定義 Main 類別
             // 使用自動檢測
             String newIP = getNonLoopbackIP();
             if (!newIP.equals(client.getIPAddr())) {
-                client = new Client(newIP, client.getUserName(), client.getTCPPort(), 
+                client = new Client(newIP, client.getUserName(), client.getTCPPort(), client.getTCPPort2(),
                                    client.getUDPPort(), client.getOS());
                 // LogPanel.log("Network interface set to auto-detection (IP: " + newIP + ")");
             }

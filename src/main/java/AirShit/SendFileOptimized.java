@@ -39,7 +39,7 @@ public class SendFileOptimized {
             // System.out.println("將檔案拆成 " + numChunks + " 個 chunk (每chunk 大小約 " + chunkSize + " bytes)");
 
             // 3. 建立固定執行緒池
-            ExecutorService fixedPool = Executors.newFixedThreadPool(threadCount);
+            ExecutorService virtualPool = Executors.newVirtualThreadPerTaskExecutor();
 
             // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
             for (int i = 0; i < numChunks; i++) {
@@ -47,14 +47,14 @@ public class SendFileOptimized {
                 // 最後一個 chunk 的長度可能小於 chunkSize
                 int length = (int) Math.min(chunkSize, fileSize - offset);
 
-                fixedPool.submit(new ChunkSenderTask(
+                virtualPool.submit(new ChunkSenderTask(
                         serverHost, serverPort, fileChannel, offset, length
                 ));
             }
 
-            // 5. 關閉 fixedPool，不再接受新任務，並等待所有任務完成
-            fixedPool.shutdown();
-            while (!fixedPool.isTerminated()) {
+            // 5. 關閉 virtualPool，不再接受新任務，並等待所有任務完成
+            virtualPool.shutdown();
+            while (!virtualPool.isTerminated()) {
                 Thread.sleep(100); // 每 100ms 檢查一次
             }
 
@@ -87,22 +87,9 @@ public class SendFileOptimized {
 
         @Override
         public void run() {
-            // 在每個固定執行緒內部，建立一個 VirtualThreadPerTaskExecutor
-            ExecutorService virtualPool = Executors.newVirtualThreadPerTaskExecutor();
-            // 將實際傳送 chunk 的任務提交給 virtualPool
-            virtualPool.submit(() -> {
-                sendChunk();
-            });
+            sendChunk();
 
-            // 關閉 virtualPool，不再接受新任務，等該虛擬執行緒完成
-            virtualPool.shutdown();
-            try {
-                while (!virtualPool.isTerminated()) {
-                    Thread.sleep(50);
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            return; // 虛擬執行緒結束後，回到 ChunkSenderTask 的 run 方法
         }
 
         /**
