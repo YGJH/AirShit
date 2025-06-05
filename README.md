@@ -10,6 +10,11 @@ Last Updated: 2025-05-30
 
 =====================================================
 
+
+# Warning
+Release 1.2.0 is the current stable version; 1.3.* versions are currently unstable.
+If you don't see other devices, please click the Refresh button below the Client panel on each device.
+
 ## Introduction
 
 ### image
@@ -225,3 +230,4 @@ jpackage --type dmg \
              --vendor "AirShit Project" \
              --icon src/main/resources/asset/kitty.icns
 ```
+

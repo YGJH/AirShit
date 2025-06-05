@@ -272,7 +272,7 @@ public class Main { // 定義 Main 類別
                     String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
                     // System.out.println("Received multicast ("+ packet.getAddress().getHostAddress() + ":" + packet.getPort() + "): " + message);
 
-                    boolean listChanged = false;
+                    boolean listChanged = true;
 
                     if (message.startsWith("HEARTBEAT-")) {
                         String[] parts = message.split("-");
@@ -365,6 +365,10 @@ public class Main { // 定義 Main 類別
 
     public static void main(String[] args) { // 主方法，程式入口點
         System.setProperty("file.encoding", "UTF-8");
+        SwingUtilities.invokeLater(() -> {
+            GUI = new SendFileGUI();
+        });
+
         // 2) Install a Unicode‐capable default font (e.g. Segoe UI Emoji, Microsoft
         // YaHei, or Noto)
         Font uiFont = new Font("Microsoft YaHei UI", Font.PLAIN, 12);
@@ -377,11 +381,11 @@ public class Main { // 定義 Main 類別
 
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
-                + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
+        + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
+
         startMulticastListener(); // Start listening first
 
         fileReceiver = new FileReceiver(client.getTCPPort() , client.getTCPPort2()); // Temporarily commented out
-
 
         TransferCallback cb = new TransferCallback() {
             AtomicLong totalReceived = new AtomicLong(0);
@@ -494,9 +498,7 @@ public class Main { // 定義 Main 類別
         }, "file-receiver-thread").start();
 
 
-        SwingUtilities.invokeLater(() -> {
-            GUI = new SendFileGUI();
-        });
+
 
         try {
             Thread.sleep(500); // 等待 100 毫秒以確保 GUI 已經啟動
