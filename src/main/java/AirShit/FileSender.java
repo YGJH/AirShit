@@ -311,13 +311,17 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-
+                        try {
+                            Thread.sleep(300); // 等待 300 毫秒，確保接收端準備好接收檔案
+                        } catch (InterruptedException e) {
+                        }
+                        dos.writeUTF("START_FILE");
+                        dos.flush();
                         String startFileMessage = dis.readUTF();
-                        if (!"START_FILE".equals(startFileMessage)) {
+                        System.out.println("Received start file message: " + startFileMessage);
+                        if (!"START_FILE_ACK".equals(startFileMessage)) {
                             throw new IOException("Expected START_FILE but got: " + startFileMessage);
                         }
-                        dos.writeUTF("START_FILE_ACK");
-                        dos.flush();
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {

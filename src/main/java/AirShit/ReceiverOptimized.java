@@ -36,12 +36,14 @@ public class ReceiverOptimized {
     }
     public void start() {
         // 建立固定執行緒池，處理每個進來的 client 連線
-        ExecutorService serverPool = Executors.newFixedThreadPool(SERVER_THREAD_COUNT);
+        //ExecutorService serverPool = Executors.newFixedThreadPool(SERVER_THREAD_COUNT);
+        ExecutorService serverPool = Executors.newVirtualThreadPerTaskExecutor(); 
 
         // 使用 try-with-resources 管理 ServerSocketChannel, RandomAccessFile, FileChannel
         try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
              RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
-             java.nio.channels.FileChannel outFileChannel = raf.getChannel()) {
+             FileChannel outFileChannel = raf.getChannel()) {
+
             serverChannel.bind(new InetSocketAddress(SERVER_PORT));
             // System.out.println("伺服端啟動，監聽 port = " + SERVER_PORT);
 
@@ -64,7 +66,8 @@ public class ReceiverOptimized {
                 // 無限循環接收
                 while (true) {
                     SocketChannel clientChannel = serverChannel.accept();
-                    serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
+                    // spawn a virtual thread that will live just long enough to drain this chunk
+                    Thread.startVirtualThread(() -> handleClient(clientChannel, outFileChannel));
                 }
             }
         } catch (IOException e) {
