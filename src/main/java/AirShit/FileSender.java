@@ -10,14 +10,11 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import AirShit.ui.LogPanel;
 import AirShit.SendFileOptimized;
-
 /**
  * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
  * 這包括：
@@ -45,7 +42,7 @@ public class FileSender {
      * @param host 接收端主機。
      * @param port 接收端埠號。
      */
-    public FileSender(String host, int port , int port2) {
+    public FileSender(String host, int port, int port2) {
         this.host = host;
         this.port = port;
         this.port2 = port2;
@@ -311,25 +308,16 @@ public class FileSender {
                     // 遍歷 filesToProcess 列表，為每個檔案啟動 SendFile 實例進行傳輸
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
-
-                        try (Socket startSocket = new Socket(host, port2);
-                                DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
-                                DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
-
-                            startSocket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
-                            startDos.writeUTF("START_FILE");
-                            startDos.flush();
-
-                            String startAck = startDis.readUTF();
-                            if (!"START_FILE_ACK".equals(startAck)) {
-                                throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
-                            }
-
-                        } catch (IOException e) {
-                            LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
-                            if (callback != null)
-                                callback.onError(e);
-                            return;
+                        try {
+                            Thread.sleep(300); // 等待 300 毫秒，確保接收端準備好接收檔案
+                        } catch (InterruptedException e) {
+                        }
+                        dos.writeUTF("START_FILE");
+                        dos.flush();
+                        String startFileMessage = dis.readUTF();
+                        System.out.println("Received start file message: " + startFileMessage);
+                        if (!"START_FILE_ACK".equals(startFileMessage)) {
+                            throw new IOException("Expected START_FILE but got: " + startFileMessage);
                         }
                         final int currentFileIndex = fileIndex;
                         String displayName;
@@ -364,14 +352,20 @@ public class FileSender {
 
                         // use optimized file sender for chunked transfer
                         SendFileOptimized optimizedSender = new SendFileOptimized(
-                                this.host, this.port,
+                                this.host, this.port2,
                                 fileToActuallySend.getAbsolutePath(),
                                 negotiatedThreadCount,
                                 callback);
-                        optimizedSender.start();
-                        // Notify file complete
-                        if (callback != null)
+                        // 同步傳輸：直接呼叫 start() 等待所有 chunk 送完再繼續
+                        boolean success = optimizedSender.start(); // 啟動傳輸 (同步)
+                        if (!success) {
+                            LogPanel.log("FileSender: 傳輸失敗: " + displayName);
+                        }
+
+                        // 傳輸完成後通知
+                        if (callback != null) {
                             callback.onFileComplete(1 + currentFileIndex, totalFiles, displayName);
+                        }
                     }
                     // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
                     if (callback != null)

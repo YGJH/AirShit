@@ -234,46 +234,24 @@ public class FileReceiver {
                                 // receive START_FILE message
 
                                 // now open a listener on dataPort, not `port`:
-                                try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
-                                    dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                                    dataServer.bind(new InetSocketAddress(port2));
-                                    dataServer.configureBlocking(true);
 
-                                    SocketChannel dataChannel = dataServer.accept();
-                                    try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
-                                            DataOutputStream os = new DataOutputStream(
-                                                    Channels.newOutputStream(dataChannel))) {
-
-                                        String startFileMessage = is.readUTF();
-                                        if (!"START_FILE".equals(startFileMessage)) {
-                                            throw new IOException("Expected START_FILE but got: " + startFileMessage);
-                                        }
-                                        os.writeUTF("START_FILE_ACK");
-                                        os.flush();
-                                    } finally {
-                                        dataChannel.close();
-                                    }
-
-                                } catch (IOException e) {
-                                    LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
-                                    if (callback != null)
-                                        callback.onError(e);
-                                    return;
+                                String startFileMessage = dis.readUTF();
+                                if (!"START_FILE".equals(startFileMessage)) {
+                                    throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                 }
-                                serverSocketChannel.close();
-
+                                dos.writeUTF("START_FILE_ACK");
+                                dos.flush();
                                 // Calculate expected number of chunks to receive and use constructor to limit
                                 // loop
                                 int expectedChunks = (int) ((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE
                                         - 1)
                                         / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
                                 ReceiverOptimized dataReceiver = new ReceiverOptimized(
-                                        port,
+                                        port2,
                                         wholeOutputFilePath,
                                         negotiatedThreadCount,
                                         callback,
                                         expectedChunks);
-                                boolean receptionWasSuccessful = true;
                                 // new Thread(() -> {
                                 try {
                                     dataReceiver.start();
