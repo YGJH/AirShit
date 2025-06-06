@@ -1,23 +1,15 @@
 package AirShit;
 
 import java.io.*;
-import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.StandardSocketOptions;
-import java.nio.channels.Channels;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import AirShit.ui.LogPanel;
 import AirShit.SendFileOptimized;
-
 /**
  * FileSender 類別負責處理將檔案或資料夾傳送給接收端的整個流程。
  * 這包括：
@@ -359,10 +351,16 @@ public class FileSender {
                                 fileToActuallySend.getAbsolutePath(),
                                 negotiatedThreadCount,
                                 callback);
-                        optimizedSender.start();
-                        // Notify file complete
-                        if (callback != null)
+                        // 同步傳輸：直接呼叫 start() 等待所有 chunk 送完再繼續
+                        boolean success = optimizedSender.start(); // 啟動傳輸 (同步)
+                        if (!success) {
+                            LogPanel.log("FileSender: 傳輸失敗: " + displayName);
+                        }
+
+                        // 傳輸完成後通知
+                        if (callback != null) {
                             callback.onFileComplete(1 + currentFileIndex, totalFiles, displayName);
+                        }
                     }
                     // LogPanel.log("FileSender: 所有檔案已處理完畢，準備傳送。");
                     if (callback != null)

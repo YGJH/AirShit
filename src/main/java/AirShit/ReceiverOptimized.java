@@ -78,54 +78,55 @@ public class ReceiverOptimized {
      */
     private static void handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
         try (SocketChannel channel = clientChannel) {
-            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-            // 讀取 offset + length
-            while (headerBuffer.hasRemaining()) {
-                if (channel.read(headerBuffer) == -1) return;
-            }
-            headerBuffer.flip();
-            long offset = headerBuffer.getLong();
-            int length = headerBuffer.getInt();
-            // System.out.println("準備接收 chunk，offset=" + offset + ", length=" + length);
+                // disable Nagle's algorithm for low-latency chunk delivery
+                channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
+                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                // 讀取 offset + length
+                while (headerBuffer.hasRemaining()) {
+                    if (channel.read(headerBuffer) == -1) return;
+                }
+                headerBuffer.flip();
+                long offset = headerBuffer.getLong();
+                int length = headerBuffer.getInt();
+                // 回傳 ACK (1 byte)，代表伺服端準備好接收 chunk
+                ByteBuffer ackBuf = ByteBuffer.allocate(1);
+                ackBuf.put((byte) 1);
+                ackBuf.flip();
+                while (ackBuf.hasRemaining()) {
+                    channel.write(ackBuf);
+                }
 
-            // 回傳 ACK (1 byte)，代表伺服端準備好接收 chunk
-            ByteBuffer ackBuf = ByteBuffer.allocate(1);
-            ackBuf.put((byte) 1);
-            ackBuf.flip();
-            while (ackBuf.hasRemaining()) {
-                channel.write(ackBuf);
-            }
-
-            // 接著從管道讀取 length bytes 的 chunk 資料
-            long bytesToReceive = length;
+                // 接著從管道讀取 length bytes 的 chunk 資料
+                long bytesToReceive = length;
             // 使用絕對位置寫入避免共享 channel 的 position 干擾
-            ByteBuffer dataBuffer = ByteBuffer.allocate(64 * 1024); // 64 KB 暫存
-            long writePosition = offset;
-            while (bytesToReceive > 0) {
-                dataBuffer.clear();
-                int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
-                dataBuffer.limit(toRead);
-                int r = channel.read(dataBuffer);
-                if (r == -1) {
-                    return;
-                }
-                dataBuffer.flip();
-                // 寫入檔案於指定位置
-                try {
-                    outFileChannel.write(dataBuffer, writePosition);
-                } catch (java.nio.channels.ClosedChannelException cce) {
-                    // FileChannel closed prematurely, abort this chunk
-                    return;
-                }
+            // 增大緩存至 256 KB 並使用直接緩衝以提高 I/O 效率
+            ByteBuffer dataBuffer = ByteBuffer.allocateDirect(256 * 1024);
+                long writePosition = offset;
+                while (bytesToReceive > 0) {
+                    dataBuffer.clear();
+                    int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
+                    dataBuffer.limit(toRead);
+                    int r = channel.read(dataBuffer);
+                    if (r == -1) {
+                        return;
+                    }
+                    dataBuffer.flip();
+                    // 寫入檔案於指定位置
+                    try {
+                        outFileChannel.write(dataBuffer, writePosition);
+                    } catch (java.nio.channels.ClosedChannelException cce) {
+                        // FileChannel closed prematurely, abort this chunk
+                        return;
+                    }
 
-                if (transferCallback != null) {
-                    transferCallback.onProgress(r);
-                }
-                writePosition += r;
+                    if (transferCallback != null) {
+                        transferCallback.onProgress(r);
+                    }
+                    writePosition += r;
 
-                bytesToReceive -= r;
-            }
-            outFileChannel.force(false); // 確保資料寫入磁碟
+                    bytesToReceive -= r;
+                }
+                outFileChannel.force(false); // 確保資料寫入磁碟
             
         } catch (IOException e) {
             e.printStackTrace();
