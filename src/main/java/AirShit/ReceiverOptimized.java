@@ -6,8 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
 
 public class ReceiverOptimized {
 
@@ -35,52 +34,41 @@ public class ReceiverOptimized {
         this.expectedChunks = expectedChunks;
     }
     public void start() {
-        // 建立固定執行緒池，處理每個進來的 client 連線
-        //ExecutorService serverPool = Executors.newFixedThreadPool(SERVER_THREAD_COUNT);
-        ExecutorService serverPool = Executors.newVirtualThreadPerTaskExecutor(); 
+        // 使用虛擬執行緒為每個 chunk 連線提供服務
+         
+         // 使用 try-with-resources 管理 ServerSocketChannel, RandomAccessFile, FileChannel
+         try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
+              RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
+              FileChannel outFileChannel = raf.getChannel()) {
 
-        // 使用 try-with-resources 管理 ServerSocketChannel, RandomAccessFile, FileChannel
-        try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
-             RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
-             FileChannel outFileChannel = raf.getChannel()) {
+             serverChannel.bind(new InetSocketAddress(SERVER_PORT));
+            // 系統啟動並監聽 port = SERVER_PORT
 
-            serverChannel.bind(new InetSocketAddress(SERVER_PORT));
-            // System.out.println("伺服端啟動，監聽 port = " + SERVER_PORT);
-
-            // 若 OUTPUT_FILE 尚未存在或大小為 0，可在此預先創建空檔，並設定到適當大小
-            // 也可以先不動，等第一個 chunk 進來再調整大小。
+            // 根據預期 chunk 數量分支
             if (expectedChunks > 0) {
-                // 限定接收次數
+                CountDownLatch latch = new CountDownLatch(expectedChunks);
                 for (int i = 0; i < expectedChunks; i++) {
                     SocketChannel clientChannel = serverChannel.accept();
-                    serverPool.submit(() -> handleClient(clientChannel, outFileChannel));
+                    Thread.startVirtualThread(() -> {
+                        handleClient(clientChannel, outFileChannel);
+                        latch.countDown();
+                    });
                 }
-                // 等待所有 chunk 處理結束，再關閉 FileChannel
-                serverPool.shutdown();
                 try {
-                    serverPool.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                    latch.await();
                 } catch (InterruptedException ie) {
-                    ie.printStackTrace();
+                    Thread.currentThread().interrupt();
                 }
             } else {
-                // 無限循環接收
                 while (true) {
                     SocketChannel clientChannel = serverChannel.accept();
-                    // spawn a virtual thread that will live just long enough to drain this chunk
                     Thread.startVirtualThread(() -> handleClient(clientChannel, outFileChannel));
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            serverPool.shutdown();
-            try {
-                serverPool.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
-            } catch (InterruptedException ie) {
-                ie.printStackTrace();
-            }
+         } catch (IOException e) {
+             e.printStackTrace();
         }
-    }
+     }
 
     /**
      * 處理每個 client 連線：先讀 offset, length，回 ACK，然後再讀 chunk 資料並寫進檔案。
