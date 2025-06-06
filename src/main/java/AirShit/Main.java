@@ -14,7 +14,10 @@ import AirShit.ui.LogPanel;
 public class Main { // 定義 Main 類別
     static Random random = new Random(); // 建立隨機數生成器
     public static SendFileGUI GUI;
+    private static Thread listenThread; // 建立監聽執行緒
+    private static MulticastSocket listenerSocket; // persistent socket for multicast listener
     static FileReceiver fileReceiver;
+
     static void println(String s) {
         System.out.println(s);
     }
@@ -41,7 +44,7 @@ public class Main { // 定義 Main 類別
         }
         int tcp1 = getFreeTCPPort();
         int tcp2 = getFreeTCPPort();
-        while(tcp1 == tcp2) { // 確保兩個 TCP 端口不相同
+        while (tcp1 == tcp2) { // 確保兩個 TCP 端口不相同
             tcp2 = getFreeTCPPort(); // 重新取得第二個 TCP 端口
         }
 
@@ -53,7 +56,9 @@ public class Main { // 定義 Main 類別
 
     public static Hashtable<String, Client> getClientList() { // 定義取得客戶端端口的方法
         return clientList; // 返回客戶端哈希表
-    }    enum SEND_STATUS { // 定義檔案傳送狀態列舉
+    }
+
+    enum SEND_STATUS { // 定義檔案傳送狀態列舉
         SEND_OK, // 傳送正常結束
         SEND_WAITING // 正在等待傳送
     }
@@ -64,17 +69,19 @@ public class Main { // 定義 Main 類別
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up or loopback.");
+                    System.out.println(
+                            "getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Not up or loopback.");
                     continue;
                 }
-                
+
                 String name = ni.getDisplayName().toLowerCase();
-                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") || 
-                    name.contains("vbox") || name.contains("virtualbox")) {
-                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName() + "': Virtualization software interface.");
+                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") ||
+                        name.contains("vbox") || name.contains("virtualbox")) {
+                    System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName()
+                            + "': Virtualization software interface.");
                     continue;
                 }
-                
+
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
@@ -110,6 +117,7 @@ public class Main { // 定義 Main 類別
     public static void setDiscoveryPort(int port) {
         DISCOVERY_PORT = port;
     }
+
     public static void setMulticastGroup(String group) {
         MULTICAST_GROUP = group;
     }
@@ -119,60 +127,70 @@ public class Main { // 定義 Main 類別
         if (!useAutoDetection && selectedNetworkInterface != null) {
             try {
                 if (selectedNetworkInterface.isUp() && selectedNetworkInterface.supportsMulticast()) {
-                    System.out.println("findCorrectNetworkInterface: Using user-selected interface: '" + 
-                                     selectedNetworkInterface.getDisplayName() + "'");
+                    System.out.println("findCorrectNetworkInterface: Using user-selected interface: '" +
+                            selectedNetworkInterface.getDisplayName() + "'");
                     return selectedNetworkInterface;
                 } else {
-                    System.err.println("findCorrectNetworkInterface: User-selected interface '" + 
-                                     selectedNetworkInterface.getDisplayName() + "' is not available. Falling back to auto-detection.");
+                    System.err.println("findCorrectNetworkInterface: User-selected interface '" +
+                            selectedNetworkInterface.getDisplayName()
+                            + "' is not available. Falling back to auto-detection.");
                     useAutoDetection = true;
                     selectedNetworkInterface = null;
                 }
             } catch (SocketException e) {
-                System.err.println("findCorrectNetworkInterface: Error checking user-selected interface: " + e.getMessage());
+                System.err.println(
+                        "findCorrectNetworkInterface: Error checking user-selected interface: " + e.getMessage());
                 useAutoDetection = true;
                 selectedNetworkInterface = null;
             }
         }
-          // 原有的自動檢測邏輯
-        // System.out.println("findCorrectNetworkInterface: Searching for suitable interface for multicast...");
+        // 原有的自動檢測邏輯
+        // System.out.println("findCorrectNetworkInterface: Searching for suitable
+        // interface for multicast...");
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                // System.out.println("findCorrectNetworkInterface: Considering interface: '" + ni.getDisplayName() + "' (Name: " + ni.getName() +
-                //                    ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
-                //                    ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ? ni.supportsMulticast() : "N/A (not up)") + ")");
+                // System.out.println("findCorrectNetworkInterface: Considering interface: '" +
+                // ni.getDisplayName() + "' (Name: " + ni.getName() +
+                // ", Up: " + ni.isUp() + ", Loopback: " + ni.isLoopback() +
+                // ", Virtual: " + ni.isVirtual() + ", Supports Multicast: " + (ni.isUp() ?
+                // ni.supportsMulticast() : "N/A (not up)") + ")");
 
                 if (!ni.isUp() || ni.isLoopback()) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Not up or loopback.");
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName()
+                            + "': Not up or loopback.");
                     continue;
                 }
                 if (!ni.supportsMulticast()) {
-                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName() + "': Does not support multicast.");
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName()
+                            + "': Does not support multicast.");
                     continue;
                 }
-                
+
                 // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
-                
+
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address
                             && !addr.isLoopbackAddress()
                             && !addr.isLinkLocalAddress()) {
-                        // System.out.println("findCorrectNetworkInterface: Selected interface: '" + ni.getDisplayName() + "' with IPv4 address: " + addr.getHostAddress());
+                        // System.out.println("findCorrectNetworkInterface: Selected interface: '" +
+                        // ni.getDisplayName() + "' with IPv4 address: " + addr.getHostAddress());
                         return ni;
                     }
                 }
             }
         } catch (SocketException e) {
-            System.err.println("findCorrectNetworkInterface: SocketException while finding network interface: " + e.getMessage());
+            System.err.println(
+                    "findCorrectNetworkInterface: SocketException while finding network interface: " + e.getMessage());
             e.printStackTrace();
         }
-        // System.err.println("findCorrectNetworkInterface: No suitable network interface found after checking all interfaces.");
+        // System.err.println("findCorrectNetworkInterface: No suitable network
+        // interface found after checking all interfaces.");
         return null;
     }
 
     public static void multicastHello() {
         try (
-            MulticastSocket socket = new MulticastSocket();) { // Sender socket binds to any free port
+                MulticastSocket socket = new MulticastSocket();) { // Sender socket binds to any free port
             InetAddress group = getMulticastAddress();
             if (group == null) {
                 System.err.println("Sender: Multicast group address is null. Cannot send HELLO.");
@@ -189,24 +207,27 @@ public class Main { // 定義 Main 類別
                 try {
                     socket.setNetworkInterface(nif);
                 } catch (SocketException e) {
-                    System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': " + e.getMessage() + ". OS will choose.");
+                    System.err.println("Sender: FAILED to set network interface to '" + nif.getDisplayName() + "': "
+                            + e.getMessage() + ". OS will choose.");
                 }
-                // Joining the group on the sender can be important for some OSes to correctly source the packet
+                // Joining the group on the sender can be important for some OSes to correctly
+                // source the packet
                 try {
                     socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), nif);
                 } catch (IOException e) {
                     System.err.println("Sender: WARN - Failed to join multicast group on specific interface '" +
-                                       nif.getDisplayName() + "': " + e.getMessage() + ". Sending might still work.");
+                            nif.getDisplayName() + "': " + e.getMessage() + ". Sending might still work.");
                 }
             } else {
                 try {
-                    socket.joinGroup(group); 
+                    socket.joinGroup(group);
                     System.out.println("Sender: Joined multicast group on default interfaces as fallback.");
                 } catch (IOException e) {
-                    System.err.println("Sender: WARN - Failed to join multicast group on default interfaces: " + e.getMessage());
+                    System.err.println(
+                            "Sender: WARN - Failed to join multicast group on default interfaces: " + e.getMessage());
                 }
             }
-            
+
             DatagramPacket packet = new DatagramPacket(
                     sendData, sendData.length, group, DISCOVERY_PORT);
             socket.send(packet);
@@ -219,116 +240,102 @@ public class Main { // 定義 Main 類別
     }
 
     public static void startMulticastListener() {
-        Thread MultiCast = new Thread(() -> {
-            try (MulticastSocket socket = new MulticastSocket(DISCOVERY_PORT);) {
-                // MulticastSocket(int port) constructor calls setReuseAddress(true) internally.
-
-                InetAddress group = getMulticastAddress();
-                if (group == null) {
-                    return;
-                }
-
-                socket.setTimeToLive(32); // For any replies, though listener primarily receives.
-
-                NetworkInterface iface = findCorrectNetworkInterface();
-                boolean joinedGroup = false;
-                if (iface != null) {
-                    System.out.println("Listener: Attempting to join multicast group on interface: '" + iface.getDisplayName() + "'.");
-                    try {
-                        socket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
-                        System.out.println("Listener: Successfully joined multicast group " + group.getHostAddress() +
-                                           " on interface '" + iface.getDisplayName() + "'.");
-                        joinedGroup = true;
-                    } catch (IOException e) {
-                        System.err.println("Listener: FAILED to join multicast group on specific interface '" +
-                                           iface.getDisplayName() + "': " + e.getMessage() + ". Trying fallback to default interfaces.");
-                        // Fallback handled below if joinedGroup is still false
-                    }
-                } else {
-                    System.err.println("Listener: WARN - No specific network interface found. Attempting to join multicast group on default interfaces.");
-                }
-
-                if (!joinedGroup) { // If specific interface wasn't found or failed to join on it
-                    try {
-                        socket.joinGroup(group); // Join on all interfaces that support multicast for the given address family
-                        joinedGroup = true;
-                    } catch (IOException e) {
-                        System.err.println("Listener: FAILED to join multicast group on default interfaces: " + e.getMessage());
-                        e.printStackTrace();
-                        return; // Critical failure if cannot join group at all
-                    }
-                }
-                
-                if (!joinedGroup) { // Should not happen if the above logic is correct, but as a safeguard:
-                    System.err.println("Listener: CRITICAL - Could not join multicast group. Listener cannot start.");
-                    return;
-                }
-
-                byte[] buffer = new byte[1024];
-                while (true) { // Main listening loop
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                    socket.receive(packet);
-
-                    String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
-                    // System.out.println("Received multicast ("+ packet.getAddress().getHostAddress() + ":" + packet.getPort() + "): " + message);
-
-                    boolean listChanged = true;
-
-                    if (message.startsWith("HEARTBEAT-")) {
-                        String[] parts = message.split("-");
-                        if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
-                            String clientIp = parts[1];
-                            String clientName = parts[2];
-                            // Check if client is self
-                            if (clientIp.equals(client.getIPAddr()) && clientName.equals(client.getUserName())) {
-                                // It's our own heartbeat
-                            } else if (!clientList.containsKey(clientName)) {
-                                Client tempClient = new Client(clientIp, clientName, Integer.parseInt(parts[3]), Integer.parseInt(parts[4]),
-                                        Integer.parseInt(parts[5]), parts[6]); // Assuming parts[5] is discovery port,
-                                                                               // parts[6] is OS
-                                clientList.put(tempClient.getUserName(), tempClient);
-                                System.out
-                                        .println("Main: Added new client from HEARTBEAT: " + tempClient.getUserName());
-                                listChanged = true;
-                            }
-                        }
-                        // Respond to HEARTBEAT
-                        byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket reply = new DatagramPacket(resp, resp.length, packet.getAddress(),
-                                packet.getPort());
-                        socket.send(reply);
-
-                    } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
-                        Client tempClient = Client.parseMessage(message);
-                        if (tempClient != null) {
-                            if (tempClient.getIPAddr().equals(client.getIPAddr())
-                                    && tempClient.getUserName().equals(client.getUserName())) {
-                                // It's our own HELLO message
-                            } else if (!clientList.containsKey(tempClient.getUserName())) {
-                                clientList.put(tempClient.getUserName(), tempClient);
-                                listChanged = true;
-                                // Respond directly to the sender (unicast)
-                                Thread.sleep(100); // Slight delay to avoid flooding
-                                responseNewClient(InetAddress.getByName(tempClient.getIPAddr()) , tempClient.getUDPPort());
-                            }
-                        }
-                    }
-                    if (listChanged) {
-                        if (GUI != null && SendFileGUI.INSTANCE != null
-                                && SendFileGUI.INSTANCE.getClientPanel() != null) {
-                            // System.out.println("Main: Client list changed, requesting GUI refresh.");
-                            SwingUtilities
-                                    .invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+        try {
+            // close previous socket if open
+            if (listenerSocket != null && !listenerSocket.isClosed()) {
+                listenerSocket.close();
             }
-            // Socket is closed by try-with-resources
-        });
-        MultiCast.setName("AirShit-MulticastListener");
-        MultiCast.start(); // 啟動多播監聽執行緒
+            listenerSocket = new MulticastSocket(DISCOVERY_PORT);
+             // MulticastSocket(int port) constructor calls setReuseAddress(true) internally.
+
+             InetAddress group = getMulticastAddress();
+             if (group == null) {
+                 return;
+             }
+
+             listenerSocket.setTimeToLive(32); // For any replies, though listener primarily receives.
+             System.out.println("using network interface: " + findCorrectNetworkInterface());
+             NetworkInterface iface = findCorrectNetworkInterface();
+             boolean joinedGroup = false;
+             if (iface != null) {
+                 try {
+                    listenerSocket.joinGroup(new InetSocketAddress(group, DISCOVERY_PORT), iface);
+                     joinedGroup = true;
+                 } catch (IOException e) {
+                     // fallback below
+                 }
+             } else {
+             }
+
+             if (!joinedGroup) {
+                listenerSocket.joinGroup(group);
+                 joinedGroup = true;
+             }
+
+             byte[] buffer = new byte[1024];
+            while (true) { // Main listening loop
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                listenerSocket.receive(packet);
+
+                String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                System.out.println("Received multicast (" + packet.getAddress().getHostAddress() + ":"
+                        + packet.getPort() + "): " + message);
+
+                boolean listChanged = true;
+
+                if (message.startsWith("HEARTBEAT-")) {
+                    String[] parts = message.split("-");
+                    if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
+                        String clientIp = parts[1];
+                        String clientName = parts[2];
+                        // Check if client is self
+                        if (clientIp.equals(client.getIPAddr()) && clientName.equals(client.getUserName())) {
+                            // It's our own heartbeat
+                        } else if (!clientList.containsKey(clientName)) {
+                            Client tempClient = new Client(clientIp, clientName, Integer.parseInt(parts[3]),
+                                    Integer.parseInt(parts[4]),
+                                    Integer.parseInt(parts[5]), parts[6]); // Assuming parts[5] is discovery port,
+                                                                           // parts[6] is OS
+                            clientList.put(tempClient.getUserName(), tempClient);
+                            System.out
+                                    .println("Main: Added new client from HEARTBEAT: " + tempClient.getUserName());
+                            listChanged = true;
+                        }
+                    }
+                    // Respond to HEARTBEAT
+                    byte[] resp = "ALIVE".getBytes(StandardCharsets.UTF_8);
+                    DatagramPacket reply = new DatagramPacket(resp, resp.length, packet.getAddress(),
+                            packet.getPort());
+                    listenerSocket.send(reply);
+
+                } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
+                    Client tempClient = Client.parseMessage(message);
+                    if (tempClient != null) {
+                        if (tempClient.getIPAddr().equals(client.getIPAddr())
+                                && tempClient.getUserName().equals(client.getUserName())) {
+                            // It's our own HELLO message
+                        } else if (!clientList.containsKey(tempClient.getUserName())) {
+                            clientList.put(tempClient.getUserName(), tempClient);
+                            listChanged = true;
+                            // Respond directly to the sender (unicast)
+                            Thread.sleep(100); // Slight delay to avoid flooding
+                            responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), tempClient.getUDPPort());
+                        }
+                    }
+                }
+                if (listChanged) {
+                    if (GUI != null && SendFileGUI.INSTANCE != null
+                            && SendFileGUI.INSTANCE.getClientPanel() != null) {
+                        // System.out.println("Main: Client list changed, requesting GUI refresh.");
+                        SwingUtilities
+                                .invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        // listenerSocket stays open until closed on restart or interface change
     }
 
     public static void responseNewClient(InetAddress targetAddr, int targetPort) {
@@ -362,6 +369,8 @@ public class Main { // 定義 Main 類別
     }
 
     private static ServerSocket lockSocket; // 用於鎖定應用程式實例
+    // stored callback for file receiver
+    private static TransferCallback fileReceiverCallback;
 
     public static void main(String[] args) { // 主方法，程式入口點
         System.setProperty("file.encoding", "UTF-8");
@@ -381,11 +390,11 @@ public class Main { // 定義 Main 類別
 
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
-        + client.getIPAddr()); // 輸出使用者名稱
+                + client.getIPAddr()); // 輸出使用者名稱
 
-        startMulticastListener(); // Start listening first
-
-        fileReceiver = new FileReceiver(client.getTCPPort() , client.getTCPPort2()); // Temporarily commented out
+        listenThread = new Thread(() -> {startMulticastListener();}); // Start listening first
+        listenThread.start(); // 啟動監聽執行緒
+        fileReceiver = new FileReceiver(client.getTCPPort(), client.getTCPPort2()); // Temporarily commented out
 
         TransferCallback cb = new TransferCallback() {
             AtomicLong totalReceived = new AtomicLong(0);
@@ -406,7 +415,8 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getProgressBar().setValue(0);
                 });
             }
-            public void onStart(long totalBytes , String name) {
+
+            public void onStart(long totalBytes, String name) {
                 totalBar = totalBytes;
                 totalReceived.set(0);
                 GUI.log("Receiving " + SendFileGUI.formatFileSize(totalBytes));
@@ -432,10 +442,12 @@ public class Main { // 定義 Main 類別
                         GUI.log("Progress: " + pct + "% (" + SendFileGUI.formatFileSize(cumul) + ")");
                     }
                 });
-            }            @Override
+            }
+
+            @Override
             public void onComplete() {
                 sendStatus.set(SEND_STATUS.SEND_OK);
-                
+
                 SwingUtilities.invokeLater(() -> {
                     GUI.recvPanel.getProgressBar().setValue(100);
                     GUI.sendPanel.getSendButton().setEnabled(true);
@@ -445,9 +457,10 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
             }
+
             public void onComplete(String name) {
                 sendStatus.set(SEND_STATUS.SEND_OK);
-                
+
                 SwingUtilities.invokeLater(() -> {
                     GUI.log(name + " is transfer complete");
                     GUI.recvPanel.getProgressBar().setValue(100);
@@ -471,7 +484,7 @@ public class Main { // 定義 Main 類別
                     GUI.recvPanel.getFileCountLabel().setText(""); // Clear file count
                 });
             }
-            
+
             @Override
             public void onFileStart(int currentFile, int totalFiles, String fileName) {
                 SwingUtilities.invokeLater(() -> {
@@ -480,25 +493,23 @@ public class Main { // 定義 Main 類別
                     GUI.log("Starting file " + currentFile + "/" + totalFiles + ": " + fileName);
                 });
             }
-            
+
             @Override
             public void onFileComplete(int currentFile, int totalFiles, String fileName) {
                 SwingUtilities.invokeLater(() -> {
                     GUI.log("Completed file " + currentFile + "/" + totalFiles + ": " + fileName);
                 });
             }
-        };        
+        };
+        fileReceiverCallback = cb;
         new Thread(() -> {
             try {
-                fileReceiver.start(cb); // Temporarily commented out due to Maven compilation issue
+                fileReceiver.start(fileReceiverCallback);
             } catch (IOException e) {
-                e.printStackTrace(); // 列印例外資訊
-                GUI.log("FileReceiver failed to start: " + e.getMessage()); // 在 GUI 中顯示錯誤訊息
+                e.printStackTrace();
+                GUI.log("FileReceiver failed to start: " + e.getMessage());
             }
         }, "file-receiver-thread").start();
-
-
-
 
         try {
             Thread.sleep(500); // 等待 100 毫秒以確保 GUI 已經啟動
@@ -506,10 +517,10 @@ public class Main { // 定義 Main 類別
             Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
             multicastHello(); // Then announce yourself
             Thread.sleep(100); // 等待 100 毫秒以確保 GUI 已經啟動
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
 
-
-        new Thread(() -> { // 建立新執行緒以檢查客戶端存活狀態
+        new Thread(() -> { // 建立新執行緒以檢查客戶端存活状态
             while (true) { // 無限迴圈檢查存活狀態
                 try { // 嘗試檢查存活狀態
                     Thread.sleep(5000); // 每 50 millisecond 秒檢查一次
@@ -520,13 +531,11 @@ public class Main { // 定義 Main 類別
             }
         }).start(); // 啟動檢查存活狀態的執行緒
     }
-    
-    
-    
+
     public static int getFreeTCPPort() { // 定義取得空閒 TCP 端口的方法
-        while(true) {
+        while (true) {
             try (ServerSocket socket = new ServerSocket(0)) { // 建立 ServerSocket 並由系統分配端口
-                    return socket.getLocalPort(); // 返回分配到的 TCP 端口號
+                return socket.getLocalPort(); // 返回分配到的 TCP 端口號
             } catch (IOException e) { // 捕捉 I/O 異常
                 continue;
             }
@@ -536,12 +545,14 @@ public class Main { // 定義 Main 類別
     public static void checkAlive() {
         byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8);
         ArrayList<String> dead = new ArrayList<>();
-        // Create a temporary copy of keys to iterate over, to avoid ConcurrentModificationException
+        // Create a temporary copy of keys to iterate over, to avoid
+        // ConcurrentModificationException
         ArrayList<String> currentClientKeys = new ArrayList<>(clientList.keySet());
 
         for (String name : currentClientKeys) {
             Client c = clientList.get(name);
-            if (c == null) continue; // Should not happen if keySet is from clientList
+            if (c == null)
+                continue; // Should not happen if keySet is from clientList
 
             // Do not ping self
             if (c.getIPAddr().equals(client.getIPAddr()) && c.getUserName().equals(client.getUserName())) {
@@ -550,7 +561,7 @@ public class Main { // 定義 Main 類別
 
             boolean alive = false;
             try (DatagramSocket ds = new DatagramSocket()) {
-                ds.setSoTimeout(1000000); // Reduced timeout for faster check
+                ds.setSoTimeout(1000); // Reduced timeout for faster check
                 InetAddress addr = InetAddress.getByName(c.getIPAddr());
                 ds.send(new DatagramPacket(ping, ping.length, addr, c.getUDPPort())); // Ping client's discovery port
                 byte[] buf = new byte[64];
@@ -561,7 +572,7 @@ public class Main { // 定義 Main 類別
                     alive = true;
             } catch (IOException ignore) {
                 // timeout or error => not alive
-                 System.out.println("Client " + name + " did not respond to heartbeat. Assuming dead.");
+                System.out.println("Client " + name + " did not respond to heartbeat. Assuming dead.");
             }
             if (!alive) {
                 dead.add(name);
@@ -582,109 +593,46 @@ public class Main { // 定義 Main 類別
                 SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
             }
         }
-    }    /**
+    }
+
+    /**
      * Restart the application by shutting down all threads except the main thread.
      */
     public static void restart() {
-        try {
-            // LogPanel.log("Main: Starting restart procedure - shutting down all threads except main...");
-            
-            // Get all threads except main thread
-            ThreadGroup rootGroup = Thread.currentThread().getThreadGroup();
-            ThreadGroup parentGroup;
-            while ((parentGroup = rootGroup.getParent()) != null) {
-                rootGroup = parentGroup;
+        // Dispose and recreate GUI without resetting user settings
+        SwingUtilities.invokeLater(() -> {
+            if (GUI != null) {
+                GUI.dispose();
             }
-            
-            // Get all threads in the system
-            Thread[] threads = new Thread[rootGroup.activeCount() * 2]; // Buffer to ensure we get all threads
-            int count = rootGroup.enumerate(threads, true);            // Refresh GUI threads (Swing EDT)
-            try {
-                if (GUI != null) {
-                    // LogPanel.log("Main: Disposing main GUI window for restart.");
-                    // 檢查是否已經在 EDT 中，避免使用 invokeAndWait 造成死鎖
-                    if (SwingUtilities.isEventDispatchThread()) {
-                        // 如果已經在 EDT 中，直接執行
-                        GUI.dispose();
-                        GUI = new SendFileGUI();
-                    } else {
-                        // 如果不在 EDT 中，使用 invokeAndWait
-                        SwingUtilities.invokeAndWait(() -> {
-                            GUI.dispose();
-                            GUI = new SendFileGUI();
-                        });
-                    }
-                }
-                // Optionally, clear static GUI instance
-                SendFileGUI.INSTANCE = null;
-            } catch (Exception guiEx) {
-                // LogPanel.log("Main: Exception while disposing GUI: " + guiEx.getMessage());
-            }
-            // Interrupt all threads except main thread
-            for (int i = 0; i < count; i++) {
-                Thread thread = threads[i];
-                if (thread != null && thread != Thread.currentThread() && !thread.isDaemon()) {
-                    String threadName = thread.getName();
-                    // LogPanel.log("Main: Interrupting thread: " + threadName);
-                    
-                    // For certain threads, try to close resources gracefully first
-                    if (threadName.contains("MulticastListener") || 
-                        threadName.contains("file-receiver") ||
-                        threadName.contains("FileSender-Op") ||
-                        threadName.contains("send-thread")) {
-                        
-                        // Give threads a chance to cleanup by interrupting them
-                        thread.interrupt();
-                        
-                        // Wait a short time for graceful shutdown
-                        try {
-                            thread.join(1000); // Wait up to 1 second
-                        } catch (InterruptedException ie) {
-                            // Current thread was interrupted while waiting
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                          // If thread is still alive, we've done what we can
-                        if (thread.isAlive()) {
-                            // LogPanel.log("Main: Thread " + threadName + " is still running after interrupt and timeout");
-                        }
-                    } else {
-                        // For other threads, just interrupt them
-                        thread.interrupt();
-                    }
-                }
-            }
-            
-            // Close any open server sockets
-            if (lockSocket != null && !lockSocket.isClosed()) {
-                try {
-                    lockSocket.close();
-                    // LogPanel.log("Main: Closed single instance lock socket");
-                } catch (IOException e) {
-                    // LogPanel.log("Main: Error closing lock socket: " + e.getMessage());
-                }
-            }
-            
-            // Reset application state
-            sendStatus.set(SEND_STATUS.SEND_OK);
-            clientList.clear();
-            
-            // LogPanel.log("Main: Restart procedure completed. Application should now be in clean state.");
-            // LogPanel.log("Main: Note - GUI windows may need to be manually closed/recreated.");
-            
-        } catch (Exception e) {
-            // LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
-            e.printStackTrace();
-        }
+            GUI = new SendFileGUI();
+        });
+        // Clear client list
+        clientList.clear();
+        // Restart multicast listener
+        // ensure old socket closed by startMulticastListener
+        listenThread = new Thread(() -> startMulticastListener(), "multicast-listener-thread");
+        listenThread.start();
+         // Restart file receiver thread
+         fileReceiver = new FileReceiver(client.getTCPPort(), client.getTCPPort2());
+         new Thread(() -> {
+             try {
+                 fileReceiver.start(fileReceiverCallback);
+             } catch (IOException e) {
+                 e.printStackTrace();
+                 GUI.log("FileReceiver restart failed: " + e.getMessage());
+             }
+         }, "file-receiver-thread").start();
     }
-    public static void manuallyAddClient(String ip , int port) {
+
+    public static void manuallyAddClient(String ip, int port) {
         try (
                 DatagramSocket socket = new DatagramSocket();) {
             String helloMessage = client.getHelloMessage();
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
             for (int i = 0; i < 3; i++) {
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(ip), port);
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(ip),
+                        port);
                 socket.send(sendPacket);
                 try {
                     Thread.sleep(10);
@@ -698,74 +646,57 @@ public class Main { // 定義 Main 類別
 
     }
 
-    // 網路介面管理相關的靜態變數和方法
+    // network-interface selection state (used in findCorrectNetworkInterface and binding)
     private static NetworkInterface selectedNetworkInterface = null;
-    private static boolean useAutoDetection = true;    
-    public static List<NetworkInterface> getAvailableNetworkInterfaces() {
-        List<NetworkInterface> availableInterfaces = new ArrayList<>();
-        try {
-            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback()) {
-                    continue;
-                }
-                if (!ni.supportsMulticast()) {
-                    continue;
-                }
-                
-                // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
-
-                // 允許所有 VPN 介面：OpenVPN、WireGuard、TAP、TUN 等
-                
-                // 檢查是否有有效的 IPv4 地址
-                boolean hasValidIPv4 = false;
-                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress() && !addr.isLinkLocalAddress()) {
-                        hasValidIPv4 = true;
-                        break;
-                    }
-                }
-                
-                if (hasValidIPv4) {
-                    availableInterfaces.add(ni);
-                }
+    private static boolean useAutoDetection = true;
+    
+    public static List<NetworkInterface> getAvailableNetworkInterfaces() throws SocketException {
+        List<NetworkInterface> result = new ArrayList<>();
+        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+        for (NetworkInterface ni : Collections.list(nets)) {
+            if (ni.isUp() && !ni.isLoopback()) {
+                result.add(ni);
             }
-        } catch (SocketException e) {
-            System.err.println("Error getting network interfaces: " + e.getMessage());
         }
-        return availableInterfaces;
+        return result;
     }
 
     public static void setSelectedNetworkInterface(NetworkInterface networkInterface) {
         selectedNetworkInterface = networkInterface;
         useAutoDetection = (networkInterface == null);
-        
+
         // 更新客戶端的 IP 地址
         if (networkInterface != null) {
             String newIP = getIPFromNetworkInterface(networkInterface);
             if (newIP != null && !newIP.equals(client.getIPAddr())) {
                 // 創建新的客戶端實例
                 client = new Client(newIP, client.getUserName(), client.getTCPPort(), client.getTCPPort2(),
-                                   client.getUDPPort(), client.getOS());
-                // LogPanel.log("Network interface changed to: " + networkInterface.getDisplayName() + " (IP: " + newIP + ")");
+                        client.getUDPPort(), client.getOS());
+                // LogPanel.log("Network interface changed to: " +
+                // networkInterface.getDisplayName() + " (IP: " + newIP + ")");
             }
         } else {
             // 使用自動檢測
             String newIP = getNonLoopbackIP();
             if (!newIP.equals(client.getIPAddr())) {
                 client = new Client(newIP, client.getUserName(), client.getTCPPort(), client.getTCPPort2(),
-                                   client.getUDPPort(), client.getOS());
+                        client.getUDPPort(), client.getOS());
                 // LogPanel.log("Network interface set to auto-detection (IP: " + newIP + ")");
             }
         }
-        
+
         // 清除客戶端列表並重新發現
         clearClientList();
         multicastHello();
-        
+
         // 更新 GUI 客戶端列表
         if (GUI != null && SendFileGUI.INSTANCE != null && SendFileGUI.INSTANCE.getClientPanel() != null) {
             SwingUtilities.invokeLater(() -> SendFileGUI.INSTANCE.getClientPanel().refreshGuiListOnly());
         }
+        // 在网卡切换后重启监听线程
+        if (listenerSocket != null && !listenerSocket.isClosed()) listenerSocket.close();
+        listenThread = new Thread(() -> startMulticastListener(), "multicast-listener-thread");
+        listenThread.start();
     }
 
     public static String getIPFromNetworkInterface(NetworkInterface ni) {

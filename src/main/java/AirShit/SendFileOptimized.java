@@ -144,7 +144,22 @@ public class SendFileOptimized {
                         pos += transferred;
                         remaining -= transferred;
                     }
-                    sent = true; // success
+                    // 4. 传输数据后读取服务端返回的状态字节，1=成功，0=失败
+                    ByteBuffer statusBuf = ByteBuffer.allocate(1);
+                    int statusRead = channel.read(statusBuf);
+                    if (statusRead != 1) {
+                        System.err.println("[" + Thread.currentThread().getName() + "] Did not receive status byte, retrying chunk offset=" + offset);
+                        continue; // retry
+                    }
+                    statusBuf.flip();
+                    byte status = statusBuf.get();
+                    if (status == 1) {
+                        sent = true; // success
+                    } else {
+                        System.err.println("[" + Thread.currentThread().getName() + "] Received NACK for chunk offset=" + offset + ", retrying");
+                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        continue; // retry
+                    }
                 } catch (java.net.SocketException se) {
                     if (attempts >= 3) {
                         se.printStackTrace();

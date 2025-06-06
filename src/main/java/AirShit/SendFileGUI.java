@@ -13,6 +13,7 @@ import java.io.StringWriter;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -195,14 +196,24 @@ public class SendFileGUI extends JFrame {
         networkInterfaceCombo.removeAllItems();
         
         // 取得可用的網卡
-        List<NetworkInterface> interfaces = Main.getAvailableNetworkInterfaces();
+        List<NetworkInterface> nets;
+        try {
+            nets = Main.getAvailableNetworkInterfaces();
+            // ...後續邏輯...
+        } catch (SocketException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error retrieving network interfaces: " + e.getMessage(),
+                    "Network Error", JOptionPane.ERROR_MESSAGE);
+            return;
+            // 顯示錯誤給使用者
+        }
         
         // 找出當前正在使用的網卡
         NetworkInterface currentInterface = null;
         if (Main.isUsingAutoDetection()) {
             // 使用當前 IP 找出對應的網卡
             String currentIP = Main.getClient().getIPAddr();
-            for (NetworkInterface ni : interfaces) {
+            for (NetworkInterface ni : nets) {
                 String niIP = Main.getIPFromNetworkInterface(ni);
                 if (niIP != null && niIP.equals(currentIP)) {
                     currentInterface = ni;
@@ -214,7 +225,7 @@ public class SendFileGUI extends JFrame {
         }
         
         // 添加所有可用的網卡到選擇框（不包含 auto-detection 選項）
-        for (NetworkInterface ni : interfaces) {
+        for (NetworkInterface ni : nets) {
             System.out.println(ni.getName());
             networkInterfaceCombo.addItem(new NetworkInterfaceItem(ni));
         }
