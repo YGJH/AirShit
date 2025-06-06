@@ -1,256 +1,150 @@
 package AirShit;
-
-import AirShit.ui.LogPanel;
-
-import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
-import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * 超高效能檔案傳送器，使用 Zero Copy + Virtual Threads
- */
 public class SendFileOptimized {
-    private final String host;
-    private final int port;
-    private final File file;
-    private final TransferCallback originalCallback;
+    private String serverHost ;
+    private int serverPort ;
+    private String filePath;
+    
     private int threadCount;
-    private final AtomicBoolean errorReportedByWorker = new AtomicBoolean(false);
+    public static TransferCallback transferCallback; // 傳輸回調介面，用於通知傳輸進度或結果
+    private final int chunkSize;// 單位：bytes
+    private  final int DEFAULT_CHUNK_SIZE = 1024 * 1024; // 預設每個 chunk 大小為 1MB
+    public SendFileOptimized(String serverHost, int serverPort, String filePath, int threadCount, TransferCallback transferCallback) {
+        this.serverHost = serverHost;
+        this.serverPort = serverPort;
+        this.filePath = filePath;
+        this.threadCount = threadCount;
+        this.chunkSize = DEFAULT_CHUNK_SIZE;
+        SendFileOptimized.transferCallback = transferCallback;
 
-    public SendFileOptimized(String host, int port, File file, int threadCount, TransferCallback callback) {
-        this.originalCallback = callback;
-        this.host = host;
-        this.port = port;
-        this.file = file;
-        // 限制最高併發數：以 CPU 核心數 * 4 為上限
-        int maxThreads = Math.max(1, threadCount);
-        this.threadCount = Math.min(Math.max(1, threadCount), maxThreads);
-        // LogPanel.log("SendFileOptimized: 限制 threadCount=" + this.threadCount + " (原始=" + threadCount + ")");
     }
-
-    private TransferCallback getWrappedCallback() {
-        return new TransferCallback() {
-            @Override
-            public void onStart(long totalSize) {
-                if (originalCallback != null) originalCallback.onStart(totalSize);
-            }
-
-            public void onStart(long totalSize , String name) {
-                if (originalCallback != null) originalCallback.onStart(totalSize);
-            }
-
-            @Override
-            public void onProgress(long bytes) {
-                if (originalCallback != null) originalCallback.onProgress(bytes);
-            }
-
-
-            @Override
-            public void onComplete(String name) {
-                // 不直接使用
-            }
-
-            @Override
-            public void onComplete() {
-                // 由主邏輯呼叫
-            }
-
-            @Override
-            public void onError(Exception e) {
-                errorReportedByWorker.set(true);
-                if (originalCallback != null) originalCallback.onError(e);
-            }
-        };
-    }
-
-    public void start() throws IOException, InterruptedException {
-        long fileLength = file.length();
-        
-        if (fileLength == 0) {
-            if (originalCallback != null) {
-                originalCallback.onStart(0 , file.getName());
-                originalCallback.onComplete();
-            }
-            return;
-        }
-
-        LogPanel.log("SendFileOptimized: 開始傳送檔案 " + file.getName() + 
-                    " (大小: " + fileLength + " bytes, 執行緒數: " + threadCount + ")");
-
-        // 建立檔案區塊佇列
-        ConcurrentLinkedQueue<ChunkInfo> chunkQueue = new ConcurrentLinkedQueue<>();
-        populateChunkQueue(fileLength, chunkQueue);
-
-        // 使用 Virtual Thread Executor
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-             FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ)) {
+    public void start() {
+        try {
+            // 1. 打開本地檔案，取得 FileChannel 與檔案大小
+            RandomAccessFile raf = new RandomAccessFile(filePath, "r");
             
-            if (originalCallback != null) {
-                originalCallback.onStart(fileLength , file.getName());
+            FileChannel fileChannel = raf.getChannel();
+            long fileSize = fileChannel.size();
+            // System.out.println("檔案大小：" + fileSize + " bytes");
+            // 2. 計算要分成多少個 chunk
+            int numChunks = (int) ((fileSize + chunkSize - 1) / chunkSize);
+            // System.out.println("將檔案拆成 " + numChunks + " 個 chunk (每chunk 大小約 " + chunkSize + " bytes)");
+
+            // 3. 建立固定執行緒池
+            ExecutorService virtualPool = Executors.newVirtualThreadPerTaskExecutor();
+
+            // 4. 依序為每個 chunk 提交一個任務給固定執行緒池
+            for (int i = 0; i < numChunks; i++) {
+                long offset = (long) i * chunkSize;
+                // 最後一個 chunk 的長度可能小於 chunkSize
+                int length = (int) Math.min(chunkSize, fileSize - offset);
+
+                virtualPool.submit(new ChunkSenderTask(
+                        serverHost, serverPort, fileChannel, offset, length
+                ));
             }
 
-            List<Future<?>> futures = new ArrayList<>();
-            TransferCallback wrappedCallback = getWrappedCallback();
-
-            for (int i = 0; i < threadCount; i++) {
-                Future<?> future = executor.submit(() -> {
-                    try (SocketChannel socketChannel = SocketChannel.open()) {
-                        // 連接到接收端
-                        socketChannel.connect(new InetSocketAddress(host, port));
-                        
-                        // 設定高效能選項
-                        socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-                        socketChannel.setOption(StandardSocketOptions.SO_SNDBUF, 2 * 1024 * 1024); // 2MB
-                        socketChannel.configureBlocking(true);
-                        
-                        // 建立並執行 worker
-                        SenderWorker worker = new SenderWorker(socketChannel, fileChannel, chunkQueue, wrappedCallback);
-                        worker.run();
-                        
-                    } catch (IOException e) {
-                        wrappedCallback.onError(e);
-                    }
-                });
-                futures.add(future);
+            // 5. 關閉 virtualPool，不再接受新任務，並等待所有任務完成
+            virtualPool.shutdown();
+            while (!virtualPool.isTerminated()) {
+                Thread.sleep(100); // 每 100ms 檢查一次
             }
 
-            // 等待所有 worker 完成
-            for (Future<?> future : futures) {
-                try {
-                    future.get();
-                } catch (ExecutionException e) {
-                    LogPanel.log("SendFileOptimized Worker 錯誤: " + e.getCause());
-                }
-            }
-
-            // 檢查是否有錯誤
-            if (!errorReportedByWorker.get() && originalCallback != null) {
-                originalCallback.onComplete();
-            }
+            // System.out.println("所有 chunk 傳送完畢！");
+            fileChannel.close();
+            raf.close();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
-    private void populateChunkQueue(long fileLength, ConcurrentLinkedQueue<ChunkInfo> chunkQueue) {
-        // 動態調整 chunk 大小
-        long chunkSize = 1024 * 1024; // 1MB 基準
-        
-        // 根據檔案大小和執行緒數調整
-        long minChunks = Math.max(threadCount * 3, 8);
-        if (fileLength / chunkSize < minChunks && fileLength > 0) {
-            chunkSize = Math.max(fileLength / minChunks, 64 * 1024); // 最小 64KB
-        }
-        
-        // 對於大檔案，使用更大的 chunk
-        if (fileLength > 100L * 1024 * 1024) { // 100MB+
-            chunkSize = Math.min(chunkSize * 2, 4 * 1024 * 1024); // 最大 4MB
-        }
-        
-        long offset = 0;
-        while (offset < fileLength) {
-            long length = Math.min(chunkSize, fileLength - offset);
-            chunkQueue.offer(new ChunkInfo(offset, length));
-            offset += length;
-        }
-        
-        LogPanel.log("SendFileOptimized: 創建了 " + chunkQueue.size() + " 個 chunk，大小約 " + (chunkSize / 1024) + "KB");
-    }
-
-    private static class SenderWorker implements Runnable {
-        private final SocketChannel socketChannel;
+    /**
+     * ChunkSenderTask：負責在固定執行緒中再建立一個 VirtualThreadPerTaskExecutor
+     * 來啟動真正的虛擬執行緒送該 chunk。
+     */
+    private static class ChunkSenderTask implements Runnable {
+        private final String serverHost;
+        private final int serverPort;
         private final FileChannel fileChannel;
-        private final ConcurrentLinkedQueue<ChunkInfo> chunkQueue;
-        private final TransferCallback callback;
+        private final long offset;
+        private final int length;
 
-        public SenderWorker(SocketChannel socketChannel, FileChannel fileChannel,
-                          ConcurrentLinkedQueue<ChunkInfo> chunkQueue, TransferCallback callback) {
-            this.socketChannel = socketChannel;
+        public ChunkSenderTask(String serverHost, int serverPort, FileChannel fileChannel, long offset, int length) {
+            this.serverHost = serverHost;
+            this.serverPort = serverPort;
             this.fileChannel = fileChannel;
-            this.chunkQueue = chunkQueue;
-            this.callback = callback;
+            this.offset = offset;
+            this.length = length;
         }
 
         @Override
         public void run() {
-            long totalBytesSent = 0;
-            
-            try {
-                ChunkInfo chunk;
-                while ((chunk = chunkQueue.poll()) != null) {
-                    if (!sendChunk(chunk)) {
-                        // 發送失敗，放回佇列重試
-                        chunkQueue.offer(chunk);
-                        Thread.sleep(50);
-                        continue;
-                    }
-                    totalBytesSent += chunk.length;
-                }
-                
-                // LogPanel.log("SenderWorker 完成，發送: " + totalBytesSent + " bytes");
-                
-            } catch (Exception e) {
-                LogPanel.log("SenderWorker 錯誤: " + e.getMessage());
-                if (callback != null) {
-                    callback.onError(e);
-                }
-            } finally {
-                try {
-                    socketChannel.close();
-                } catch (IOException e) {
-                    LogPanel.log("關閉 SocketChannel 錯誤: " + e.getMessage());
-                }
-            }
+            sendChunk();
+
+            return; // 虛擬執行緒結束後，回到 ChunkSenderTask 的 run 方法
         }
 
-        private boolean sendChunk(ChunkInfo chunk) {
-            try {
-                // 發送 chunk metadata (offset + length)
-                ByteBuffer metaBuffer = ByteBuffer.allocate(16);
-                metaBuffer.putLong(chunk.offset);
-                metaBuffer.putLong(chunk.length);
-                metaBuffer.flip();
-                
-                while (metaBuffer.hasRemaining()) {
-                    socketChannel.write(metaBuffer);
+        /**
+         * 真正的 chunk 傳送邏輯：開啟 SocketChannel、先送 offset+length header，等 ACK，
+         * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
+         */
+        private void sendChunk() {
+            try (SocketChannel channel = SocketChannel.open()) {
+                channel.configureBlocking(true);
+                channel.connect(new InetSocketAddress(serverHost, serverPort));
+                // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
+                //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
+
+                // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
+                ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                headerBuf.putLong(offset);
+                headerBuf.putInt(length);
+                headerBuf.flip();
+                while (headerBuf.hasRemaining()) {
+                    channel.write(headerBuf);
                 }
-                
-                // 使用 zero copy transferTo
-                long bytesToSend = chunk.length;
-                long offset = chunk.offset;
-                
-                while (bytesToSend > 0) {
-                    long sent = fileChannel.transferTo(offset, bytesToSend, socketChannel);
-                    if (sent == 0) {
-                        Thread.sleep(1); // 避免忙碌等待
-                        continue;
-                    }
-                    
-                    bytesToSend -= sent;
-                    offset += sent;
-                    
-                    // 報告進度
-                    if (callback != null) {
-                        callback.onProgress(sent);
-                    }
+
+                // 2. 等待伺服端回傳 ACK (1 byte)
+                ByteBuffer ackBuf = ByteBuffer.allocate(1);
+                int r = channel.read(ackBuf);
+                if (r != 1) {
+                    // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
+                    return;
                 }
-                
-                return true;
-                
-            } catch (Exception e) {
-                LogPanel.log("發送 chunk 失敗: " + e.getMessage());
-                return false;
+                ackBuf.flip();
+                byte ack = ackBuf.get();
+                if (ack != 1) {
+                    // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
+                    return;
+                }
+                // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
+
+                // 3. 傳送實際 chunk 資料 (長度為 length)
+                //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
+                long remaining = length;
+                long pos = offset;
+                while (remaining > 0) {
+                    long transferred = fileChannel.transferTo(pos, remaining, channel);
+                    if (transferred <= 0) {
+                        continue; // 無法繼續傳送
+                    }
+                    if(transferCallback != null) {
+                       transferCallback.onProgress(transferred);
+                    }
+                    pos += transferred;
+                    remaining -= transferred;
+                }
+                // System.out.println("完成傳送 chunk offset=" + offset + ", length=" + length);
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }

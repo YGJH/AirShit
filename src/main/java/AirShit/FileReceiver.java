@@ -4,9 +4,12 @@ import java.awt.*;
 import java.io.*;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.Channels;
+import java.nio.channels.SocketChannel;
 import java.net.SocketTimeoutException;
+import java.net.StandardSocketOptions;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -17,14 +20,13 @@ import AirShit.ui.FXFileChooserAdapter;
 public class FileReceiver {
 
     public int port;
+    private int port2;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
     // private final int ITHREADS = 1<<30;
     private File selectedSaveDirectory; // 確保這是 FileReceiver 的成員變數
     // These are now set per handshake
     // public String currentSenderName;
     // public Long currentTotalSize;
-
-    private static final int HANDSHAKE_TIMEOUT_SECONDS = 30; // Increased for multi-stage handshake
 
     // Simple POJO to store received file information
     private static class FileInfo {
@@ -43,16 +45,20 @@ public class FileReceiver {
         }
     }
 
-    FileReceiver(int port) {
+    FileReceiver(int port , int port2) {
         this.port = port;
+        this.port2 = port2;
     }
 
     public void start(TransferCallback callback) throws IOException {
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            LogPanel.log("FileReceiver started on port: " + port + ". Waiting for senders...");
+        while (true) {
+            try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+                serverSocketChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true); // <— 新增
+                serverSocketChannel.bind(new InetSocketAddress(port));
+                serverSocketChannel.configureBlocking(true);
+                LogPanel.log("FileReceiver: Listening on port " + port + " for handshake...");
 
-            while (true) {
-                Socket handshakeSocket = null;
+                SocketChannel handshakeChannel = null;
                 List<FileInfo> filesExpected = new ArrayList<>();
                 long totalSizeFromSender = 0;
                 String senderNameFromSender = null;
@@ -65,13 +71,13 @@ public class FileReceiver {
                 int negotiatedThreadCount = 1;
 
                 try {
-                    handshakeSocket = serverSocket.accept();
-                    LogPanel.log("FileReceiver: Accepted handshake connection from "
-                            + handshakeSocket.getRemoteSocketAddress());
-                    handshakeSocket.setSoTimeout(HANDSHAKE_TIMEOUT_SECONDS * 1000);
-
-                    try (DataInputStream dis = new DataInputStream(handshakeSocket.getInputStream());
-                            DataOutputStream dos = new DataOutputStream(handshakeSocket.getOutputStream())) {
+                    handshakeChannel = serverSocketChannel.accept();
+                    LogPanel.log("FileReceiver: Accepted handshake from "
+                            + handshakeChannel.getRemoteAddress());
+                    // Setup handshake streams
+                    handshakeChannel.configureBlocking(true);
+                    try (DataInputStream dis = new DataInputStream(Channels.newInputStream(handshakeChannel));
+                            DataOutputStream dos = new DataOutputStream(Channels.newOutputStream(handshakeChannel))) {
 
                         // Phase 1: Read Initial Metadata
                         String initialMetadata = null; // Initialize
@@ -80,7 +86,9 @@ public class FileReceiver {
                             LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                             System.out.println("metaParts: " + initialMetadata);
                             String[] metaParts = initialMetadata.split("@");
-                            if (metaParts.length < 5) {
+                            // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir,
+                            // origFolder
+                            if (metaParts.length < 6) {
                                 throw new IOException("Invalid initial metadata format (expected 6 parts, got "
                                         + metaParts.length + "): " + initialMetadata);
                             }
@@ -89,7 +97,8 @@ public class FileReceiver {
                             totalSizeFromSender = Long.parseLong(metaParts[2]); // Potential NumberFormatException
                             clientAnnouncedThreads = Integer.parseInt(metaParts[3]); // Potential NumberFormatException
                             isDirectoryTransferFromSender = "1".equals(metaParts[4]);
-                            originalFolderNameFromSender = metaParts[5];
+                            // Guard original folder name if provided
+                            originalFolderNameFromSender = metaParts[5] != null ? metaParts[5] : "-";
 
                             LogPanel.log(String.format(
                                     "FileReceiver: Parsed Metadata: Sender=%s, NumFiles=%d, TotalSize=%s, ClientThreads=%d, IsDir=%b, OrigFolder=%s",
@@ -99,32 +108,36 @@ public class FileReceiver {
 
                             dos.writeUTF("ACK_METADATA");
                             dos.flush();
-                            LogPanel.log("FileReceiver: Sent ACK_METADATA.");
+                            // LogPanel.log("FileReceiver: Sent ACK_METADATA.");
 
                         } catch (NumberFormatException e) {
-                            LogPanel.log("FileReceiver: Error parsing metadata numbers: " + e.getMessage()
-                                    + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata numbers: " +
+                            // e.getMessage()
+                            // + " from metadata: " + initialMetadata);
                             // Consider sending a NACK or just closing the socket, which would lead to EOF
                             // or other error on sender side
                             // For now, let the exception propagate to the outer catch, which will close the
                             // socket.
                             throw new IOException("Metadata parsing error (numbers): " + e.getMessage(), e);
                         } catch (ArrayIndexOutOfBoundsException e) {
-                            LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " + e.getMessage()
-                                    + " from metadata: " + initialMetadata);
+                            // LogPanel.log("FileReceiver: Error parsing metadata (not enough parts): " +
+                            // e.getMessage()
+                            // + " from metadata: " + initialMetadata);
                             throw new IOException("Metadata parsing error (parts): " + e.getMessage(), e);
                         } catch (Exception e) { // Catch any other unexpected error during this critical phase
-                            LogPanel.log(
-                                    "FileReceiver: Unexpected error during initial metadata processing or ACK sending: "
-                                            + e.getClass().getSimpleName() + " - " + e.getMessage());
+                            // LogPanel.log(
+                            // "FileReceiver: Unexpected error during initial metadata processing or ACK
+                            // sending: "
+                            // + e.getClass().getSimpleName() + " - " + e.getMessage());
                             // e.printStackTrace(); // For more detailed debugging if needed
                             throw e; // Re-throw to ensure the handshake socket is closed by the outer try-finally
                         }
                         // Phase 2: Read File Info Loop
+                        // LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" +
+                        // numFilesToExpect + "): "
+                        // + fileInfoString);
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
-                            LogPanel.log("FileReceiver: Received file info (" + (i + 1) + "/" + numFilesToExpect + "): "
-                                    + fileInfoString);
                             String[] fileInfoParts = fileInfoString.split("@");
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
@@ -194,10 +207,10 @@ public class FileReceiver {
                         // Data Reception Loop (if proceedWithTransfer is true)
                         if (proceedWithTransfer) {
                             LogPanel.log("FileReceiver: Initializing Receiver module for data transfer...");
-                        // Call onFileStart callback
+                            // Call onFileStart callback
                             int totalFiles = filesExpected.size();
                             boolean overallSuccess = true;
-                            int currentFileIndex = 1;
+                            int currentFileIndex = 0;
                             for (FileInfo currentFileToReceive : filesExpected) {
                                 String outputFileName = currentFileToReceive.name;
                                 long fileSizeForThisFile = currentFileToReceive.size;
@@ -205,7 +218,9 @@ public class FileReceiver {
                                 // newly created/existing sub-folder
                                 String wholeOutputFilePath = selectedSaveDirectory.getAbsolutePath() + File.separator
                                         + outputFileName;
-
+                                System.out.println(
+                                        "wholeOutputFilePath: " + wholeOutputFilePath + " fileSizeForThisFile: "
+                                                + fileSizeForThisFile);
                                 File outputFile = new File(wholeOutputFilePath);
                                 if (outputFile.exists() == false) {
                                     outputFile.getParentFile().mkdirs(); // Ensure parent directories exist
@@ -214,132 +229,126 @@ public class FileReceiver {
                                 }
                                 if (callback != null) {
                                     callback.onFileStart(currentFileIndex++, totalFiles, outputFileName);
+                                    callback.onStart(fileSizeForThisFile, outputFileName);
                                 }
-                                // Receiver class is responsible for handling the data transfer for ONE file.
-                                // The serverSocket argument to Receiver constructor is not used by its start
-                                // method if it connects out.
-                                // This might need review based on Receiver.java's actual implementation.
-                                ReceiverOptimized dataReceiver = new ReceiverOptimized(serverSocket);
-                                boolean receptionWasSuccessful = false;
-                                try {
-                                    receptionWasSuccessful = dataReceiver.start(wholeOutputFilePath,
-                                            fileSizeForThisFile, negotiatedThreadCount, callback);
-                                    if (receptionWasSuccessful) {
-                                        LogPanel.log(
-                                                "FileReceiver: Data reception successful for: " + wholeOutputFilePath);
-                                        if (outputFileName.endsWith(".tar")) {
-                                            // Decompress into the same directory where the .tar was saved
-                                            String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
-                                            LogPanel.log("FileReceiver: Decompressing " + wholeOutputFilePath
-                                                    + " into folder " + decompressedTargetFolder);
-                                            try {
-                                                TarExtractor.start(new File(wholeOutputFilePath),
-                                                        new File(decompressedTargetFolder));
-                                                LogPanel.log("FileReceiver: Decompression complete into "
-                                                        + decompressedTargetFolder);
-                                                // Delete the .tar file after successful decompression
-                                                try {
-                                                    Files.deleteIfExists(Paths.get(wholeOutputFilePath));
-                                                    LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
-                                                            + " after decompression.");
-                                                } catch (IOException eDel) {
-                                                    LogPanel.log("FileReceiver: Error deleting archive "
-                                                            + wholeOutputFilePath + " after decompression: "
-                                                            + eDel.getMessage());
-                                                }
-                                            } catch (Exception eDecompress) {
-                                                LogPanel.log("FileReceiver: Error decompressing " + wholeOutputFilePath
-                                                        + ": " + eDecompress.getMessage());
-                                                if (callback != null)
-                                                    callback.onError(new IOException(
-                                                            "Decompression failed for " + outputFileName, eDecompress));
-                                                overallSuccess = false; // Mark overall transfer as failed if
-                                                                        // decompression fails
-                                                // break; // Optionally break if decompression failure is critical for
-                                                // subsequent files
-                                            }
+                                // receive START_FILE message
+
+                                // now open a listener on dataPort, not `port`:
+                                try (ServerSocketChannel dataServer = ServerSocketChannel.open()) {
+                                    dataServer.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                                    dataServer.bind(new InetSocketAddress(port2));
+                                    dataServer.configureBlocking(true);
+
+                                    SocketChannel dataChannel = dataServer.accept();
+                                    try (DataInputStream is = new DataInputStream(Channels.newInputStream(dataChannel));
+                                            DataOutputStream os = new DataOutputStream(
+                                                    Channels.newOutputStream(dataChannel))) {
+
+                                        String startFileMessage = is.readUTF();
+                                        if (!"START_FILE".equals(startFileMessage)) {
+                                            throw new IOException("Expected START_FILE but got: " + startFileMessage);
                                         }
-                                    } else {
-                                        LogPanel.log("FileReceiver: Data reception process reported failure for "
-                                                + outputFileName);
-                                        if (callback != null)
-                                            callback.onError(new IOException("Reception failed for " + outputFileName));
-                                        overallSuccess = false;
-                                        break; // Stop processing further files if one fails to receive
+                                        os.writeUTF("START_FILE_ACK");
+                                        os.flush();
+                                    } finally {
+                                        dataChannel.close();
                                     }
-                                } catch (InterruptedException e_intr) {
-                                    Thread.currentThread().interrupt();
-                                    LogPanel.log("FileReceiver: Data reception interrupted for " + outputFileName + ": "
-                                            + e_intr.getMessage());
+
+                                } catch (IOException e) {
+                                    LogPanel.log("FileReceiver: 接收 START_FILE 訊息時發生錯誤: " + e.getMessage());
                                     if (callback != null)
-                                        callback.onError(e_intr);
-                                    overallSuccess = false;
-                                    break;
-                                } catch (Exception e_recv) { // Catch generic Exception from dataReceiver.start()
-                                    LogPanel.log("FileReceiver: Error during data reception for " + outputFileName
-                                            + ": " + e_recv.getClass().getName() + " - " + e_recv.getMessage());
-                                    if (callback != null)
-                                        callback.onError(e_recv);
-                                    overallSuccess = false;
-                                    break;
+                                        callback.onError(e);
+                                    return;
                                 }
+                                serverSocketChannel.close();
+
+                                // Calculate expected number of chunks to receive and use constructor to limit
+                                // loop
+                                int expectedChunks = (int) ((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE
+                                        - 1)
+                                        / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
+                                ReceiverOptimized dataReceiver = new ReceiverOptimized(
+                                        port,
+                                        wholeOutputFilePath,
+                                        negotiatedThreadCount,
+                                        callback,
+                                        expectedChunks);
+                                boolean receptionWasSuccessful = true;
+                                // new Thread(() -> {
+                                try {
+                                    dataReceiver.start();
+                                } catch (Exception e) {
+                                }
+                                if (new File(wholeOutputFilePath).exists() && wholeOutputFilePath.endsWith(".tar")) {
+                                    try {
+                                        String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
+                                        TarExtractor.start(new File(wholeOutputFilePath),
+                                                new File(decompressedTargetFolder));
+                                        // LogPanel.log("FileReceiver: Decompression complete into "
+                                        // + decompressedTargetFolder);
+                                        // Delete the .tar file after successful decompression
+                                        try {
+                                            Files.deleteIfExists(Paths.get(wholeOutputFilePath));
+                                            // LogPanel.log("FileReceiver: Deleted archive " + wholeOutputFilePath
+                                            // + " after decompression.");
+                                        } catch (IOException eDel) {
+                                            // LogPanel.log("FileReceiver: Error deleting archive "
+                                            // + wholeOutputFilePath + " after decompression: "
+                                            // + eDel.getMessage());
+                                        }
+                                    } catch (Exception eDecompress) {
+
+                                    }
+                                }
+                                // }).run();
+                                if (callback != null) {
+                                    callback.onFileComplete(currentFileIndex - 1, totalFiles, outputFileName);
+                                    callback.onComplete(outputFileName);
+                                }
+
                             } // End of loop for filesExpected
 
-                            if (overallSuccess && callback != null) {
+                            if (callback != null) {
                                 callback.onComplete();
-                            } else if (!overallSuccess && callback != null) {
-                                // onError would have been called by the failing part.
-                                // No explicit onError here unless to signal a general "multi-file transfer
-                                // incomplete".
-                                LogPanel.log(
-                                        "FileReceiver: Overall multi-file transfer did not complete successfully.");
-                            }
-
-                        } else { // proceedWithTransfer was false
-                            LogPanel.log(
-                                    "FileReceiver: Handshake failed or transfer rejected. Not proceeding to data reception for this attempt.");
-                            if (callback != null && totalSizeFromSender > 0) {
-                                callback.onError(new IOException("Transfer rejected or handshake failed."));
-                            } else if (callback != null) { // No specific error, but not proceeding
-                                callback.onError(new IOException("Transfer not initiated."));
                             }
                         }
                     } // Streams dis/dos are closed here.
                 } catch (SocketTimeoutException e) {
-                    LogPanel.log("FileReceiver: Timeout during handshake phase with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: Timeout during handshake phase with "
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getMessage());
+                    // if (callback != null)
+                    // callback.onError(e);
                 } catch (EOFException e) {
-                    LogPanel.log("FileReceiver: EOF during handshake with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ". Client likely disconnected. " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: EOF during handshake with "
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ". Client likely disconnected. " + e.getMessage());
+                    // if (callback != null)
+                    // callback.onError(e);
                 } catch (IOException e) {
-                    LogPanel.log("FileReceiver: IOException during handshake phase with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: IOException during handshake phase with "
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getMessage());
+                    // if (callback != null)
+                    // callback.onError(e);
                 } catch (Exception e) { // Catch-all for other handshake processing errors
-                    LogPanel.log("FileReceiver: General error during handshake processing with "
-                            + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() : "unknown client")
-                            + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
+                    // LogPanel.log("FileReceiver: General error during handshake processing with "
+                    // + (handshakeSocket != null ? handshakeSocket.getRemoteSocketAddress() :
+                    // "unknown client")
+                    // + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    // if (callback != null)
+                    // callback.onError(e);
                 } finally {
-                    if (handshakeSocket != null && !handshakeSocket.isClosed()) {
+                    if (handshakeChannel != null && handshakeChannel.isOpen()) {
                         try {
-                            handshakeSocket.close();
-                            LogPanel.log("FileReceiver: Handshake socket with "
-                                    + (handshakeSocket.getRemoteSocketAddress() != null
-                                            ? handshakeSocket.getRemoteSocketAddress()
-                                            : "previous client")
-                                    + " closed.");
+                            handshakeChannel.close();
+                            LogPanel.log("FileReceiver: Closed handshake socket to prevent reuse as data channel.");
                         } catch (IOException ex) {
-                            LogPanel.log("FileReceiver: Error closing handshake socket: " + ex.getMessage());
+                            // LogPanel.log("FileReceiver: Error closing handshake socket: " +
+                            // ex.getMessage());
                         }
                     }
                 }
