@@ -12,8 +12,8 @@ Last Updated: 2025-05-30
 
 
 # Warning
-Release 1.2.0 is the current stable version; 1.3.* versions are currently unstable.
-If you don't see other devices, please click the Refresh button below the Client panel on each device.
+
+
 
 ## Introduction
 
@@ -87,6 +87,10 @@ convenient for users to track the transfer process.
       discovery, file transfer events, and potential error messages.
     - **Light/Dark Mode Toggle:** Provides a button for users to switch
       between light and dark interface themes, enhancing user experience.
+
+6.  **WireGuard Support**
+    - AirShit works over WireGuard VPNs; however, occasional connection issues may occur.
+
 
 ## Project Structure
 
