@@ -381,7 +381,7 @@ public class Main { // 定義 Main 類別
 
         sendStatus.set(SEND_STATUS.SEND_OK); // 設定檔案傳送初始狀態
         System.out.println("使用者名稱: " + client.getUserName() + " UDP: " + client.getUDPPort() + " TCP: "
-        + client.getTCPPort() + " IP: " + client.getIPAddr()); // 輸出使用者名稱
+        + client.getIPAddr()); // 輸出使用者名稱
 
         startMulticastListener(); // Start listening first
 
@@ -676,6 +676,26 @@ public class Main { // 定義 Main 類別
             // LogPanel.log("Main: Error during restart procedure: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+    public static void manuallyAddClient(String ip , int port) {
+        try (
+                DatagramSocket socket = new DatagramSocket();) {
+            String helloMessage = client.getHelloMessage();
+            byte[] sendData = helloMessage.getBytes("UTF-8");
+            // send the hello message 3 times
+            for (int i = 0; i < 3; i++) {
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(ip), port);
+                socket.send(sendPacket);
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
     // 網路介面管理相關的靜態變數和方法

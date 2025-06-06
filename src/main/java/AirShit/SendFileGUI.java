@@ -62,6 +62,7 @@ public class SendFileGUI extends JFrame {
     private LogPanel logPanel;
     private JToggleButton themeToggleButton;
     private JButton refreshButton;
+    private JButton addClientButton;
     private boolean isDarkMode = true;
     private JTextField portField;
     private JTextField groupField;
@@ -169,6 +170,10 @@ public class SendFileGUI extends JFrame {
         networkInterfaceCombo.setMaximumRowCount(10); // 啟用滾動功能，最多顯示10個項目
         refreshNetworkInterfaceList();
 
+        // 新增 Add Client 按鈕
+        addClientButton = new JButton("Add Client");
+        addClientButton.setFont(FONT_PRIMARY_PLAIN);
+
         clientPanel = new ClientPanel(PANEL_BACKGROUND, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_PRIMARY, BORDER_COLOR);
         filePanel = new FileSelectionPanel(PANEL_BACKGROUND, TEXT_PRIMARY, ACCENT_PRIMARY, BORDER_COLOR);
         sendPanel = new SendControlPanel(APP_BACKGROUND, ACCENT_SUCCESS);
@@ -268,8 +273,11 @@ public class SendFileGUI extends JFrame {
 
         JPanel mainContentPanel = new JPanel(new BorderLayout(15, 15));
         mainContentPanel.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
-
-        mainContentPanel.add(clientPanel, BorderLayout.WEST);
+        // wrap client panel and addClient button
+        JPanel leftPanel = new JPanel(new BorderLayout(5,5));
+        leftPanel.add(clientPanel, BorderLayout.CENTER);
+        leftPanel.add(addClientButton, BorderLayout.SOUTH);
+        mainContentPanel.add(leftPanel, BorderLayout.WEST);
 
         JPanel right = new JPanel();
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
@@ -292,6 +300,20 @@ public class SendFileGUI extends JFrame {
     private void bindEvents() {
         themeToggleButton.addActionListener(e -> {
             applyTheme(themeToggleButton.isSelected());
+        });
+        // add client manually
+        addClientButton.addActionListener(e -> {
+            String ip = JOptionPane.showInputDialog(this, "Enter client IP:");
+            if (ip == null || ip.isBlank()) return;
+            String portStr = JOptionPane.showInputDialog(this, "Enter client port:");
+            try {
+                int port = Integer.parseInt(portStr.trim());
+                Main.manuallyAddClient(ip.trim(), port);
+                clientPanel.refreshGuiListOnly();
+                LogPanel.log("Manually added client: " + ip + ":" + port);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Invalid port: " + portStr);
+            }
         });        // Refresh 按一下就重啟整個程式
         refreshButton.addActionListener(e -> Main.restart());        // 網卡選擇框事件處理
         networkInterfaceCombo.addActionListener(e -> {
