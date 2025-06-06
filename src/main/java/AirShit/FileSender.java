@@ -45,7 +45,7 @@ public class FileSender {
      * @param host 接收端主機。
      * @param port 接收端埠號。
      */
-    public FileSender(String host, int port , int port2) {
+    public FileSender(String host, int port, int port2) {
         this.host = host;
         this.port = port;
         this.port2 = port2;
@@ -312,25 +312,12 @@ public class FileSender {
                     for (File fileToActuallySend : filesToProcess) {
                         // send start signal
 
-                        try (Socket startSocket = new Socket(host, port2);
-                                DataOutputStream startDos = new DataOutputStream(startSocket.getOutputStream());
-                                DataInputStream startDis = new DataInputStream(startSocket.getInputStream())) {
-
-                            startSocket.setSoTimeout(DEFAULT_SOCKET_TIMEOUT_SECONDS * 1000);
-                            startDos.writeUTF("START_FILE");
-                            startDos.flush();
-
-                            String startAck = startDis.readUTF();
-                            if (!"START_FILE_ACK".equals(startAck)) {
-                                throw new IOException("FileSender: 未收到 START_FILE_ACK。收到: " + startAck);
-                            }
-
-                        } catch (IOException e) {
-                            LogPanel.log("FileSender: 傳送 START_FILE 訊息失敗: " + e.getMessage());
-                            if (callback != null)
-                                callback.onError(e);
-                            return;
+                        String startFileMessage = dis.readUTF();
+                        if (!"START_FILE".equals(startFileMessage)) {
+                            throw new IOException("Expected START_FILE but got: " + startFileMessage);
                         }
+                        dos.writeUTF("START_FILE_ACK");
+                        dos.flush();
                         final int currentFileIndex = fileIndex;
                         String displayName;
                         if (isDirectoryTransfer && baseDirectoryPath != null) {
@@ -364,7 +351,7 @@ public class FileSender {
 
                         // use optimized file sender for chunked transfer
                         SendFileOptimized optimizedSender = new SendFileOptimized(
-                                this.host, this.port,
+                                this.host, this.port2,
                                 fileToActuallySend.getAbsolutePath(),
                                 negotiatedThreadCount,
                                 callback);
