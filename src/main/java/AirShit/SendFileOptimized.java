@@ -99,54 +99,63 @@ public class SendFileOptimized {
          * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
          */
         private void sendChunk() {
-            try (SocketChannel channel = SocketChannel.open()) {
-                channel.configureBlocking(true);
-                channel.connect(new InetSocketAddress(serverHost, serverPort));
-                // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
-                //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
+            int attempts = 0;
+            boolean sent = false;
+            while (attempts < 3 && !sent) {
+                attempts++;
+                try (SocketChannel channel = SocketChannel.open()) {
+                    channel.configureBlocking(true);
+                    channel.connect(new InetSocketAddress(serverHost, serverPort));
+                    // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
+                    //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
 
-                // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
-                ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                headerBuf.putLong(offset);
-                headerBuf.putInt(length);
-                headerBuf.flip();
-                while (headerBuf.hasRemaining()) {
-                    channel.write(headerBuf);
-                }
-
-                // 2. 等待伺服端回傳 ACK (1 byte)
-                ByteBuffer ackBuf = ByteBuffer.allocate(1);
-                int r = channel.read(ackBuf);
-                if (r != 1) {
-                    // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
-                    return;
-                }
-                ackBuf.flip();
-                byte ack = ackBuf.get();
-                if (ack != 1) {
-                    // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
-                    return;
-                }
-                // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
-
-                // 3. 傳送實際 chunk 資料 (長度為 length)
-                //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
-                long remaining = length;
-                long pos = offset;
-                while (remaining > 0) {
-                    long transferred = fileChannel.transferTo(pos, remaining, channel);
-                    if (transferred <= 0) {
-                        continue; // 無法繼續傳送
+                    // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
+                    ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                    headerBuf.putLong(offset);
+                    headerBuf.putInt(length);
+                    headerBuf.flip();
+                    while (headerBuf.hasRemaining()) {
+                        channel.write(headerBuf);
                     }
-                    if(transferCallback != null) {
-                       transferCallback.onProgress(transferred);
+
+                    // 2. 等待伺服端回傳 ACK (1 byte)
+                    ByteBuffer ackBuf = ByteBuffer.allocate(1);
+                    int r = channel.read(ackBuf);
+                    if (r != 1) {
+                        // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
+                        return;
                     }
-                    pos += transferred;
-                    remaining -= transferred;
+                    ackBuf.flip();
+                    byte ack = ackBuf.get();
+                    if (ack != 1) {
+                        // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
+                        return;
+                    }
+                    // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
+
+                    // 3. 傳送實際 chunk 資料 (長度為 length)
+                    //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
+                    long remaining = length;
+                    long pos = offset;
+                    while (remaining > 0) {
+                        long transferred = fileChannel.transferTo(pos, remaining, channel);
+                        if (transferred <= 0) continue;
+                        if (transferCallback != null) transferCallback.onProgress(transferred);
+                        pos += transferred;
+                        remaining -= transferred;
+                    }
+                    sent = true; // success
+                } catch (java.net.SocketException se) {
+                    if (attempts >= 3) {
+                        se.printStackTrace();
+                    } else {
+                        // wait before retry
+                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    }
+                } catch (IOException ioe) {
+                    ioe.printStackTrace();
+                    break;
                 }
-                // System.out.println("完成傳送 chunk offset=" + offset + ", length=" + length);
-            } catch (IOException e) {
-                e.printStackTrace();
             }
         }
     }

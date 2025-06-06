@@ -78,56 +78,50 @@ public class ReceiverOptimized {
      */
     private static void handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
         try (SocketChannel channel = clientChannel) {
-                // disable Nagle's algorithm for low-latency chunk delivery
-                channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
-                ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-                // 讀取 offset + length
-                while (headerBuffer.hasRemaining()) {
-                    if (channel.read(headerBuffer) == -1) return;
-                }
-                headerBuffer.flip();
-                long offset = headerBuffer.getLong();
-                int length = headerBuffer.getInt();
-                // 回傳 ACK (1 byte)，代表伺服端準備好接收 chunk
-                ByteBuffer ackBuf = ByteBuffer.allocate(1);
-                ackBuf.put((byte) 1);
-                ackBuf.flip();
-                while (ackBuf.hasRemaining()) {
-                    channel.write(ackBuf);
-                }
+            channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
+            // read header
+            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+            while (headerBuffer.hasRemaining()) {
+                if (channel.read(headerBuffer) == -1) return;
+            }
+            headerBuffer.flip();
+            long offset = headerBuffer.getLong();
+            int length = headerBuffer.getInt();
 
-                // 接著從管道讀取 length bytes 的 chunk 資料
+            // send header ACK
+            ByteBuffer ackBuf = ByteBuffer.allocate(1);
+            ackBuf.put((byte)1).flip();
+            while (ackBuf.hasRemaining()) channel.write(ackBuf);
+
+            // data receive
+            try {
+                ByteBuffer dataBuffer = ByteBuffer.allocateDirect(256 * 1024);
                 long bytesToReceive = length;
-            // 使用絕對位置寫入避免共享 channel 的 position 干擾
-            // 增大緩存至 256 KB 並使用直接緩衝以提高 I/O 效率
-            ByteBuffer dataBuffer = ByteBuffer.allocateDirect(256 * 1024);
                 long writePosition = offset;
                 while (bytesToReceive > 0) {
                     dataBuffer.clear();
-                    int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
+                    int toRead = (int)Math.min(dataBuffer.capacity(), bytesToReceive);
                     dataBuffer.limit(toRead);
                     int r = channel.read(dataBuffer);
-                    if (r == -1) {
-                        return;
-                    }
+                    if (r == -1) throw new IOException("Unexpected EOF");
                     dataBuffer.flip();
-                    // 寫入檔案於指定位置
-                    try {
-                        outFileChannel.write(dataBuffer, writePosition);
-                    } catch (java.nio.channels.ClosedChannelException cce) {
-                        // FileChannel closed prematurely, abort this chunk
-                        return;
-                    }
-
-                    if (transferCallback != null) {
-                        transferCallback.onProgress(r);
-                    }
+                    outFileChannel.write(dataBuffer, writePosition);
+                    if (transferCallback != null) transferCallback.onProgress(r);
                     writePosition += r;
-
                     bytesToReceive -= r;
                 }
-                outFileChannel.force(false); // 確保資料寫入磁碟
-            
+                outFileChannel.force(false);
+                // send success status
+                ByteBuffer status = ByteBuffer.allocate(1).put((byte)1).flip();
+                while (status.hasRemaining()) channel.write(status);
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+                // send NACK
+                try {
+                    ByteBuffer nack = ByteBuffer.allocate(1).put((byte)0).flip();
+                    while (nack.hasRemaining()) channel.write(nack);
+                } catch (IOException ignore){}
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
