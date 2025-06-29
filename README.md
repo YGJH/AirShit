@@ -88,7 +88,8 @@ convenient for users to track the transfer process.
     - **Light/Dark Mode Toggle:** Provides a button for users to switch
       between light and dark interface themes, enhancing user experience.
 
-6.  **WireGuard Support**
+6.  **VPN Support**
+    - OpenVPN, wireGuard we all support
     - AirShit works over WireGuard VPNs; however, occasional connection issues may occur.
 
 
