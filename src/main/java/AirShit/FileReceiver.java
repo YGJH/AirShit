@@ -90,7 +90,7 @@ public class FileReceiver {
                             String[] metaParts = initialMetadata.split(Pattern.quote(SPLIT_CHAR));
                             // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir,
                             // origFolder
-                            if (metaParts.length < 6) {
+                            if (metaParts.length < 5) {
                                 throw new IOException("Invalid initial metadata format (expected 6 parts, got "
                                         + metaParts.length + "): " + initialMetadata);
                             }

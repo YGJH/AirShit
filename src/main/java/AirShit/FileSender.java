@@ -90,7 +90,7 @@ public class FileSender {
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
                 File archiveFileForTarCompressor = new File(tempDirForArchive.resolve(compressedFileName).toString());
                 tempArchiveFilePath = archiveFileForTarCompressor.getAbsolutePath();
-                filesToProcess.add(archiveFileForTarCompressor); // 將壓縮檔加入待傳送列表
+                filesToProcess.add(inputFile); // 將壓縮檔加入待傳送列表
                 try {
                     compressThread = new Thread(() -> {
                         try {
@@ -114,7 +114,6 @@ public class FileSender {
                 // Recalculate totalSizeOverall based on the final contents of filesToProcess
                 // (which should include large files and/or the .tar archive from TarCompressor)
                 totalSizeOverall = 0;
-                
                 if (!filesToProcess.isEmpty()) {
                     for (File file : filesToProcess) {
                         if (file != null && file.exists() && file.length() > 0) {
