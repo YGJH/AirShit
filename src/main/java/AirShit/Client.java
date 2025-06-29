@@ -1,6 +1,8 @@
 package AirShit;
 //  HelloMessage = IPAddr + ":" + userName + ":" + TCPPort + ":" + OS ;
 
+import java.util.regex.Pattern;
+
 public class Client {
     private String IPAddr;
     private int TCPPort;
@@ -74,7 +76,7 @@ public class Client {
 
         // 解析訊息
     public static Client parseMessage(String message) {
-        String[] parts = message.split(SPLIT_CHAR);
+       String[] parts = message.split(Pattern.quote(SPLIT_CHAR));
         // 檢查訊息格式是否正確
         // 解析訊息 [IP + User + TCP + UDP + OS]
         if (parts.length >= 6) {
@@ -93,7 +95,7 @@ public class Client {
     }
 
     public static boolean isHelloMessage(String message) { // 判斷是否為 Hello 訊息
-        String[] parts = message.split(SPLIT_CHAR); // 使用 SPLIT_CHAR 分割訊息
+        String[] parts = message.split(Pattern.quote(SPLIT_CHAR));
         return (parts.length >= 6);
     }
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
