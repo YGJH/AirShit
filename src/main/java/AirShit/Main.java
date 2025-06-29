@@ -284,7 +284,7 @@ public class Main { // 定義 Main 類別
                 boolean listChanged = true;
 
                 if (message.startsWith("HEARTBEAT-")) {
-                    String[] parts = message.split("-");
+                    String[] parts = message.split(Client.SPLIT_CHAR);
                     if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
                         String clientIp = parts[1];
                         String clientName = parts[2];
@@ -310,7 +310,11 @@ public class Main { // 定義 Main 類別
 
                 } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
                     Client tempClient = Client.parseMessage(message);
-                    if (tempClient != null) {
+                    if(message.split(Client.SPLIT_CHAR).length > 6) { // no reply
+                        clientList.put(tempClient.getUserName(), tempClient);
+                        listChanged = true;
+                    }
+                    else if (tempClient != null) {
                         if (tempClient.getIPAddr().equals(client.getIPAddr())
                                 && tempClient.getUserName().equals(client.getUserName())) {
                             // It's our own HELLO message
@@ -319,7 +323,9 @@ public class Main { // 定義 Main 類別
                             listChanged = true;
                             // Respond directly to the sender (unicast)
                             Thread.sleep(100); // Slight delay to avoid flooding
-                            responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), tempClient.getUDPPort());
+                            responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), tempClient.getUDPPort() , false);
+                        } else {
+                            responseNewClient(InetAddress.getByName(tempClient.getIPAddr()), tempClient.getUDPPort() , true);
                         }
                     }
                 }
@@ -338,10 +344,13 @@ public class Main { // 定義 Main 類別
         // listenerSocket stays open until closed on restart or interface change
     }
 
-    public static void responseNewClient(InetAddress targetAddr, int targetPort) {
+    public static void responseNewClient(InetAddress targetAddr, int targetPort , boolean NoReply) {
         try (
                 DatagramSocket socket = new DatagramSocket();) {
             String helloMessage = client.getHelloMessage();
+            if (NoReply) {
+                helloMessage = helloMessage + Client.SPLIT_CHAR + "NOREPLY"; // Reply to existing client
+            }
             byte[] sendData = helloMessage.getBytes("UTF-8");
             // send the hello message 3 times
             for (int i = 0; i < 3; i++) {

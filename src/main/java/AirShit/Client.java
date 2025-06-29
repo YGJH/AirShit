@@ -6,11 +6,12 @@ public class Client {
     private int TCPPort;
     private int TCPPort2;
     private int UDPPort;
+    public static final String SPLIT_CHAR = "\\"; // Java literal "\\\\" → regex "\\" → 完整匹配單一反斜線
     private String userName;
     private String OS;
     public Client(String IPAddr , String userName, int TCPPort , int TCPPort2, int UDPPort ,  String OS) {
         this.IPAddr = IPAddr;
-        this.userName = userName.replaceAll("-", "_");
+        this.userName = userName.replace(SPLIT_CHAR, "-");
         this.TCPPort = TCPPort;
         this.TCPPort2 = TCPPort2;
         this.UDPPort = UDPPort;
@@ -33,7 +34,7 @@ public class Client {
         this.IPAddr = IPAddr;
     }
     public void setUserName(String userName) {
-        userName = userName.replaceAll("-", "_");
+        userName = userName.replace(SPLIT_CHAR, "_");
         this.userName = userName;
     }
 
@@ -73,10 +74,10 @@ public class Client {
 
         // 解析訊息
     public static Client parseMessage(String message) {
-        String[] parts = message.split("-");
+        String[] parts = message.split(SPLIT_CHAR);
         // 檢查訊息格式是否正確
         // 解析訊息 [IP + User + TCP + UDP + OS]
-        if (parts.length == 6) {
+        if (parts.length >= 6) {
             // clean IP address
             String IPAddr = parts[0]; // 取得 IP 位址
             String userName = parts[1]; // 取得使用者名稱
@@ -96,7 +97,7 @@ public class Client {
         return (parts.length == 6);
     }
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
-        userName = userName.replaceAll("-", "_");
-        return IPAddr + "-" + userName + "-" + TCPPort + "-" + TCPPort2 + "-" + UDPPort + "-" + OS; // 組合並返回 Hello 訊息字串
+        userName = userName.replace(SPLIT_CHAR, "_");
+        return IPAddr + SPLIT_CHAR + userName + SPLIT_CHAR + TCPPort + SPLIT_CHAR + TCPPort2 + SPLIT_CHAR + UDPPort + SPLIT_CHAR + OS; // 組合並返回 Hello 訊息字串
     }
 }

@@ -18,7 +18,7 @@ import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
 
 public class FileReceiver {
-
+    private String SPLIT_CHAR = "\\"; // 用於分隔元數據的字元
     public int port;
     private int port2;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
@@ -85,7 +85,7 @@ public class FileReceiver {
                             initialMetadata = dis.readUTF();
                             LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                             System.out.println("metaParts: " + initialMetadata);
-                            String[] metaParts = initialMetadata.split("@");
+                            String[] metaParts = initialMetadata.split(SPLIT_CHAR);
                             // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir,
                             // origFolder
                             if (metaParts.length < 6) {
@@ -138,7 +138,7 @@ public class FileReceiver {
                         // + fileInfoString);
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
-                            String[] fileInfoParts = fileInfoString.split("@");
+                            String[] fileInfoParts = fileInfoString.split(SPLIT_CHAR);
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
                             }
@@ -178,7 +178,7 @@ public class FileReceiver {
                         if (userAccepted && selectedSaveDirectory != null && selectedSaveDirectory.isDirectory()) {
                             negotiatedThreadCount = Math.min(clientAnnouncedThreads, ITHREADS);
                             negotiatedThreadCount = Math.max(1, negotiatedThreadCount);
-                            decisionMessage = "OK@" + negotiatedThreadCount;
+                            decisionMessage = "OK" + SPLIT_CHAR + negotiatedThreadCount;
                             proceedWithTransfer = true;
                             LogPanel.log("FileReceiver: User accepted. Sending " + decisionMessage);
                         } else {

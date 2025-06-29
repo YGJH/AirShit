@@ -30,9 +30,10 @@ public class FileSender {
     private int port2; // 接收端第二個埠號（用於資料傳輸）
     private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
-
+    private static final String SPLIT_CHAR = "\\"; // 用於分隔元數據的字元
     private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // 預設 Socket 操作超時時間（秒）
     private static final int USER_INTERACTION_TIMEOUT_MINUTES = 5; // 等待使用者（接收端）互動的超時時間（分鐘）
+    Thread compressThread = null; // 壓縮線程，用於處理資料夾壓縮成 .tar 檔案
     // private static final int MAX_INITIAL_HANDSHAKE_RETRIES = 3; // 最大初始握手重試次數
     // (目前未使用)
 
@@ -89,25 +90,31 @@ public class FileSender {
                 String compressedFileName = baseName + ".tar"; // 壓縮檔案的名稱
                 File archiveFileForTarCompressor = new File(tempDirForArchive.resolve(compressedFileName).toString());
                 tempArchiveFilePath = archiveFileForTarCompressor.getAbsolutePath();
-
+                filesToProcess.add(archiveFileForTarCompressor); // 將壓縮檔加入待傳送列表
                 try {
-                    LogPanel.log("FileSender: Calling TarCompressor.packToTar. Input: " + inputFile.getAbsolutePath()
-                            + ", Output: " + tempArchiveFilePath);
-                    // TarCompressor.packToTar is responsible for adding large files AND the .tar
-                    // archive to filesToProcess
-                    TarCompressor.packToTar(inputFile, archiveFileForTarCompressor, filesToProcess);
+                    compressThread = new Thread(() -> {
+                        try {
+                            TarCompressor.packToTar(inputFile, archiveFileForTarCompressor, filesToProcess);
+                        }
+                        catch (IOException e) {
+                            LogPanel.log("FileSender: TarCompressor.packToTar failed: " + e.getMessage());
+                            if (callback != null)
+                                callback.onError(e);
+                            return;    
+                        }
+                        // 如果壓縮成功，將壓縮檔加入待傳送列表 
+                    });
+                    compressThread.start(); // 啟動壓縮線程
                     LogPanel.log("FileSender: TarCompressor.packToTar finished. filesToProcess size: "
                             + filesToProcess.size());
-                } catch (IOException e) {
-                    LogPanel.log("FileSender: 壓縮資料夾失敗: " + e.getMessage());
-                    if (callback != null)
-                        callback.onError(e);
-                    return;
+                } catch (Exception e) {
+                    return; // 如果壓縮失敗，則中止傳輸
                 }
 
                 // Recalculate totalSizeOverall based on the final contents of filesToProcess
                 // (which should include large files and/or the .tar archive from TarCompressor)
                 totalSizeOverall = 0;
+                
                 if (!filesToProcess.isEmpty()) {
                     for (File file : filesToProcess) {
                         if (file != null && file.exists() && file.length() > 0) {
@@ -118,6 +125,7 @@ public class FileSender {
                                             + (file != null ? file.getAbsolutePath() : "null file object"));
                         }
                     }
+                    
                     LogPanel.log(
                             "FileSender: Directory processing complete. filesToProcess count: " + filesToProcess.size()
                                     + ". Calculated totalSizeOverall: " + SendFileGUI.formatFileSize(totalSizeOverall));
@@ -174,11 +182,11 @@ public class FileSender {
             // 格式:
             // SENDER_USERNAME@NUMBER_OF_FILES_TO_SEND@TOTAL_SIZE_BYTES@REQUESTED_THREADS@IS_DIRECTORY@ORIGINAL_FOLDER_NAME
             String originalFolderName = isDirectoryTransfer ? inputFile.getName() : "-"; // 如果是單一檔案，原始資料夾名稱用 "-" 表示
-            String initialMetadata = senderUserName + "@" +
-                    filesToProcess.size() + "@" +
-                    totalSizeOverall + "@" +
-                    THREADS_STR + "@" +
-                    (isDirectoryTransfer ? "1" : "0") + "@" + // "1" 表示目錄，"0" 表示檔案
+            String initialMetadata = senderUserName + SPLIT_CHAR +
+                    filesToProcess.size() + SPLIT_CHAR +
+                    totalSizeOverall + SPLIT_CHAR +
+                    THREADS_STR + SPLIT_CHAR +
+                    (isDirectoryTransfer ? "1" : "0") + SPLIT_CHAR + // "1" 表示目錄，"0" 表示檔案
                     originalFolderName;
 
             // 使用 try-with-resources 管理 Socket 和相關的流
@@ -202,6 +210,13 @@ public class FileSender {
                 // 為 filesToProcess 中的每個檔案傳送其名稱和大小
                 Path selectedPath = inputFile.toPath().normalize(); // 使用者選擇的原始路徑
                 Path parentOfSelectedPath = selectedPath.getParent(); // 獲取父目錄
+                if(compressThread != null && compressThread.isAlive()) {
+                    try {
+                        compressThread.join(); // 等待壓縮線程完成
+                    } catch (InterruptedException e) {
+                        LogPanel.log("FileSender: 等待壓縮線程時被中斷: " + e.getMessage());
+                    }
+                }
                 for (File fileToSendInfo : filesToProcess) {
                     String nameToSend;
                     Path filePath = fileToSendInfo.toPath().normalize();
@@ -246,7 +261,7 @@ public class FileSender {
                         nameToSend = fileToSendInfo.getName();
                     }
                     System.out.println(nameToSend);
-                    String fileInfoString = nameToSend + "@" + fileToSendInfo.length();
+                    String fileInfoString = nameToSend + SPLIT_CHAR + fileToSendInfo.length();
                     // System.out.println(fileToSendInfo.getName()); // 舊的調試輸出
                     LogPanel.log("FileSender: 正在傳送檔案資訊: " + fileInfoString);
                     dos.writeUTF(fileInfoString);
@@ -276,7 +291,7 @@ public class FileSender {
                 int negotiatedThreadCount = 1; // 協商後的執行緒數量，預設為1
                 boolean transferAcceptedByReceiver = false; // 標記傳輸是否被接收端接受
 
-                if (receiverDecision.startsWith("OK@")) { // 如果接收端接受
+                if (receiverDecision.startsWith(("OK" + SPLIT_CHAR))) { // 如果接收端接受
                     try {
                         negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3)); // 解析協商後的執行緒數
                         // 確保執行緒數在合理範圍內 (不超過本機核心數，且至少為1)
