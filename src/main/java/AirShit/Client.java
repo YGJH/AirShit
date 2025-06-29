@@ -94,7 +94,7 @@ public class Client {
 
     public static boolean isHelloMessage(String message) { // 判斷是否為 Hello 訊息
         String[] parts = message.split("-");
-        return (parts.length == 6);
+        return (parts.length >= 6);
     }
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
         userName = userName.replace(SPLIT_CHAR, "_");
