@@ -6,7 +6,7 @@ public class Client {
     private int TCPPort;
     private int TCPPort2;
     private int UDPPort;
-    public static final String SPLIT_CHAR = "\\"; // Java literal "\\\\" → regex "\\" → 完整匹配單一反斜線
+    public static final String SPLIT_CHAR = "\\\\"; // Java literal "\\\\" → regex "\" → 正確匹配單一反斜線
     private String userName;
     private String OS;
     public Client(String IPAddr , String userName, int TCPPort , int TCPPort2, int UDPPort ,  String OS) {
@@ -93,7 +93,7 @@ public class Client {
     }
 
     public static boolean isHelloMessage(String message) { // 判斷是否為 Hello 訊息
-        String[] parts = message.split("-");
+        String[] parts = message.split(SPLIT_CHAR); // 使用 SPLIT_CHAR 分割訊息
         return (parts.length >= 6);
     }
     public String getHelloMessage() { // 定義取得 Hello 訊息的方法
