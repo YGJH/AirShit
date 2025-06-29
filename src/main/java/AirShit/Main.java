@@ -284,7 +284,7 @@ public class Main { // 定義 Main 類別
 
                 boolean listChanged = true;
 
-                if (message.startsWith("HEARTBEAT-")) {
+                if (message.startsWith(("HEARTBEAT" + Client.SPLIT_CHAR))) {
                    String[] parts = message.split(Pattern.quote(Client.SPLIT_CHAR));
                     if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
                         String clientIp = parts[1];
@@ -311,7 +311,7 @@ public class Main { // 定義 Main 類別
 
                 } else if (Client.isHelloMessage(message)) { // Assuming Client.isHelloMessage checks format
                     Client tempClient = Client.parseMessage(message);
-                    if(message.split(Client.SPLIT_CHAR).length > 6) { // no reply
+                    if(message.split(Pattern.quote(Client.SPLIT_CHAR)).length > 6) { // no reply
                         clientList.put(tempClient.getUserName(), tempClient);
                         listChanged = true;
                     }
@@ -553,7 +553,7 @@ public class Main { // 定義 Main 類別
     }
 
     public static void checkAlive() {
-        byte[] ping = ("HEARTBEAT-" + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8);
+        byte[] ping = ("HEARTBEAT" + Client.SPLIT_CHAR + client.getHelloMessage()).getBytes(StandardCharsets.UTF_8);
         ArrayList<String> dead = new ArrayList<>();
         // Create a temporary copy of keys to iterate over, to avoid
         // ConcurrentModificationException
