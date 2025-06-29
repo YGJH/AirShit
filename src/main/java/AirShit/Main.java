@@ -5,6 +5,7 @@ import java.net.*; // 引入網路相關類別
 import java.nio.charset.StandardCharsets;
 import java.util.*; // 引入工具類別
 import java.util.concurrent.atomic.AtomicReference; // 引入原子參考類別
+import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicLong; // 引入原子長整數類別
 import javax.swing.*; // 引入 Swing 圖形界面相關類別
 import java.awt.Font; // 引入 AWT Font類別
@@ -284,7 +285,7 @@ public class Main { // 定義 Main 類別
                 boolean listChanged = true;
 
                 if (message.startsWith("HEARTBEAT-")) {
-                    String[] parts = message.split(Client.SPLIT_CHAR);
+                   String[] parts = message.split(Pattern.quote(Client.SPLIT_CHAR));
                     if (parts.length >= 5) { // IP, Name, TCPPort, UDPPort(Discovery), OS
                         String clientIp = parts[1];
                         String clientName = parts[2];

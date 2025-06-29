@@ -30,7 +30,7 @@ public class FileSender {
     private int port2; // 接收端第二個埠號（用於資料傳輸）
     private final int ITHREADS = (Runtime.getRuntime().availableProcessors()) * 4; // 本機可用的處理器核心數，作為建議的執行緒數
     private final String THREADS_STR = Integer.toString(ITHREADS); // 處理器核心數的字串形式
-    private static final String SPLIT_CHAR = "\\"; // 用於分隔元數據的字元
+    private static final String SPLIT_CHAR = "\\\\"; // 用於分隔元數據的字元
     private static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 15; // 預設 Socket 操作超時時間（秒）
     private static final int USER_INTERACTION_TIMEOUT_MINUTES = 5; // 等待使用者（接收端）互動的超時時間（分鐘）
     Thread compressThread = null; // 壓縮線程，用於處理資料夾壓縮成 .tar 檔案
@@ -293,7 +293,7 @@ public class FileSender {
 
                 if (receiverDecision.startsWith(("OK" + SPLIT_CHAR))) { // 如果接收端接受
                     try {
-                        negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(3)); // 解析協商後的執行緒數
+                        negotiatedThreadCount = Integer.parseInt(receiverDecision.substring(4)); // 解析協商後的執行緒數
                         // 確保執行緒數在合理範圍內 (不超過本機核心數，且至少為1)
                         negotiatedThreadCount = Math.min(ITHREADS, Math.max(1, negotiatedThreadCount));
                         LogPanel.log("FileSender: 傳輸被接收端接受。協商後的執行緒數: " + negotiatedThreadCount);
