@@ -14,13 +14,11 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
-
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
 
 public class FileReceiver {
-    private String SPLIT_CHAR = "\\\\"; // 用於分隔元數據的字元
+
     public int port;
     private int port2;
     private final int ITHREADS = Runtime.getRuntime().availableProcessors() * 4;
@@ -87,10 +85,10 @@ public class FileReceiver {
                             initialMetadata = dis.readUTF();
                             LogPanel.log("FileReceiver: Received initial metadata: " + initialMetadata);
                             System.out.println("metaParts: " + initialMetadata);
-                            String[] metaParts = initialMetadata.split(Pattern.quote(SPLIT_CHAR));
+                            String[] metaParts = initialMetadata.split("@");
                             // Expecting 6 parts: senderName, numFiles, totalSize, requestedThreads, isDir,
                             // origFolder
-                            if (metaParts.length < 5) {
+                            if (metaParts.length < 6) {
                                 throw new IOException("Invalid initial metadata format (expected 6 parts, got "
                                         + metaParts.length + "): " + initialMetadata);
                             }
@@ -140,7 +138,7 @@ public class FileReceiver {
                         // + fileInfoString);
                         for (int i = 0; i < numFilesToExpect; i++) { // Now numFilesToExpect is resolved
                             String fileInfoString = dis.readUTF();
-                            String[] fileInfoParts = fileInfoString.split(Pattern.quote(SPLIT_CHAR));
+                            String[] fileInfoParts = fileInfoString.split("@");
                             if (fileInfoParts.length < 2) {
                                 throw new IOException("Invalid file info format: " + fileInfoString);
                             }
@@ -180,7 +178,7 @@ public class FileReceiver {
                         if (userAccepted && selectedSaveDirectory != null && selectedSaveDirectory.isDirectory()) {
                             negotiatedThreadCount = Math.min(clientAnnouncedThreads, ITHREADS);
                             negotiatedThreadCount = Math.max(1, negotiatedThreadCount);
-                            decisionMessage = "OK" + SPLIT_CHAR + negotiatedThreadCount;
+                            decisionMessage = "OK@" + negotiatedThreadCount;
                             proceedWithTransfer = true;
                             LogPanel.log("FileReceiver: User accepted. Sending " + decisionMessage);
                         } else {
