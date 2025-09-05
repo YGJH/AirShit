@@ -77,7 +77,8 @@ public class Main { // 定義 Main 類別
 
                 String name = ni.getDisplayName().toLowerCase();
                 if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") ||
-                        name.contains("vbox") || name.contains("virtualbox")) {
+                        name.contains("vbox") || name.contains("virtualbox") || name.contains("docker") ||
+                        name.contains("br-")) {
                     System.out.println("getNonLoopbackIP: Skipping interface '" + ni.getDisplayName()
                             + "': Virtualization software interface.");
                     continue;
@@ -168,6 +169,14 @@ public class Main { // 定義 Main 類別
                 }
 
                 // 跳過特定的虛擬網卡，但保留 VPN 介面 (如 OpenVPN, WireGuard)
+                String name = ni.getDisplayName().toLowerCase();
+                if (name.contains("hyper-v") || name.contains("filter") || name.contains("vmware") ||
+                        name.contains("vbox") || name.contains("virtualbox") || name.contains("docker") ||
+                        name.contains("br-")) {
+                    System.out.println("findCorrectNetworkInterface: Skipping interface '" + ni.getDisplayName()
+                            + "': Virtualization software interface.");
+                    continue;
+                }
 
                 for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
                     if (addr instanceof Inet4Address

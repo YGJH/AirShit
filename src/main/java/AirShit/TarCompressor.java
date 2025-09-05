@@ -8,8 +8,8 @@ import java.util.List;
 
 public class TarCompressor {
 
-    /** 1 GB 閾值 */
-    private static final long SIZE_THRESHOLD = 1L * 1024L * 1024L * 1024L;
+    /** 500 MB 閾值 */
+    private static final long SIZE_THRESHOLD = 500L * 1024L * 1024L;
 
     /**
      * 將 inputFile（檔案或資料夾）遞迴打包成 .tar，
