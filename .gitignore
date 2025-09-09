@@ -5,6 +5,7 @@ dist/**
 AirShit-1/**
 GeneratedTestFiles/**
 target/**
+*.deb
 *.lz4
 *.DS_Store
 *.tar
