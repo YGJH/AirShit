@@ -56,8 +56,7 @@ public class ReceiverOptimized {
         AtomicInteger inFlight = new AtomicInteger(0);
         AtomicLong lastProgress = new AtomicLong(System.currentTimeMillis());
 
-        final AtomicInteger remaining = new AtomicInteger(Math.max(0, totalChunks - safeCardinality(receivedChunks)));
-        if (remaining.get() == 0) {
+        if (safeCardinality(receivedChunks) >= totalChunks) {
             return true;
         }
 
@@ -76,9 +75,12 @@ public class ReceiverOptimized {
                 }
             }
 
-            while (remaining.get() > 0) {
+            while (safeCardinality(receivedChunks) < totalChunks) {
                 SocketChannel clientChannel = serverChannel.accept();
                 if (clientChannel == null) {
+                    if (safeCardinality(receivedChunks) >= totalChunks) {
+                        break;
+                    }
                     // Important: before sender indicates it's done, do not time out or request missing.
                     if (senderDone != null && !senderDone.get()) {
                         try {

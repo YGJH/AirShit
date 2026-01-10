@@ -27,10 +27,12 @@ public class SendFileOptimized {
     private  final int DEFAULT_CHUNK_SIZE = 1024 * 1024; // 預設每個 chunk 大小為 1MB
 
     // Safety bounds to avoid sender hanging forever (e.g., last 1% stuck).
-    private static final int MAX_ROUNDS_WHOLE_FILE = 8;
-    private static final int MAX_ROUNDS_PARTIAL = 5;
-    private static final long PER_CHUNK_DATA_SEND_TIMEOUT_MS = 60_000;
-    private static final long ROUND_AWAIT_TERMINATION_MS = 10 * 60_000;
+    // For initial full-file send, prefer finishing the round quickly and rely on the control-plane
+    // missing-chunk request/resend mechanism instead of getting stuck on one bad chunk for minutes.
+    private static final int MAX_ROUNDS_WHOLE_FILE = 2;
+    private static final int MAX_ROUNDS_PARTIAL = 4;
+    private static final long PER_CHUNK_DATA_SEND_TIMEOUT_MS = 20_000;
+    private static final long ROUND_AWAIT_TERMINATION_MS = 2 * 60_000;
     public SendFileOptimized(String serverHost, int serverPort, String filePath, int threadCount, TransferCallback transferCallback) {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
