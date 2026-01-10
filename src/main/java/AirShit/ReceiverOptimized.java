@@ -87,7 +87,7 @@ public class ReceiverOptimized {
                                     latch.countDown();
                                 }
                             });
-                        } catch (java.nio.channels.ClosedChannelException | java.nio.channels.AsynchronousCloseException e) {
+                        } catch (java.nio.channels.ClosedChannelException e) {
                             // Channel closed by monitor thread, exit loop
                             break;
                         }
