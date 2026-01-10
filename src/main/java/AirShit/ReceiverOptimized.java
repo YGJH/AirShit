@@ -7,6 +7,10 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 
 public class ReceiverOptimized {
 
@@ -21,6 +25,10 @@ public class ReceiverOptimized {
     public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
     /** 預期接收的 chunk 數量，若 <=0 則無限循環 */
     private int expectedChunks;
+    
+    // 用於追蹤已接收的 chunk index，解決重複接收導致計數錯誤的問題
+    private final Set<Integer> receivedChunks = ConcurrentHashMap.newKeySet();
+
     public ReceiverOptimized(int SERVER_PORT , String OUTPUT_FILE , int threadCount , TransferCallback callback) {
         this.SERVER_PORT = SERVER_PORT;
         this.SERVER_THREAD_COUNT = threadCount;
@@ -56,6 +64,10 @@ public class ReceiverOptimized {
                         latch.await();
                         // 任務完成，關閉通道以釋放主執行緒的 accept 阻塞
                         if (serverChannel.isOpen()) {
+                            // Give some time for the last ACK to be sent properly? 
+                            // Or relies on handleClient to return before latch down.
+                            // Adding a small delay just in case.
+                            Thread.sleep(200);
                             serverChannel.close();
                         }
                     } catch (IOException | InterruptedException e) {
@@ -67,16 +79,21 @@ public class ReceiverOptimized {
                     // 只要還有未完成的 chunk，就持續接受連線 (支援重傳機制)
                     // 注意：當 latch 歸零後，上方監控執行緒會關閉 channel，導致這裡拋出異常退出循環
                     while (latch.getCount() > 0) {
-                        SocketChannel clientChannel = serverChannel.accept();
-                        Thread.startVirtualThread(() -> {
-                            boolean success = handleClient(clientChannel, outFileChannel);
-                            if (success) {
-                                latch.countDown();
-                            }
-                        });
+                        try {
+                            SocketChannel clientChannel = serverChannel.accept();
+                            Thread.startVirtualThread(() -> {
+                                boolean isNewChunk = handleClient(clientChannel, outFileChannel, expectedChunks, receivedChunks);
+                                if (isNewChunk) {
+                                    latch.countDown();
+                                }
+                            });
+                        } catch (java.nio.channels.ClosedChannelException | java.nio.channels.AsynchronousCloseException e) {
+                            // Channel closed by monitor thread, exit loop
+                            break;
+                        }
                     }
-                } catch (java.nio.channels.ClosedChannelException e) {
-                    // 這是預期的行為：當 latch 歸零，監控執行緒關閉 channel，accept 拋出異常，循環結束
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
 
                 // 等待最後的 chunk 寫入完成
@@ -88,7 +105,7 @@ public class ReceiverOptimized {
             } else {
                 while (true) {
                     SocketChannel clientChannel = serverChannel.accept();
-                    Thread.startVirtualThread(() -> handleClient(clientChannel, outFileChannel));
+                    Thread.startVirtualThread(() -> handleClient(clientChannel, outFileChannel, -1, receivedChunks));
                 }
             }
          } catch (IOException e) {
@@ -97,21 +114,61 @@ public class ReceiverOptimized {
      }
 
     /**
-     * 處理每個 client 連線：先讀 offset, length，回 ACK，然後再讀 chunk 資料並寫進檔案。
-     *
-     * @param clientChannel 與客戶端溝通的 SocketChannel
-     * @param outFileChannel 用來寫入檔案的 FileChannel
-     * @return boolean 表示該 chunk 是否成功接收並寫入
+     * 處理每個 client 連線
+     * 協議更新：
+     * 1. 讀取 1 byte TYPE (0=DATA, 1=QUERY_MISSING)
+     * 
+     * 如果是 DATA (0):
+     *    讀取 ChunkIndex (int), Offset (long), Length (int)
+     *    ... 接收資料 ...
+     *    回傳 ACK
+     * 
+     * 如果是 QUERY_MISSING (1):
+     *    計算缺失的 Chunk Index 列表
+     *    回傳 Count (int)
+     *    回傳 List<Integer>
+     * 
+     * @return boolean 如果成功接收了一個 *新的* data chunk，返回 true；否則 (重複chunk, query, 失敗) 返回 false
      */
-    private static boolean handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
+    private static boolean handleClient(SocketChannel clientChannel, FileChannel outFileChannel, int totalChunks, Set<Integer> receivedChunks) {
         try (SocketChannel channel = clientChannel) {
             channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
-            // read header
-            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+            
+            // 1. Read Type
+            ByteBuffer typeBuf = ByteBuffer.allocate(1);
+            while(typeBuf.hasRemaining()) {
+                 if (channel.read(typeBuf) == -1) return false;
+            }
+            typeBuf.flip();
+            byte type = typeBuf.get();
+
+            if (type == 1) { // QUERY_MISSING
+                if (totalChunks <= 0) return false; // Should not happen in fixed mode
+                List<Integer> missing = new ArrayList<>();
+                for (int i = 0; i < totalChunks; i++) {
+                    if (!receivedChunks.contains(i)) {
+                        missing.add(i);
+                    }
+                }
+                // Send count
+                ByteBuffer resp = ByteBuffer.allocate(Integer.BYTES + missing.size() * Integer.BYTES);
+                resp.putInt(missing.size());
+                for(Integer id : missing) {
+                    resp.putInt(id);
+                }
+                resp.flip();
+                while(resp.hasRemaining()) channel.write(resp);
+                return false; // Not a data chunk increment
+            }
+
+            // DATA (type == 0)
+            // read header: Index(4) + Offset(8) + Length(4) = 16 bytes
+            ByteBuffer headerBuffer = ByteBuffer.allocate(Integer.BYTES + Long.BYTES + Integer.BYTES);
             while (headerBuffer.hasRemaining()) {
                 if (channel.read(headerBuffer) == -1) return false;
             }
             headerBuffer.flip();
+            int chunkIndex = headerBuffer.getInt();
             long offset = headerBuffer.getLong();
             int length = headerBuffer.getInt();
 
@@ -141,9 +198,11 @@ public class ReceiverOptimized {
                 // send success status
                 ByteBuffer status = ByteBuffer.allocate(1).put((byte)1).flip();
                 while (status.hasRemaining()) channel.write(status);
-                return true; // Success
+
+                // Mark as received
+                // 返回 true 僅當這是一個「新」接收到的 chunk
+                return receivedChunks.add(chunkIndex); 
             } catch (IOException ioe) {
-                ioe.printStackTrace();
                 // send NACK
                 try {
                     ByteBuffer nack = ByteBuffer.allocate(1).put((byte)0).flip();
@@ -153,6 +212,6 @@ public class ReceiverOptimized {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return false; // Failure
+        return false; // Failure or no latch decrement needed
     }
 }

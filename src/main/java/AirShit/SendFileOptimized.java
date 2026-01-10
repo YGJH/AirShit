@@ -48,11 +48,12 @@ public class SendFileOptimized {
             for (int i = 0; i < numChunks; i++) {
                 long offset = (long) i * chunkSize;
                 int length = (int) Math.min(chunkSize, fileSize - offset);
-                tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length));
+                // Pass 'i' as chunkIndex
+                tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, i, offset, length));
             }
 
             int round = 0;
-            // 3. 迴圈處理任務，直到所有任務成功 (或達到某個總體重試限制，這裡暫不設限)
+            // 3. 迴圈處理任務
             while (!tasksToProcess.isEmpty()) {
                 round++;
                 if (round > 1) {
@@ -60,19 +61,17 @@ public class SendFileOptimized {
                     try { Thread.sleep(1000); } catch (Exception e) {}
                 }
 
-                // 建立固定大小執行緒池 (Virtual Threads)，並搭配 Semaphore 限制併發數
                 ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
                 Semaphore concurrencyLimiter = new Semaphore(threadCount > 0 ? threadCount : 4);
                 
                 Queue<ChunkSenderTask> activeFailures = new ConcurrentLinkedQueue<>();
 
-                // 4. 提交任務
                 for (ChunkSenderTask task : tasksToProcess) {
                     try {
                         concurrencyLimiter.acquire();
                         pool.submit(() -> {
                             try {
-                                boolean success = task.sendChunk(); // 直接呼叫 sendChunk 並取得結果
+                                boolean success = task.sendChunk();
                                 if (!success) {
                                     activeFailures.add(task);
                                 }
@@ -85,15 +84,27 @@ public class SendFileOptimized {
                     }
                 }
 
-                // 5. 等待本輪所有任務完成
                 pool.shutdown();
                 while (!pool.isTerminated()) {
                     Thread.sleep(100); 
                 }
                 
-                // 更新待處理列表為失敗的任務
                 tasksToProcess.clear();
                 tasksToProcess.addAll(activeFailures);
+
+                // 如果本輪結束後，所有任務都成功了 (tasksToProcess 為空)，
+                // 進入「確認模式」：向 Receiver 詢問是否有缺漏 (解決 False Positive ACK 問題)
+                if (tasksToProcess.isEmpty()) {
+                    List<Integer> missingIndices = queryMissingChunks(serverHost, serverPort);
+                    if (missingIndices != null && !missingIndices.isEmpty()) {
+                        System.out.println("Receiver 報告缺失 " + missingIndices.size() + " 個 chunks，正在重新加入佇列...");
+                        for (Integer missingIdx : missingIndices) {
+                            long offset = (long) missingIdx * chunkSize;
+                            int length = (int) Math.min(chunkSize, fileSize - offset);
+                            tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, missingIdx, offset, length));
+                        }
+                    }
+                }
             }
 
             // System.out.println("所有 chunk 傳送完畢！");
@@ -107,27 +118,74 @@ public class SendFileOptimized {
     }
 
     /**
+     * 向 Receiver 查詢缺失的 chunks
+     */
+    private List<Integer> queryMissingChunks(String host, int port) {
+        List<Integer> missing = new ArrayList<>();
+        try (SocketChannel channel = SocketChannel.open()) {
+            channel.configureBlocking(true);
+            channel.socket().connect(new InetSocketAddress(host, port), 5000);
+            channel.socket().setSoTimeout(10000);
+
+            // Send Type = 1 (QUERY)
+            ByteBuffer typeBuf = ByteBuffer.allocate(1);
+            typeBuf.put((byte)1);
+            typeBuf.flip();
+            while(typeBuf.hasRemaining()) channel.write(typeBuf);
+
+            // Read Count
+            ByteBuffer countBuf = ByteBuffer.allocate(Integer.BYTES);
+            while(countBuf.hasRemaining()) {
+                 if (channel.read(countBuf) == -1) return new ArrayList<>(); // Error
+            }
+            countBuf.flip();
+            int count = countBuf.getInt();
+
+            if (count > 0) {
+                 // Read list
+                 ByteBuffer listBuf = ByteBuffer.allocate(count * Integer.BYTES);
+                 while(listBuf.hasRemaining()) {
+                     if (channel.read(listBuf) == -1) break;
+                 }
+                 listBuf.flip();
+                 for(int i=0; i<count; i++) {
+                     missing.add(listBuf.getInt());
+                 }
+            }
+            return missing;
+
+        } catch (IOException e) {
+            // e.printStackTrace();
+             System.out.println("Query missing chunks failed: " + e.getMessage());
+             return null; // Return null to indicate failure (maybe try again? or just assume ok)
+        }
+    }
+
+    /**
      * ChunkSenderTask：負責傳送單個 Chunk
      */
     private static class ChunkSenderTask {
         private final String serverHost;
         private final int serverPort;
         private final FileChannel fileChannel;
+        private final int chunkIndex; // New: 封包編號
         private final long offset;
         private final int length;
 
-        public ChunkSenderTask(String serverHost, int serverPort, FileChannel fileChannel, long offset, int length) {
+        public ChunkSenderTask(String serverHost, int serverPort, FileChannel fileChannel, int chunkIndex, long offset, int length) {
             this.serverHost = serverHost;
             this.serverPort = serverPort;
             this.fileChannel = fileChannel;
+            this.chunkIndex = chunkIndex;
             this.offset = offset;
             this.length = length;
         }
 
         /**
-         * 真正的 chunk 傳送邏輯：開啟 SocketChannel、先送 offset+length header，等 ACK，
-         * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
-         * @return boolean true if successful, false otherwise
+         * 真正的 chunk 傳送邏輯：
+         * 1. Send Type (0)
+         * 2. Send ChunkIndex, Offset, Length
+         * 3. Send Data
          */
         public boolean sendChunk() {
             int attempts = 0;
@@ -136,13 +194,17 @@ public class SendFileOptimized {
                 attempts++;
                 try (SocketChannel channel = SocketChannel.open()) {
                     channel.configureBlocking(true);
-                    // 增加連線超時設定 (雖然 blocking mode 無法直接設 connect timeout，但操作上會更穩)
                     channel.socket().connect(new InetSocketAddress(serverHost, serverPort), 5000);
-                    // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
-                    //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
+                    
+                    // 1. Send Type (0 = DATA)
+                    ByteBuffer typeBuf = ByteBuffer.allocate(1);
+                    typeBuf.put((byte)0);
+                    typeBuf.flip();
+                    while (typeBuf.hasRemaining()) channel.write(typeBuf);
 
-                    // 1. 傳送 header：offset (8 bytes) + length (4 bytes)
-                    ByteBuffer headerBuf = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
+                    // 2. 傳送 header：ChunkIndex(4) + offset (8 bytes) + length (4 bytes)
+                    ByteBuffer headerBuf = ByteBuffer.allocate(Integer.BYTES + Long.BYTES + Integer.BYTES);
+                    headerBuf.putInt(chunkIndex);
                     headerBuf.putLong(offset);
                     headerBuf.putInt(length);
                     headerBuf.flip();
@@ -150,24 +212,15 @@ public class SendFileOptimized {
                         channel.write(headerBuf);
                     }
 
-                    // 2. 等待伺服端回傳 ACK (1 byte)
+                    // 3. 等待伺服端回傳 ACK (1 byte)
                     ByteBuffer ackBuf = ByteBuffer.allocate(1);
-                    // 設定讀取超時，避免無限期等待 ACK
                     channel.socket().setSoTimeout(5000); 
                     int r = channel.read(ackBuf);
-                    if (r != 1) {
-                        // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
-                        continue; // retry
-                    }
+                    if (r != 1) continue; 
                     ackBuf.flip();
-                    byte ack = ackBuf.get();
-                    if (ack != 1) {
-                        // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
-                        continue; // retry
-                    }
-                    // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
+                    if (ackBuf.get() != 1) continue;
 
-                    // 3. 傳送實際 chunk 資料 (長度為 length)
+                    // 4. 傳送實際 chunk 資料
                     //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
                     long remaining = length;
                     long pos = offset;
