@@ -74,7 +74,7 @@ public class ReceiverOptimized {
                             }
                         });
                     }
-                } catch (java.nio.channels.AsynchronousCloseException | java.nio.channels.ClosedChannelException e) {
+                } catch (java.nio.channels.ClosedChannelException e) {
                     // 這是預期的行為：當 latch 歸零，監控執行緒關閉 channel，accept 拋出異常，循環結束
                 }
 
