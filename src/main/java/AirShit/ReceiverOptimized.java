@@ -47,13 +47,17 @@ public class ReceiverOptimized {
             // 根據預期 chunk 數量分支
             if (expectedChunks > 0) {
                 CountDownLatch latch = new CountDownLatch(expectedChunks);
-                for (int i = 0; i < expectedChunks; i++) {
+                // 只要還有未完成的 chunk，就持續接受連線 (支援重傳機制)
+                while (latch.getCount() > 0) {
                     SocketChannel clientChannel = serverChannel.accept();
                     Thread.startVirtualThread(() -> {
-                        handleClient(clientChannel, outFileChannel);
-                        latch.countDown();
+                        boolean success = handleClient(clientChannel, outFileChannel);
+                        if (success) {
+                            latch.countDown();
+                        }
                     });
                 }
+                // 等待最後的任務都確認完成 (雖然 latch=0 時通常代表都 decrement 過了，但在並發下是安全的)
                 try {
                     latch.await();
                 } catch (InterruptedException ie) {
@@ -75,14 +79,15 @@ public class ReceiverOptimized {
      *
      * @param clientChannel 與客戶端溝通的 SocketChannel
      * @param outFileChannel 用來寫入檔案的 FileChannel
+     * @return boolean 表示該 chunk 是否成功接收並寫入
      */
-    private static void handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
+    private static boolean handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
         try (SocketChannel channel = clientChannel) {
             channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
             // read header
             ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
             while (headerBuffer.hasRemaining()) {
-                if (channel.read(headerBuffer) == -1) return;
+                if (channel.read(headerBuffer) == -1) return false;
             }
             headerBuffer.flip();
             long offset = headerBuffer.getLong();
@@ -114,6 +119,7 @@ public class ReceiverOptimized {
                 // send success status
                 ByteBuffer status = ByteBuffer.allocate(1).put((byte)1).flip();
                 while (status.hasRemaining()) channel.write(status);
+                return true; // Success
             } catch (IOException ioe) {
                 ioe.printStackTrace();
                 // send NACK
@@ -125,5 +131,6 @@ public class ReceiverOptimized {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return false; // Failure
     }
 }

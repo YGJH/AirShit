@@ -5,8 +5,13 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.List;
+import java.util.ArrayList;
 
 public class SendFileOptimized {
     private String serverHost ;
@@ -38,24 +43,57 @@ public class SendFileOptimized {
             int numChunks = (int) ((fileSize + chunkSize - 1) / chunkSize);
             // System.out.println("將檔案拆成 " + numChunks + " 個 chunk (每chunk 大小約 " + chunkSize + " bytes)");
 
-            // 3. 建立固定大小執行緒池，以限制同時連線數
-            ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-
-            // 4. 提交每個 chunk 任務給固定大小的執行緒池
+            // 準備初始任務列表
+            Queue<ChunkSenderTask> tasksToProcess = new ConcurrentLinkedQueue<>();
             for (int i = 0; i < numChunks; i++) {
                 long offset = (long) i * chunkSize;
-                // 最後一個 chunk 的長度可能小於 chunkSize
                 int length = (int) Math.min(chunkSize, fileSize - offset);
-
-                pool.submit(new ChunkSenderTask(
-                        serverHost, serverPort, fileChannel, offset, length
-                ));
+                tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length));
             }
 
-            // 5. 關閉 thread pool，不再接受新任務，並等待所有任務完成
-            pool.shutdown();
-            while (!pool.isTerminated()) {
-                Thread.sleep(100); // 每 100ms 檢查一次
+            int round = 0;
+            // 3. 迴圈處理任務，直到所有任務成功 (或達到某個總體重試限制，這裡暫不設限)
+            while (!tasksToProcess.isEmpty()) {
+                round++;
+                if (round > 1) {
+                    System.out.println("Chunk 重傳回合: " + round + ", 剩餘任務數: " + tasksToProcess.size());
+                    try { Thread.sleep(1000); } catch (Exception e) {}
+                }
+
+                // 建立固定大小執行緒池 (Virtual Threads)，並搭配 Semaphore 限制併發數
+                ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+                Semaphore concurrencyLimiter = new Semaphore(threadCount > 0 ? threadCount : 4);
+                
+                Queue<ChunkSenderTask> activeFailures = new ConcurrentLinkedQueue<>();
+
+                // 4. 提交任務
+                for (ChunkSenderTask task : tasksToProcess) {
+                    try {
+                        concurrencyLimiter.acquire();
+                        pool.submit(() -> {
+                            try {
+                                boolean success = task.sendChunk(); // 直接呼叫 sendChunk 並取得結果
+                                if (!success) {
+                                    activeFailures.add(task);
+                                }
+                            } finally {
+                                concurrencyLimiter.release();
+                            }
+                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+
+                // 5. 等待本輪所有任務完成
+                pool.shutdown();
+                while (!pool.isTerminated()) {
+                    Thread.sleep(100); 
+                }
+                
+                // 更新待處理列表為失敗的任務
+                tasksToProcess.clear();
+                tasksToProcess.addAll(activeFailures);
             }
 
             // System.out.println("所有 chunk 傳送完畢！");
@@ -69,10 +107,9 @@ public class SendFileOptimized {
     }
 
     /**
-     * ChunkSenderTask：負責在固定執行緒中再建立一個 VirtualThreadPerTaskExecutor
-     * 來啟動真正的虛擬執行緒送該 chunk。
+     * ChunkSenderTask：負責傳送單個 Chunk
      */
-    private static class ChunkSenderTask implements Runnable {
+    private static class ChunkSenderTask {
         private final String serverHost;
         private final int serverPort;
         private final FileChannel fileChannel;
@@ -87,25 +124,20 @@ public class SendFileOptimized {
             this.length = length;
         }
 
-        @Override
-        public void run() {
-            sendChunk();
-
-            return; // 虛擬執行緒結束後，回到 ChunkSenderTask 的 run 方法
-        }
-
         /**
          * 真正的 chunk 傳送邏輯：開啟 SocketChannel、先送 offset+length header，等 ACK，
          * 再將檔案 chunk 資料以 FileChannel 讀取後寫進 SocketChannel。
+         * @return boolean true if successful, false otherwise
          */
-        private void sendChunk() {
+        public boolean sendChunk() {
             int attempts = 0;
             boolean sent = false;
             while (attempts < 3 && !sent) {
                 attempts++;
                 try (SocketChannel channel = SocketChannel.open()) {
                     channel.configureBlocking(true);
-                    channel.connect(new InetSocketAddress(serverHost, serverPort));
+                    // 增加連線超時設定 (雖然 blocking mode 無法直接設 connect timeout，但操作上會更穩)
+                    channel.socket().connect(new InetSocketAddress(serverHost, serverPort), 5000);
                     // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
                     //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
 
@@ -123,13 +155,13 @@ public class SendFileOptimized {
                     int r = channel.read(ackBuf);
                     if (r != 1) {
                         // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
-                        return;
+                        continue; // retry
                     }
                     ackBuf.flip();
                     byte ack = ackBuf.get();
                     if (ack != 1) {
                         // System.err.println("ACK 回傳內容異常：" + ack + "，chunk offset=" + offset + " 取消傳送");
-                        return;
+                        continue; // retry
                     }
                     // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
 
@@ -165,13 +197,15 @@ public class SendFileOptimized {
                         se.printStackTrace();
                     } else {
                         // wait before retry
-                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     }
                 } catch (IOException ioe) {
                     ioe.printStackTrace();
-                    break;
+                    try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    // break; // Don't break immediately, try again
                 }
             }
+            return sent;
         }
     }
 }
