@@ -152,6 +152,8 @@ public class SendFileOptimized {
 
                     // 2. 等待伺服端回傳 ACK (1 byte)
                     ByteBuffer ackBuf = ByteBuffer.allocate(1);
+                    // 設定讀取超時，避免無限期等待 ACK
+                    channel.socket().setSoTimeout(5000); 
                     int r = channel.read(ackBuf);
                     if (r != 1) {
                         // System.err.println("未收到正確的 ACK，chunk offset=" + offset + " 取消傳送");
@@ -178,6 +180,8 @@ public class SendFileOptimized {
                     }
                     // 4. 传输数据后读取服务端返回的状态字节，1=成功，0=失败
                     ByteBuffer statusBuf = ByteBuffer.allocate(1);
+                    // 同樣設定讀取超時
+                    channel.socket().setSoTimeout(10000); 
                     int statusRead = channel.read(statusBuf);
                     if (statusRead != 1) {
                         System.err.println("[" + Thread.currentThread().getName() + "] Did not receive status byte, retrying chunk offset=" + offset);
@@ -191,6 +195,14 @@ public class SendFileOptimized {
                         System.err.println("[" + Thread.currentThread().getName() + "] Received NACK for chunk offset=" + offset + ", retrying");
                         try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                         continue; // retry
+                    }
+                } catch (java.net.SocketTimeoutException ste) {
+                    // 針對讀取超時的處理
+                    System.err.println("[" + Thread.currentThread().getName() + "] Socket timeout for chunk offset=" + offset + ", retrying");
+                    if (attempts >= 3) {
+                       // log error but loop will handle retry
+                    } else {
+                        try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     }
                 } catch (java.net.SocketException se) {
                     if (attempts >= 3) {
