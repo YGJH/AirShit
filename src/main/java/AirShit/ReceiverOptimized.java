@@ -47,17 +47,38 @@ public class ReceiverOptimized {
             // 根據預期 chunk 數量分支
             if (expectedChunks > 0) {
                 CountDownLatch latch = new CountDownLatch(expectedChunks);
-                // 只要還有未完成的 chunk，就持續接受連線 (支援重傳機制)
-                while (latch.getCount() > 0) {
-                    SocketChannel clientChannel = serverChannel.accept();
-                    Thread.startVirtualThread(() -> {
-                        boolean success = handleClient(clientChannel, outFileChannel);
-                        if (success) {
-                            latch.countDown();
+                
+                // [FIX]: 啟動一個監控執行緒，當所有 chunk 都接收完成 (latch歸零) 時，
+                // 主動關閉 serverChannel，以強制中斷主執行緒卡在 accept() 的阻塞狀態。
+                Thread.startVirtualThread(() -> {
+                    try {
+                        latch.await();
+                        // 任務完成，關閉通道以釋放主執行緒的 accept 阻塞
+                        if (serverChannel.isOpen()) {
+                            serverChannel.close();
                         }
-                    });
+                    } catch (IOException | InterruptedException e) {
+                        // ignore
+                    }
+                });
+
+                try {
+                    // 只要還有未完成的 chunk，就持續接受連線 (支援重傳機制)
+                    // 注意：當 latch 歸零後，上方監控執行緒會關閉 channel，導致這裡拋出異常退出循環
+                    while (latch.getCount() > 0) {
+                        SocketChannel clientChannel = serverChannel.accept();
+                        Thread.startVirtualThread(() -> {
+                            boolean success = handleClient(clientChannel, outFileChannel);
+                            if (success) {
+                                latch.countDown();
+                            }
+                        });
+                    }
+                } catch (java.nio.channels.AsynchronousCloseException | java.nio.channels.ClosedChannelException e) {
+                    // 這是預期的行為：當 latch 歸零，監控執行緒關閉 channel，accept 拋出異常，循環結束
                 }
-                // 等待最後的任務都確認完成 (雖然 latch=0 時通常代表都 decrement 過了，但在並發下是安全的)
+
+                // 等待最後的 chunk 寫入完成
                 try {
                     latch.await();
                 } catch (InterruptedException ie) {
