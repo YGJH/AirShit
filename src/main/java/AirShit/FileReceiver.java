@@ -213,6 +213,11 @@ public class FileReceiver {
                             int currentFileIndex = 0;
                             for (FileInfo currentFileToReceive : filesExpected) {
                                 String outputFileName = currentFileToReceive.name;
+                                // Fix for cross-platform path separators (Windows sender -> Linux receiver)
+                                if (outputFileName.contains("\\") && !File.separator.equals("\\")) {
+                                    outputFileName = outputFileName.replace('\\', File.separatorChar);
+                                }
+                                
                                 long fileSizeForThisFile = currentFileToReceive.size;
                                 // selectedSaveDirectory now correctly points to the base chosen by user OR the
                                 // newly created/existing sub-folder

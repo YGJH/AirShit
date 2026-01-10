@@ -40,7 +40,8 @@ public class ReceiverOptimized {
          try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
               RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
               FileChannel outFileChannel = raf.getChannel()) {
-
+             
+             serverChannel.setOption(java.net.StandardSocketOptions.SO_REUSEADDR, true);
              serverChannel.bind(new InetSocketAddress(SERVER_PORT));
             // 系統啟動並監聽 port = SERVER_PORT
 
