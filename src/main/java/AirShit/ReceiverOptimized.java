@@ -164,8 +164,30 @@ public class ReceiverOptimized {
                 return false;
             }
 
+            boolean alreadyReceived;
+            synchronized (receivedChunks) {
+                alreadyReceived = receivedChunks.get(chunkIndex);
+            }
+
             // ACK header
             sendAck(channel);
+
+            // If this chunk was already received (e.g., sender retransmit), drain bytes but do not
+            // re-write the file and do not count progress again.
+            if (alreadyReceived) {
+                ByteBuffer drain = ByteBuffer.allocateDirect(256 * 1024);
+                long remaining = length;
+                while (remaining > 0) {
+                    drain.clear();
+                    int toRead = (int) Math.min(drain.capacity(), remaining);
+                    drain.limit(toRead);
+                    int r = channel.read(drain);
+                    if (r == -1) throw new IOException("Unexpected EOF while draining duplicate chunk");
+                    remaining -= r;
+                }
+                sendStatus(channel, (byte) 1);
+                return true;
+            }
 
             try {
                 ByteBuffer dataBuffer = ByteBuffer.allocateDirect(256 * 1024);

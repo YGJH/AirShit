@@ -27,11 +27,13 @@ public class SendFileOptimized {
     private  final int DEFAULT_CHUNK_SIZE = 1024 * 1024; // 預設每個 chunk 大小為 1MB
 
     // Safety bounds to avoid sender hanging forever (e.g., last 1% stuck).
-    // For initial full-file send, prefer finishing the round quickly and rely on the control-plane
-    // missing-chunk request/resend mechanism instead of getting stuck on one bad chunk for minutes.
-    private static final int MAX_ROUNDS_WHOLE_FILE = 2;
+    // For initial full-file send, prefer finishing quickly and rely on the control-plane
+    // missing-chunk request/resend mechanism instead of getting stuck on one bad chunk.
     private static final int MAX_ROUNDS_PARTIAL = 4;
-    private static final long PER_CHUNK_DATA_SEND_TIMEOUT_MS = 20_000;
+    private static final int INITIAL_SEND_MAX_ATTEMPTS_PER_CHUNK = 1;
+    private static final int RESEND_MAX_ATTEMPTS_PER_CHUNK = 3;
+    private static final long INITIAL_SEND_PER_CHUNK_DATA_TIMEOUT_MS = 15_000;
+    private static final long RESEND_PER_CHUNK_DATA_TIMEOUT_MS = 30_000;
     private static final long ROUND_AWAIT_TERMINATION_MS = 2 * 60_000;
     public SendFileOptimized(String serverHost, int serverPort, String filePath, int threadCount, TransferCallback transferCallback) {
         this.serverHost = serverHost;
@@ -63,11 +65,14 @@ public class SendFileOptimized {
 
             // 準備初始任務列表
             Queue<ChunkSenderTask> tasksToProcess = new ConcurrentLinkedQueue<>();
+            final boolean isResend = (chunkIndexes != null);
+            final int perChunkMaxAttempts = isResend ? RESEND_MAX_ATTEMPTS_PER_CHUNK : INITIAL_SEND_MAX_ATTEMPTS_PER_CHUNK;
+            final long perChunkDataTimeoutMs = isResend ? RESEND_PER_CHUNK_DATA_TIMEOUT_MS : INITIAL_SEND_PER_CHUNK_DATA_TIMEOUT_MS;
             if (chunkIndexes == null) {
                 for (int i = 0; i < numChunks; i++) {
                     long offset = (long) i * chunkSize;
                     int length = (int) Math.min(chunkSize, fileSize - offset);
-                    tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length, i));
+                    tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length, i, perChunkMaxAttempts, perChunkDataTimeoutMs));
                 }
             } else {
                 for (Integer idxObj : chunkIndexes) {
@@ -76,19 +81,16 @@ public class SendFileOptimized {
                     if (i < 0 || i >= numChunks) continue;
                     long offset = (long) i * chunkSize;
                     int length = (int) Math.min(chunkSize, fileSize - offset);
-                    tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length, i));
+                    tasksToProcess.add(new ChunkSenderTask(serverHost, serverPort, fileChannel, offset, length, i, perChunkMaxAttempts, perChunkDataTimeoutMs));
                 }
             }
 
             int round = 0;
-            final int maxRounds = (chunkIndexes == null) ? MAX_ROUNDS_WHOLE_FILE : MAX_ROUNDS_PARTIAL;
-            // 3. 迴圈處理任務，直到所有任務成功 (或達到某個總體重試限制，這裡暫不設限)
-            while (!tasksToProcess.isEmpty()) {
+            // Initial full-file send: do ONE round only; missing chunks are handled by receiver-driven resend.
+            // Resend mode: allow multiple rounds locally to reduce control-plane chatter.
+            final int maxRounds = isResend ? MAX_ROUNDS_PARTIAL : 1;
+            while (!tasksToProcess.isEmpty() && round < maxRounds) {
                 round++;
-                if (round > maxRounds) {
-                    System.err.println("Reached max resend rounds (" + maxRounds + ") with remaining chunks=" + tasksToProcess.size());
-                    break;
-                }
                 if (round > 1) {
                     System.out.println("Chunk 重傳回合: " + round + ", 剩餘任務數: " + tasksToProcess.size());
                     try { Thread.sleep(1000); } catch (Exception e) {}
@@ -139,7 +141,7 @@ public class SendFileOptimized {
             // System.out.println("所有 chunk 傳送完畢！");
             fileChannel.close();
             raf.close();
-            return tasksToProcess.isEmpty(); // true if all chunks sent, false otherwise
+            return tasksToProcess.isEmpty(); // for initial send: often false if loss exists; control-plane will recover
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -156,14 +158,19 @@ public class SendFileOptimized {
         private final long offset;
         private final int length;
         private final int chunkIndex;
+        private final int maxAttempts;
+        private final long dataSendTimeoutMs;
 
-        public ChunkSenderTask(String serverHost, int serverPort, FileChannel fileChannel, long offset, int length, int chunkIndex) {
+        public ChunkSenderTask(String serverHost, int serverPort, FileChannel fileChannel, long offset, int length, int chunkIndex,
+                int maxAttempts, long dataSendTimeoutMs) {
             this.serverHost = serverHost;
             this.serverPort = serverPort;
             this.fileChannel = fileChannel;
             this.offset = offset;
             this.length = length;
             this.chunkIndex = chunkIndex;
+            this.maxAttempts = Math.max(1, maxAttempts);
+            this.dataSendTimeoutMs = Math.max(1000, dataSendTimeoutMs);
         }
 
         /**
@@ -174,7 +181,7 @@ public class SendFileOptimized {
         public boolean sendChunk() {
             int attempts = 0;
             boolean sent = false;
-            while (attempts < 3 && !sent) {
+            while (attempts < maxAttempts && !sent) {
                 attempts++;
                 try (SocketChannel channel = SocketChannel.open()) {
                     channel.configureBlocking(true);
@@ -209,7 +216,7 @@ public class SendFileOptimized {
                     long dataStart = System.currentTimeMillis();
                     int zeroTransferSpins = 0;
                     while (remaining > 0) {
-                        if ((System.currentTimeMillis() - dataStart) > PER_CHUNK_DATA_SEND_TIMEOUT_MS) {
+                        if ((System.currentTimeMillis() - dataStart) > dataSendTimeoutMs) {
                             throw new SocketTimeoutException("data send timeout");
                         }
                         long transferred = fileChannel.transferTo(pos, remaining, channel);
@@ -223,7 +230,6 @@ public class SendFileOptimized {
                             continue;
                         }
                         zeroTransferSpins = 0;
-                        if (transferCallback != null) transferCallback.onProgress(transferred);
                         pos += transferred;
                         remaining -= transferred;
                     }
@@ -232,6 +238,8 @@ public class SendFileOptimized {
                     channel.configureBlocking(false);
                     int status = readSingleByteWithTimeout(channel, 15000);
                     if (status == 1) {
+                        // Report progress only once a chunk is confirmed successful.
+                        if (transferCallback != null) transferCallback.onProgress(length);
                         sent = true; // success
                     } else {
                         System.err.println("[" + Thread.currentThread().getName() + "] Received NACK for chunk offset=" + offset + ", retrying");
@@ -242,7 +250,7 @@ public class SendFileOptimized {
                     System.err.println("[" + Thread.currentThread().getName() + "] Timeout for chunkIndex=" + chunkIndex + " offset=" + offset + ", retrying");
                     try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                 } catch (java.net.SocketException se) {
-                    if (attempts >= 3) {
+                    if (attempts >= maxAttempts) {
                         se.printStackTrace();
                     } else {
                         // wait before retry
