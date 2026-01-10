@@ -362,6 +362,62 @@ public class FileSender {
                             LogPanel.log("FileSender: 傳輸失敗: " + displayName);
                         }
 
+                        // Notify receiver that this round's sending is done (so it can decide missing chunks).
+                        dos.writeUTF("FILE_SEND_DONE@" + currentFileIndex);
+                        dos.flush();
+
+                        // 等待接收端確認檔案完整，或要求重傳特定 chunk
+                        while (true) {
+                            String statusMsg = dis.readUTF();
+                            String okMsg = "FILE_OK@" + currentFileIndex;
+                            if (okMsg.equals(statusMsg)) {
+                                LogPanel.log("FileSender: Receiver confirmed file complete: " + displayName);
+                                break;
+                            }
+
+                            String missingPrefix = "FILE_MISSING@" + currentFileIndex + "@";
+                            if (statusMsg.startsWith(missingPrefix)) {
+                                String[] parts = statusMsg.split("@", 4);
+                                if (parts.length < 3) {
+                                    throw new IOException("Invalid FILE_MISSING message: " + statusMsg);
+                                }
+                                int reqId;
+                                try {
+                                    reqId = Integer.parseInt(parts[2]);
+                                } catch (NumberFormatException nfe) {
+                                    throw new IOException("Invalid request id in FILE_MISSING: " + statusMsg, nfe);
+                                }
+                                java.util.List<Integer> missingChunks = parseChunkIdCsv(parts.length >= 4 ? parts[3] : "");
+                                LogPanel.log("FileSender: Receiver requested resend. fileIndex=" + currentFileIndex + " reqId="
+                                        + reqId + " missingCount=" + missingChunks.size());
+
+                                dos.writeUTF("FILE_MISSING_ACK@" + currentFileIndex + "@" + reqId);
+                                dos.flush();
+
+                                String readyMsg = dis.readUTF();
+                                String expectedReady = "FILE_RESEND_READY@" + currentFileIndex + "@" + reqId;
+                                if (!expectedReady.equals(readyMsg)) {
+                                    throw new IOException("Expected '" + expectedReady + "' but got '" + readyMsg + "'");
+                                }
+
+                                // resend requested chunks
+                                SendFileOptimized resendSender = new SendFileOptimized(
+                                        this.host, this.port2,
+                                        fileToActuallySend.getAbsolutePath(),
+                                        negotiatedThreadCount,
+                                        callback);
+                                resendSender.start(missingChunks);
+
+                                // Notify receiver that resend round is done
+                                dos.writeUTF("FILE_RESEND_DONE@" + currentFileIndex + "@" + reqId);
+                                dos.flush();
+                                // after resending, loop back and wait for FILE_OK or another FILE_MISSING
+                                continue;
+                            }
+
+                            throw new IOException("Unexpected receiver status message: " + statusMsg);
+                        }
+
                         // 傳輸完成後通知
                         if (callback != null) {
                             callback.onFileComplete(1 + currentFileIndex, totalFiles, displayName);
@@ -397,6 +453,25 @@ public class FileSender {
                 }
             }
         }
+    }
+
+    private static java.util.List<Integer> parseChunkIdCsv(String csv) {
+        java.util.List<Integer> ids = new java.util.ArrayList<>();
+        if (csv == null) return ids;
+        String trimmed = csv.trim();
+        if (trimmed.isEmpty()) return ids;
+        String[] parts = trimmed.split(",");
+        for (String p : parts) {
+            if (p == null) continue;
+            String s = p.trim();
+            if (s.isEmpty()) continue;
+            try {
+                ids.add(Integer.parseInt(s));
+            } catch (NumberFormatException ignore) {
+                // skip
+            }
+        }
+        return ids;
     }
     // 舊的 isCompressed 變數，在新採用 List<File> 的方法後並非嚴格需要
 }

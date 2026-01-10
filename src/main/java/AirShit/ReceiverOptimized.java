@@ -1,4 +1,5 @@
 package AirShit;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
@@ -6,212 +7,216 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Set;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ReceiverOptimized {
+    private final int serverPort;
+    private final String outputFile;
+    public static TransferCallback transferCallback;
 
-    // 監聽的 TCP port
-    private int SERVER_PORT ;
-    // 最終要寫入的檔案名稱 (建議與來源檔同大小預先建好)
-    private String OUTPUT_FILE ;
-    public static TransferCallback transferCallback; // 傳輸回調介面，用於通知傳輸進度或結果
-    // 伺服端固定執行緒池大小 (處理多個 client 連線)
-    private int SERVER_THREAD_COUNT;
-    /** 預設單個 chunk 大小 (與 SendFileOptimized 保持一致) */
     public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
-    /** 預期接收的 chunk 數量，若 <=0 則無限循環 */
-    private int expectedChunks;
-    
-    // 用於追蹤已接收的 chunk index，解決重複接收導致計數錯誤的問題
-    private final Set<Integer> receivedChunks = ConcurrentHashMap.newKeySet();
 
-    public ReceiverOptimized(int SERVER_PORT , String OUTPUT_FILE , int threadCount , TransferCallback callback) {
-        this.SERVER_PORT = SERVER_PORT;
-        this.SERVER_THREAD_COUNT = threadCount;
-        this.OUTPUT_FILE = OUTPUT_FILE;
-        ReceiverOptimized.transferCallback = callback;
-        this.expectedChunks = -1;
-    }
-    /** 用於設定預期 chunk 數量的構造器 */
-    public ReceiverOptimized(int SERVER_PORT, String OUTPUT_FILE, int threadCount, TransferCallback callback, int expectedChunks) {
-        this(SERVER_PORT, OUTPUT_FILE, threadCount, callback);
-        this.expectedChunks = expectedChunks;
-    }
-    public void start() {
-        // 使用虛擬執行緒為每個 chunk 連線提供服務
-         
-         // 使用 try-with-resources 管理 ServerSocketChannel, RandomAccessFile, FileChannel
-         try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
-              RandomAccessFile raf = new RandomAccessFile(OUTPUT_FILE, "rw");
-              FileChannel outFileChannel = raf.getChannel()) {
-             
-             serverChannel.setOption(java.net.StandardSocketOptions.SO_REUSEADDR, true);
-             serverChannel.bind(new InetSocketAddress(SERVER_PORT));
-            // 系統啟動並監聽 port = SERVER_PORT
-
-            // 根據預期 chunk 數量分支
-            if (expectedChunks > 0) {
-                CountDownLatch latch = new CountDownLatch(expectedChunks);
-                
-                // [FIX]: 啟動一個監控執行緒，當所有 chunk 都接收完成 (latch歸零) 時，
-                // 主動關閉 serverChannel，以強制中斷主執行緒卡在 accept() 的阻塞狀態。
-                Thread.startVirtualThread(() -> {
-                    try {
-                        latch.await();
-                        // 任務完成，關閉通道以釋放主執行緒的 accept 阻塞
-                        if (serverChannel.isOpen()) {
-                            // Give some time for the last ACK to be sent properly? 
-                            // Or relies on handleClient to return before latch down.
-                            // Adding a small delay just in case.
-                            Thread.sleep(200);
-                            serverChannel.close();
-                        }
-                    } catch (IOException | InterruptedException e) {
-                        // ignore
-                    }
-                });
-
-                try {
-                    // 只要還有未完成的 chunk，就持續接受連線 (支援重傳機制)
-                    // 注意：當 latch 歸零後，上方監控執行緒會關閉 channel，導致這裡拋出異常退出循環
-                    while (latch.getCount() > 0) {
-                        try {
-                            SocketChannel clientChannel = serverChannel.accept();
-                            Thread.startVirtualThread(() -> {
-                                boolean isNewChunk = handleClient(clientChannel, outFileChannel, expectedChunks, receivedChunks);
-                                if (isNewChunk) {
-                                    latch.countDown();
-                                }
-                            });
-                        } catch (java.nio.channels.ClosedChannelException e) {
-                            // Channel closed by monitor thread, exit loop
-                            break;
-                        }
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                // 等待最後的 chunk 寫入完成
-                try {
-                    latch.await();
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            } else {
-                while (true) {
-                    SocketChannel clientChannel = serverChannel.accept();
-                    Thread.startVirtualThread(() -> handleClient(clientChannel, outFileChannel, -1, receivedChunks));
-                }
-            }
-         } catch (IOException e) {
-             e.printStackTrace();
-        }
-     }
+    private final int totalChunks;
+    private final BitSet receivedChunks;
+    private final long idleTimeoutMillis;
+    private final Runnable onListening;
+    private final AtomicBoolean senderDone;
 
     /**
-     * 處理每個 client 連線
-     * 協議更新：
-     * 1. 讀取 1 byte TYPE (0=DATA, 1=QUERY_MISSING)
-     * 
-     * 如果是 DATA (0):
-     *    讀取 ChunkIndex (int), Offset (long), Length (int)
-     *    ... 接收資料 ...
-     *    回傳 ACK
-     * 
-     * 如果是 QUERY_MISSING (1):
-     *    計算缺失的 Chunk Index 列表
-     *    回傳 Count (int)
-     *    回傳 List<Integer>
-     * 
-     * @return boolean 如果成功接收了一個 *新的* data chunk，返回 true；否則 (重複chunk, query, 失敗) 返回 false
+     * @param totalChunks total chunks for the whole file (0-based chunk indexes: 0..totalChunks-1)
+     * @param receivedChunks shared BitSet to mark received chunks across rounds
+     * @param idleTimeoutMillis when no new chunks arrive for this duration (and no in-flight handlers), return to caller
+     * @param onListening optional callback invoked after bind() completes
      */
-    private static boolean handleClient(SocketChannel clientChannel, FileChannel outFileChannel, int totalChunks, Set<Integer> receivedChunks) {
-        try (SocketChannel channel = clientChannel) {
-            channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
-            
-            // 1. Read Type
-            ByteBuffer typeBuf = ByteBuffer.allocate(1);
-            while(typeBuf.hasRemaining()) {
-                 if (channel.read(typeBuf) == -1) return false;
-            }
-            typeBuf.flip();
-            byte type = typeBuf.get();
+    public ReceiverOptimized(int serverPort, String outputFile, int threadCount, TransferCallback callback,
+            int totalChunks, BitSet receivedChunks, long idleTimeoutMillis, Runnable onListening, AtomicBoolean senderDone) {
+        this.serverPort = serverPort;
+        this.outputFile = outputFile;
+        ReceiverOptimized.transferCallback = callback;
+        this.totalChunks = Math.max(0, totalChunks);
+        this.receivedChunks = receivedChunks;
+        this.idleTimeoutMillis = Math.max(1000, idleTimeoutMillis);
+        this.onListening = onListening;
+        this.senderDone = senderDone;
+    }
 
-            if (type == 1) { // QUERY_MISSING
-                if (totalChunks <= 0) return false; // Should not happen in fixed mode
-                List<Integer> missing = new ArrayList<>();
-                for (int i = 0; i < totalChunks; i++) {
-                    if (!receivedChunks.contains(i)) {
-                        missing.add(i);
+    /** Backward-compatible constructor: single round receive, no missing tracking. */
+    public ReceiverOptimized(int serverPort, String outputFile, int threadCount, TransferCallback callback, int expectedChunks) {
+        this(serverPort, outputFile, threadCount, callback, expectedChunks, new BitSet(expectedChunks), 15000, null, null);
+    }
+
+    /**
+     * Receives chunks until either all chunks have been received, or idle timeout is reached.
+     * Returns true if the file is complete (all chunks received).
+     */
+    public boolean start() {
+        AtomicInteger inFlight = new AtomicInteger(0);
+        AtomicLong lastProgress = new AtomicLong(System.currentTimeMillis());
+
+        final AtomicInteger remaining = new AtomicInteger(Math.max(0, totalChunks - safeCardinality(receivedChunks)));
+        if (remaining.get() == 0) {
+            return true;
+        }
+
+        try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
+                RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
+                FileChannel outFileChannel = raf.getChannel()) {
+
+            serverChannel.setOption(java.net.StandardSocketOptions.SO_REUSEADDR, true);
+            serverChannel.bind(new InetSocketAddress(serverPort));
+            serverChannel.configureBlocking(false);
+
+            if (onListening != null) {
+                try {
+                    onListening.run();
+                } catch (Exception ignore) {
+                }
+            }
+
+            while (remaining.get() > 0) {
+                SocketChannel clientChannel = serverChannel.accept();
+                if (clientChannel == null) {
+                    // Important: before sender indicates it's done, do not time out or request missing.
+                    if (senderDone != null && !senderDone.get()) {
+                        try {
+                            Thread.sleep(5);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                        continue;
                     }
+
+                    if (inFlight.get() == 0 && (System.currentTimeMillis() - lastProgress.get()) > idleTimeoutMillis) {
+                        break;
+                    }
+                    try {
+                        Thread.sleep(5);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    continue;
                 }
-                // Send count
-                ByteBuffer resp = ByteBuffer.allocate(Integer.BYTES + missing.size() * Integer.BYTES);
-                resp.putInt(missing.size());
-                for(Integer id : missing) {
-                    resp.putInt(id);
-                }
-                resp.flip();
-                while(resp.hasRemaining()) channel.write(resp);
-                return false; // Not a data chunk increment
+
+                inFlight.incrementAndGet();
+                Thread.startVirtualThread(() -> {
+                    try {
+                        boolean ok = handleClient(clientChannel, outFileChannel);
+                        if (ok) {
+                            lastProgress.set(System.currentTimeMillis());
+                        }
+                    } finally {
+                        inFlight.decrementAndGet();
+                    }
+                });
             }
 
-            // DATA (type == 0)
-            // read header: Index(4) + Offset(8) + Length(4) = 16 bytes
-            ByteBuffer headerBuffer = ByteBuffer.allocate(Integer.BYTES + Long.BYTES + Integer.BYTES);
+            // wait for in-flight handlers to finish
+            long waitStart = System.currentTimeMillis();
+            while (inFlight.get() > 0 && (System.currentTimeMillis() - waitStart) < 30000) {
+                try {
+                    Thread.sleep(5);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+
+            return safeCardinality(receivedChunks) >= totalChunks;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return safeCardinality(receivedChunks) >= totalChunks;
+        }
+    }
+
+    private static int safeCardinality(BitSet bs) {
+        if (bs == null) return 0;
+        synchronized (bs) {
+            return bs.cardinality();
+        }
+    }
+
+    /**
+     * Protocol: header = offset(long) + length(int) + chunkIndex(int), then raw chunk bytes.
+     */
+    private boolean handleClient(SocketChannel clientChannel, FileChannel outFileChannel) {
+        try (SocketChannel channel = clientChannel) {
+            channel.configureBlocking(true);
+            channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
+
+            ByteBuffer headerBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES + Integer.BYTES);
             while (headerBuffer.hasRemaining()) {
                 if (channel.read(headerBuffer) == -1) return false;
             }
             headerBuffer.flip();
-            int chunkIndex = headerBuffer.getInt();
             long offset = headerBuffer.getLong();
             int length = headerBuffer.getInt();
+            int chunkIndex = headerBuffer.getInt();
 
-            // send header ACK
-            ByteBuffer ackBuf = ByteBuffer.allocate(1);
-            ackBuf.put((byte)1).flip();
-            while (ackBuf.hasRemaining()) channel.write(ackBuf);
+            if (chunkIndex < 0 || chunkIndex >= totalChunks || length < 0) {
+                sendStatus(channel, (byte) 0);
+                return false;
+            }
 
-            // data receive
+            // ACK header
+            sendAck(channel);
+
             try {
                 ByteBuffer dataBuffer = ByteBuffer.allocateDirect(256 * 1024);
                 long bytesToReceive = length;
                 long writePosition = offset;
                 while (bytesToReceive > 0) {
                     dataBuffer.clear();
-                    int toRead = (int)Math.min(dataBuffer.capacity(), bytesToReceive);
+                    int toRead = (int) Math.min(dataBuffer.capacity(), bytesToReceive);
                     dataBuffer.limit(toRead);
                     int r = channel.read(dataBuffer);
                     if (r == -1) throw new IOException("Unexpected EOF");
                     dataBuffer.flip();
-                    outFileChannel.write(dataBuffer, writePosition);
+                    while (dataBuffer.hasRemaining()) {
+                        int written = outFileChannel.write(dataBuffer, writePosition);
+                        if (written <= 0) {
+                            throw new IOException("FileChannel.write returned " + written);
+                        }
+                        writePosition += written;
+                    }
                     if (transferCallback != null) transferCallback.onProgress(r);
-                    writePosition += r;
                     bytesToReceive -= r;
                 }
-                outFileChannel.force(false);
-                // send success status
-                ByteBuffer status = ByteBuffer.allocate(1).put((byte)1).flip();
-                while (status.hasRemaining()) channel.write(status);
 
-                // Mark as received
-                // 返回 true 僅當這是一個「新」接收到的 chunk
-                return receivedChunks.add(chunkIndex); 
+                synchronized (receivedChunks) {
+                    receivedChunks.set(chunkIndex);
+                }
+
+                // send success status
+                sendStatus(channel, (byte) 1);
+                return true;
             } catch (IOException ioe) {
-                // send NACK
+                ioe.printStackTrace();
                 try {
-                    ByteBuffer nack = ByteBuffer.allocate(1).put((byte)0).flip();
-                    while (nack.hasRemaining()) channel.write(nack);
-                } catch (IOException ignore){}
+                    sendStatus(channel, (byte) 0);
+                } catch (IOException ignore) {
+                }
+                return false;
             }
         } catch (IOException e) {
             e.printStackTrace();
+            return false;
         }
-        return false; // Failure or no latch decrement needed
+    }
+
+    private static void sendAck(SocketChannel channel) throws IOException {
+        ByteBuffer ackBuf = ByteBuffer.allocate(1);
+        ackBuf.put((byte) 1).flip();
+        while (ackBuf.hasRemaining()) channel.write(ackBuf);
+    }
+
+    private static void sendStatus(SocketChannel channel, byte status) throws IOException {
+        ByteBuffer buf = ByteBuffer.allocate(1);
+        buf.put(status).flip();
+        while (buf.hasRemaining()) channel.write(buf);
     }
 }

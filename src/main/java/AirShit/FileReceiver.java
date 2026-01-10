@@ -13,7 +13,11 @@ import java.net.StandardSocketOptions;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
+import java.util.StringJoiner;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import AirShit.ui.LogPanel;
 import AirShit.ui.FXFileChooserAdapter;
 
@@ -212,6 +216,7 @@ public class FileReceiver {
                             boolean overallSuccess = true;
                             int currentFileIndex = 0;
                             for (FileInfo currentFileToReceive : filesExpected) {
+                                final int fileNo = currentFileIndex;
                                 String outputFileName = currentFileToReceive.name;
                                 // Fix for cross-platform path separators (Windows sender -> Linux receiver)
                                 if (outputFileName.contains("\\") && !File.separator.equals("\\")) {
@@ -246,22 +251,91 @@ public class FileReceiver {
                                 }
                                 dos.writeUTF("START_FILE_ACK");
                                 dos.flush();
-                                // Calculate expected number of chunks to receive and use constructor to limit
-                                // loop
-                                int expectedChunks = (int) ((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE
-                                        - 1)
+
+                                int totalChunks = (int) ((fileSizeForThisFile + ReceiverOptimized.DEFAULT_CHUNK_SIZE - 1)
                                         / ReceiverOptimized.DEFAULT_CHUNK_SIZE);
-                                ReceiverOptimized dataReceiver = new ReceiverOptimized(
-                                        port2,
-                                        wholeOutputFilePath,
-                                        negotiatedThreadCount,
-                                        callback,
-                                        expectedChunks);
-                                // new Thread(() -> {
-                                try {
-                                    dataReceiver.start();
-                                } catch (Exception e) {
+                                BitSet receivedChunks = new BitSet(totalChunks);
+
+                                int requestId = 0;
+                                while (true) {
+                                    final int currentReqId = requestId;
+                                    long idleTimeout = (requestId == 0) ? 15000 : 8000;
+
+                                    Runnable onListening = null;
+                                    if (requestId > 0) {
+                                        onListening = () -> {
+                                            try {
+                                                dos.writeUTF("FILE_RESEND_READY@" + fileNo + "@" + currentReqId);
+                                                dos.flush();
+                                            } catch (IOException ignore) {
+                                            }
+                                        };
+                                    }
+
+                                    AtomicBoolean senderDone = new AtomicBoolean(false);
+                                    AtomicReference<Boolean> receiverCompleteRef = new AtomicReference<>(false);
+
+                                    ReceiverOptimized dataReceiver = new ReceiverOptimized(
+                                            port2,
+                                            wholeOutputFilePath,
+                                            negotiatedThreadCount,
+                                            callback,
+                                            totalChunks,
+                                            receivedChunks,
+                                            idleTimeout,
+                                            onListening,
+                                            senderDone);
+
+                                    Thread receiverThread = Thread.startVirtualThread(() -> {
+                                        receiverCompleteRef.set(dataReceiver.start());
+                                    });
+
+                                    // Wait for sender to say this round is done
+                                    if (requestId == 0) {
+                                        String doneMsg = dis.readUTF();
+                                        String expectedDone = "FILE_SEND_DONE@" + fileNo;
+                                        if (!expectedDone.equals(doneMsg)) {
+                                            throw new IOException("Expected '" + expectedDone + "' but got '" + doneMsg + "'");
+                                        }
+                                    } else {
+                                        String doneMsg = dis.readUTF();
+                                        String expectedDone = "FILE_RESEND_DONE@" + fileNo + "@" + requestId;
+                                        if (!expectedDone.equals(doneMsg)) {
+                                            throw new IOException("Expected '" + expectedDone + "' but got '" + doneMsg + "'");
+                                        }
+                                    }
+                                    senderDone.set(true);
+
+                                    try {
+                                        receiverThread.join();
+                                    } catch (InterruptedException ie) {
+                                        Thread.currentThread().interrupt();
+                                    }
+
+                                    boolean complete = Boolean.TRUE.equals(receiverCompleteRef.get())
+                                            && receivedChunks.cardinality() >= totalChunks;
+                                    if (complete) {
+                                        dos.writeUTF("FILE_OK@" + fileNo);
+                                        dos.flush();
+                                        break;
+                                    }
+
+                                    List<Integer> missing = computeMissingChunks(totalChunks, receivedChunks);
+                                    requestId++;
+                                    String csv = joinChunkIds(missing);
+                                    LogPanel.log("FileReceiver: Missing chunks. fileNo=" + fileNo + " requestId="
+                                            + requestId + " missingCount=" + missing.size());
+                                    dos.writeUTF("FILE_MISSING@" + fileNo + "@" + requestId + "@" + csv);
+                                    dos.flush();
+
+                                    String ack = dis.readUTF();
+                                    String expectedAck = "FILE_MISSING_ACK@" + fileNo + "@" + requestId;
+                                    if (!expectedAck.equals(ack)) {
+                                        throw new IOException("Expected '" + expectedAck + "' but got '" + ack + "'");
+                                    }
+                                    // loop continues, receiver will send READY after it binds.
                                 }
+
                                 if (new File(wholeOutputFilePath).exists() && wholeOutputFilePath.endsWith(".tar")) {
                                     try {
                                         String decompressedTargetFolder = selectedSaveDirectory.getAbsolutePath();
@@ -338,6 +412,25 @@ public class FileReceiver {
                 LogPanel.log("FileReceiver: Finished handling current sender. Ready for next handshake.");
             } // End while(true)
         } // ServerSocket closed here
+    }
+
+    private static List<Integer> computeMissingChunks(int totalChunks, BitSet receivedChunks) {
+        List<Integer> missing = new ArrayList<>();
+        for (int i = 0; i < totalChunks; i++) {
+            if (!receivedChunks.get(i)) {
+                missing.add(i);
+            }
+        }
+        return missing;
+    }
+
+    private static String joinChunkIds(List<Integer> ids) {
+        StringJoiner joiner = new StringJoiner(",");
+        for (Integer id : ids) {
+            if (id == null) continue;
+            joiner.add(Integer.toString(id));
+        }
+        return joiner.toString();
     }
 
     // FileReceiveDialog class (ensure Main.GUI and SendFileGUI.formatFileSize are
