@@ -213,6 +213,10 @@ public class SendFileOptimized {
                     channel.configureBlocking(true);
                     // 增加連線超時設定 (雖然 blocking mode 無法直接設 connect timeout，但操作上會更穩)
                     channel.socket().connect(new InetSocketAddress(serverHost, serverPort), 5000);
+                    try {
+                        channel.setOption(java.net.StandardSocketOptions.TCP_NODELAY, true);
+                    } catch (Exception ignore) {
+                    }
                     // System.out.println("[" + Thread.currentThread().getName() + "] 已連到伺服端 " + serverHost + ":" + serverPort
                     //         + "，準備傳送 chunk offset=" + offset + ", length=" + length);
 
@@ -232,15 +236,13 @@ public class SendFileOptimized {
                     if (ack != 1) continue; // retry
                     // System.out.println("收到伺服端 ACK，開始傳送 chunk 資料 offset=" + offset);
 
-                    // back to blocking for transferTo
-                    channel.configureBlocking(true);
-
                     // 3. 傳送實際 chunk 資料 (長度為 length)
-                    //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
+                    // IMPORTANT: do NOT use transferTo() here. It can block indefinitely on socket writes.
+                    // Instead send with non-blocking writes + OP_WRITE timeout.
                     long remaining = length;
                     long pos = offset;
                     long dataStart = System.currentTimeMillis();
-                    int zeroTransferSpins = 0;
+                    ByteBuffer dataBuf = ByteBuffer.allocateDirect(256 * 1024);
                     while (remaining > 0) {
                         if (stopRequested != null && stopRequested.get()) {
                             throw new SocketTimeoutException("stopped");
@@ -248,19 +250,21 @@ public class SendFileOptimized {
                         if ((System.currentTimeMillis() - dataStart) > dataSendTimeoutMs) {
                             throw new SocketTimeoutException("data send timeout");
                         }
-                        long transferred = fileChannel.transferTo(pos, remaining, channel);
-                        if (transferred <= 0) {
-                            zeroTransferSpins++;
-                            // Avoid CPU busy-spin if transferTo returns 0.
-                            try { Thread.sleep(2); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                            if (zeroTransferSpins > 500) {
-                                throw new SocketTimeoutException("transferTo stalled");
-                            }
-                            continue;
+
+                        dataBuf.clear();
+                        int toRead = (int) Math.min((long) dataBuf.capacity(), remaining);
+                        dataBuf.limit(toRead);
+                        int read = fileChannel.read(dataBuf, pos);
+                        if (read <= 0) {
+                            throw new IOException("FileChannel.read returned " + read);
                         }
-                        zeroTransferSpins = 0;
-                        pos += transferred;
-                        remaining -= transferred;
+                        dataBuf.flip();
+
+                        long remainingTime = Math.max(1, dataSendTimeoutMs - (System.currentTimeMillis() - dataStart));
+                        writeFullyWithTimeout(channel, dataBuf, remainingTime);
+
+                        pos += read;
+                        remaining -= read;
                     }
 
                     // 4. 传输数据后读取服务端返回的状态字节，1=成功，0=失败
@@ -314,6 +318,33 @@ public class SendFileOptimized {
                 }
                 buf.flip();
                 return buf.get() & 0xFF;
+            }
+        }
+
+        private static void writeFullyWithTimeout(SocketChannel channel, ByteBuffer buf, long timeoutMillis) throws IOException {
+            if (timeoutMillis <= 0) throw new SocketTimeoutException("timeout");
+            long deadline = System.currentTimeMillis() + timeoutMillis;
+            try (Selector selector = Selector.open()) {
+                channel.register(selector, SelectionKey.OP_WRITE);
+                while (buf.hasRemaining()) {
+                    long now = System.currentTimeMillis();
+                    long remaining = deadline - now;
+                    if (remaining <= 0) {
+                        throw new SocketTimeoutException("write timeout");
+                    }
+                    int selected = selector.select(remaining);
+                    if (selected <= 0) {
+                        throw new SocketTimeoutException("write timeout");
+                    }
+                    int w = channel.write(buf);
+                    if (w < 0) {
+                        throw new IOException("EOF while writing");
+                    }
+                    if (w == 0) {
+                        // nothing written; keep waiting
+                        continue;
+                    }
+                }
             }
         }
     }
