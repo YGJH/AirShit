@@ -21,6 +21,7 @@ public class ReceiverOptimized {
 
     private final int totalChunks;
     private final BitSet receivedChunks;
+    private final BitSet inProgressChunks;
     private final long idleTimeoutMillis;
     private final Runnable onListening;
     private final AtomicBoolean senderDone;
@@ -38,6 +39,7 @@ public class ReceiverOptimized {
         ReceiverOptimized.transferCallback = callback;
         this.totalChunks = Math.max(0, totalChunks);
         this.receivedChunks = receivedChunks;
+        this.inProgressChunks = new BitSet(this.totalChunks);
         this.idleTimeoutMillis = Math.max(1000, idleTimeoutMillis);
         this.onListening = onListening;
         this.senderDone = senderDone;
@@ -165,16 +167,24 @@ public class ReceiverOptimized {
             }
 
             boolean alreadyReceived;
+            boolean alreadyInProgress;
             synchronized (receivedChunks) {
                 alreadyReceived = receivedChunks.get(chunkIndex);
+            }
+            synchronized (inProgressChunks) {
+                alreadyInProgress = inProgressChunks.get(chunkIndex);
+                if (!alreadyReceived && !alreadyInProgress) {
+                    inProgressChunks.set(chunkIndex);
+                }
             }
 
             // ACK header
             sendAck(channel);
 
-            // If this chunk was already received (e.g., sender retransmit), drain bytes but do not
-            // re-write the file and do not count progress again.
-            if (alreadyReceived) {
+            // If this chunk was already received (or is currently being received by another thread),
+            // drain bytes but do not re-write the file and do not count progress again.
+            // If it's in-progress elsewhere, return NACK so sender can retry later if needed.
+            if (alreadyReceived || alreadyInProgress) {
                 ByteBuffer drain = ByteBuffer.allocateDirect(256 * 1024);
                 long remaining = length;
                 while (remaining > 0) {
@@ -185,8 +195,8 @@ public class ReceiverOptimized {
                     if (r == -1) throw new IOException("Unexpected EOF while draining duplicate chunk");
                     remaining -= r;
                 }
-                sendStatus(channel, (byte) 1);
-                return true;
+                sendStatus(channel, (byte) (alreadyReceived ? 1 : 0));
+                return alreadyReceived;
             }
 
             try {
@@ -207,7 +217,6 @@ public class ReceiverOptimized {
                         }
                         writePosition += written;
                     }
-                    if (transferCallback != null) transferCallback.onProgress(r);
                     bytesToReceive -= r;
                 }
 
@@ -215,11 +224,21 @@ public class ReceiverOptimized {
                     receivedChunks.set(chunkIndex);
                 }
 
+                synchronized (inProgressChunks) {
+                    inProgressChunks.clear(chunkIndex);
+                }
+
+                // Count progress only once per successfully committed unique chunk.
+                if (transferCallback != null) transferCallback.onProgress(length);
+
                 // send success status
                 sendStatus(channel, (byte) 1);
                 return true;
             } catch (IOException ioe) {
                 ioe.printStackTrace();
+                synchronized (inProgressChunks) {
+                    inProgressChunks.clear(chunkIndex);
+                }
                 try {
                     sendStatus(channel, (byte) 0);
                 } catch (IOException ignore) {

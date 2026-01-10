@@ -102,7 +102,10 @@ public class SendFileOptimized {
 
                 // 建立固定大小執行緒池 (Virtual Threads)，並搭配 Semaphore 限制併發數
                 ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-                Semaphore concurrencyLimiter = new Semaphore(threadCount > 0 ? threadCount : 4);
+                int maxConcurrency = threadCount > 0 ? threadCount : 4;
+                // Avoid overwhelming receiver/NIC; too much parallelism increases drops/timeouts.
+                maxConcurrency = Math.max(1, Math.min(maxConcurrency, 8));
+                Semaphore concurrencyLimiter = new Semaphore(maxConcurrency);
                 
                 Queue<ChunkSenderTask> activeFailures = new ConcurrentLinkedQueue<>();
 
