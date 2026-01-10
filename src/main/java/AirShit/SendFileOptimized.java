@@ -25,6 +25,12 @@ public class SendFileOptimized {
     public static TransferCallback transferCallback; // 傳輸回調介面，用於通知傳輸進度或結果
     private final int chunkSize;// 單位：bytes
     private  final int DEFAULT_CHUNK_SIZE = 1024 * 1024; // 預設每個 chunk 大小為 1MB
+
+    // Safety bounds to avoid sender hanging forever (e.g., last 1% stuck).
+    private static final int MAX_ROUNDS_WHOLE_FILE = 8;
+    private static final int MAX_ROUNDS_PARTIAL = 5;
+    private static final long PER_CHUNK_DATA_SEND_TIMEOUT_MS = 60_000;
+    private static final long ROUND_AWAIT_TERMINATION_MS = 10 * 60_000;
     public SendFileOptimized(String serverHost, int serverPort, String filePath, int threadCount, TransferCallback transferCallback) {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
@@ -73,9 +79,14 @@ public class SendFileOptimized {
             }
 
             int round = 0;
+            final int maxRounds = (chunkIndexes == null) ? MAX_ROUNDS_WHOLE_FILE : MAX_ROUNDS_PARTIAL;
             // 3. 迴圈處理任務，直到所有任務成功 (或達到某個總體重試限制，這裡暫不設限)
             while (!tasksToProcess.isEmpty()) {
                 round++;
+                if (round > maxRounds) {
+                    System.err.println("Reached max resend rounds (" + maxRounds + ") with remaining chunks=" + tasksToProcess.size());
+                    break;
+                }
                 if (round > 1) {
                     System.out.println("Chunk 重傳回合: " + round + ", 剩餘任務數: " + tasksToProcess.size());
                     try { Thread.sleep(1000); } catch (Exception e) {}
@@ -108,8 +119,14 @@ public class SendFileOptimized {
 
                 // 5. 等待本輪所有任務完成
                 pool.shutdown();
+                long waitStart = System.currentTimeMillis();
                 while (!pool.isTerminated()) {
-                    Thread.sleep(100); 
+                    if ((System.currentTimeMillis() - waitStart) > ROUND_AWAIT_TERMINATION_MS) {
+                        System.err.println("Round timed out waiting for tasks to finish; forcing shutdown.");
+                        pool.shutdownNow();
+                        break;
+                    }
+                    Thread.sleep(100);
                 }
                 
                 // 更新待處理列表為失敗的任務
@@ -120,7 +137,7 @@ public class SendFileOptimized {
             // System.out.println("所有 chunk 傳送完畢！");
             fileChannel.close();
             raf.close();
-            return true; // 傳送成功
+            return tasksToProcess.isEmpty(); // true if all chunks sent, false otherwise
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -187,9 +204,23 @@ public class SendFileOptimized {
                     //    直接利用 FileChannel.transferTo 搭配 SocketChannel，能更有效率
                     long remaining = length;
                     long pos = offset;
+                    long dataStart = System.currentTimeMillis();
+                    int zeroTransferSpins = 0;
                     while (remaining > 0) {
+                        if ((System.currentTimeMillis() - dataStart) > PER_CHUNK_DATA_SEND_TIMEOUT_MS) {
+                            throw new SocketTimeoutException("data send timeout");
+                        }
                         long transferred = fileChannel.transferTo(pos, remaining, channel);
-                        if (transferred <= 0) continue;
+                        if (transferred <= 0) {
+                            zeroTransferSpins++;
+                            // Avoid CPU busy-spin if transferTo returns 0.
+                            try { Thread.sleep(2); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            if (zeroTransferSpins > 500) {
+                                throw new SocketTimeoutException("transferTo stalled");
+                            }
+                            continue;
+                        }
+                        zeroTransferSpins = 0;
                         if (transferCallback != null) transferCallback.onProgress(transferred);
                         pos += transferred;
                         remaining -= transferred;
@@ -237,7 +268,7 @@ public class SendFileOptimized {
                     throw new IOException("EOF/short read");
                 }
                 buf.flip();
-                return buf.get();
+                return buf.get() & 0xFF;
             }
         }
     }
